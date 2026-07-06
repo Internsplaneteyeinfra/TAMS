@@ -12,7 +12,7 @@ import MonitoringWorkflow from '@/components/MonitoringWorkflow'
 import { fetchApi, type Alert, type Asset } from '@/lib/api'
 import { selectAsset, type RootState } from '@/lib/store'
 
-const GISMap = dynamic(() => import('@/components/GISMap'), { ssr: false })
+const MapViewport = dynamic(() => import('@/components/MapViewport'), { ssr: false })
 
 export default function Home() {
   const [isClient, setIsClient] = useState(false)
@@ -97,7 +97,7 @@ export default function Home() {
 
       <div className="flex-1 relative min-h-0 h-full">
         {isClient && (
-          <GISMap
+          <MapViewport
             assets={assets}
             selectedAssetId={selectedAssetId}
             alertAssetIds={alertAssetIds}
