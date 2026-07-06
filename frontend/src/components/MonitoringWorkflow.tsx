@@ -63,7 +63,7 @@ export default function MonitoringWorkflow({
   const wf = workflow as WorkflowDefinition | undefined
 
   return (
-    <div className="space-y-4 px-4 pb-4 border-t border-gray-800 pt-4">
+    <div className="space-y-4 p-4">
       <div>
         <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300">Monitoring Pipeline</h2>
         <p className="text-gray-500 text-xs mt-1 leading-relaxed">

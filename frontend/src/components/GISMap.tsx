@@ -95,7 +95,17 @@ function makeAssetIcon(asset: Asset, isSelected: boolean, hasAlert: boolean) {
     iconSize: [Math.max(w, 90), totalH],
     iconAnchor: [Math.max(w, 90) / 2, h / 2],
     html: `<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;${alertGlow}${selectRing}">
-      <div style="border:3px solid ${ring};border-radius:6px;padding:2px;background:rgba(0,0,0,0.35);">
+      <div style="border:3px solid ${ring};border-radius:6px;padding:2px;background:rgba(0,0,0,0.35);position:relative;">
+        ${asset.health_score === 'critical' ? `
+        <div style="
+          position:absolute;
+          inset:-5px;
+          border:2px solid #ef4444;
+          border-radius:8px;
+          animation: markerPulse 1.8s infinite ease-in-out;
+          pointer-events:none;
+        "></div>
+        ` : ''}
         ${symbol}
       </div>
       <div style="
@@ -248,11 +258,19 @@ export default function GISMap({
   selectedAssetId,
   alertAssetIds = [],
   onSelectAsset,
+  activeLayers,
 }: {
   assets: Asset[]
   selectedAssetId?: string | null
   alertAssetIds?: string[]
   onSelectAsset?: (id: string) => void
+  activeLayers?: {
+    heatmap: boolean
+    riskOverlay: boolean
+    satellite: boolean
+    terrain: boolean
+    corridors: boolean
+  }
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -284,6 +302,15 @@ export default function GISMap({
   })
   const [showWildfireRisk, setShowWildfireRisk] = useState(false)
   const [showFloodRisk, setShowFloodRisk] = useState(false)
+
+  // Sync activeLayers props with internal state variables
+  useEffect(() => {
+    if (activeLayers) {
+      setShowWildfireRisk(activeLayers.riskOverlay)
+      setShowFloodRisk(activeLayers.riskOverlay)
+      setMapLayer(activeLayers.satellite ? 'satellite-labels' : 'satellite')
+    }
+  }, [activeLayers])
 
   const filteredAssets = useMemo(
     () => assets.filter((a) => typeFilters[a.asset_type] && passesRegionFilter(a, regionFilter)),
@@ -557,12 +584,21 @@ export default function GISMap({
       const ring = healthColor(asset)
 
       if (asset.asset_type === 'line' && asset.geometry?.type === 'LineString') {
+        if (activeLayers && !activeLayers.corridors) return
         const latlngs = toLatLngs(asset.geometry.coordinates as number[][])
+        const lineHealth = asset.health_score || 'healthy'
+        const lineColor =
+          hasAlert || lineHealth === 'critical'
+            ? '#ef4444' // Red (Critical)
+            : lineHealth === 'attention_required'
+            ? '#F59E0B' // Yellow (Warning)
+            : '#2563EB' // Blue (Healthy)
+
         const polyline = L.polyline(latlngs, {
-          color: cfg.color,
+          color: lineColor,
           weight: isSelected ? 6 : 4,
           opacity: 0.9,
-          dashArray: hasAlert ? '8 6' : undefined,
+          dashArray: hasAlert || asset.status === 'investigation' || asset.status === 'maintenance' ? '6 6' : undefined,
         }).addTo(map)
         polyline.bindPopup(buildPopupHtml(asset))
         polyline.on('click', () => onSelectAsset?.(asset.id))
@@ -634,6 +670,18 @@ export default function GISMap({
           fillOpacity: 0.12,
           radius: 12000,
           weight: 1,
+        }).addTo(map)
+        overlaysRef.current.push(circle)
+      }
+
+      // Heatmap Anomaly Density overlay
+      if (activeLayers?.heatmap && hasAlert) {
+        const circle = L.circle([asset.latitude, asset.longitude], {
+          color: '#ef4444',
+          fillColor: '#ef4444',
+          fillOpacity: 0.18,
+          radius: 20000,
+          weight: 0,
         }).addTo(map)
         overlaysRef.current.push(circle)
       }
@@ -804,107 +852,46 @@ export default function GISMap({
         </div>
       </div>
 
-      {/* Coordinates panel */}
-      <div className="absolute bottom-4 right-4 z-[1000] bg-gray-900 rounded-lg p-3 shadow-lg border border-gray-700 text-xs min-w-[240px]">
-        <p className="text-gray-400 font-semibold mb-2 uppercase tracking-wide">Coordinates</p>
-
-        {/* Go to lat/lng */}
-        <div className="mb-3 space-y-2 pb-3 border-b border-gray-700">
-          <p className="text-gray-500 text-[10px]">Go to location (Lat / Lng)</p>
-          <div className="grid grid-cols-2 gap-1.5">
-            <input
-              type="text"
-              value={inputLat}
-              onChange={(e) => setInputLat(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && goToLocation()}
-              placeholder="Latitude"
-              className="w-full px-2 py-1.5 bg-gray-800 border border-gray-600 rounded text-white font-mono text-[11px] placeholder:text-gray-500 focus:outline-none focus:border-tams-primary"
-            />
-            <input
-              type="text"
-              value={inputLng}
-              onChange={(e) => setInputLng(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && goToLocation()}
-              placeholder="Longitude"
-              className="w-full px-2 py-1.5 bg-gray-800 border border-gray-600 rounded text-white font-mono text-[11px] placeholder:text-gray-500 focus:outline-none focus:border-tams-primary"
-            />
+      {/* Bottom Map Status Bar */}
+      <div className="absolute bottom-4 left-4 right-4 z-[1000] bg-[#0e172a]/95 border border-slate-800 rounded-xl p-3 shadow-2xl flex flex-wrap items-center justify-between gap-4 text-[10px] text-slate-400 font-mono">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+            <span className="text-slate-500 uppercase tracking-wider font-bold">Grid Coordinates:</span>
+            <span className="text-slate-200">
+              {cursorPoint ? `${cursorPoint.lat.toFixed(4)}, ${cursorPoint.lng.toFixed(4)}` : '0.0000, 0.0000'}
+            </span>
           </div>
-          <input
-            type="text"
-            value={inputPair}
-            onChange={(e) => setInputPair(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && goToLocation()}
-            placeholder="Or paste: 28.6139, 77.2090"
-            className="w-full px-2 py-1.5 bg-gray-800 border border-gray-600 rounded text-white font-mono text-[11px] placeholder:text-gray-500 focus:outline-none focus:border-tams-primary"
-          />
-          <button
-            type="button"
-            onClick={goToLocation}
-            className="w-full py-2 px-3 bg-purple-600 hover:bg-purple-700 rounded text-white text-xs font-medium transition"
-          >
-            Go to Location
-          </button>
+          <div className="h-4 w-px bg-slate-800" />
+          <div>
+            <span className="text-slate-500 uppercase tracking-wider font-bold">Zoom:</span>
+            <span className="text-slate-200 ml-1">Lvl {mapRef.current ? mapRef.current.getZoom() : 6}</span>
+          </div>
         </div>
 
-        {geoPoint ? (
-          <div className="space-y-1 text-white mb-2">
-            <p>
-              <span className="text-gray-400">Lat:</span>{' '}
-              <span className="font-mono">{formatCoord(geoPoint.lat)}</span>
-            </p>
-            <p>
-              <span className="text-gray-400">Lng:</span>{' '}
-              <span className="font-mono">{formatCoord(geoPoint.lng)}</span>
-            </p>
-            <p className="text-gray-500 capitalize">
-              Source:{' '}
-              {geoPoint.source === 'gps'
-                ? 'GPS / device'
-                : geoPoint.source === 'manual'
-                  ? 'Manual entry'
-                  : 'Map click'}
-              {geoPoint.accuracy != null && ` · ±${Math.round(geoPoint.accuracy)} m`}
-            </p>
+        <div className="flex items-center gap-3">
+          <div>
+            <span className="text-slate-500 uppercase tracking-wider font-bold">Selected:</span>
+            <span className="text-blue-400 font-bold ml-1">
+              {selectedAssetId ? (assets.find(a => a.id === selectedAssetId)?.name || selectedAssetId) : 'None'}
+            </span>
           </div>
-        ) : cursorPoint ? (
-          <div className="space-y-1 text-gray-300 mb-2">
-            <p className="text-gray-500 text-[10px]">Hover / click map for coordinates</p>
-            <p>
-              <span className="text-gray-400">Lat:</span>{' '}
-              <span className="font-mono">{formatCoord(cursorPoint.lat)}</span>
-            </p>
-            <p>
-              <span className="text-gray-400">Lng:</span>{' '}
-              <span className="font-mono">{formatCoord(cursorPoint.lng)}</span>
-            </p>
+          <div className="h-4 w-px bg-slate-800" />
+          <div>
+            <span className="text-slate-500 uppercase tracking-wider font-bold">Satellite Pass:</span>
+            <span className="text-slate-200 ml-1">4.5 Hrs Ago (Sentinel-2)</span>
           </div>
-        ) : (
-          <p className="text-gray-500 mb-2">Click map or use Get Location</p>
-        )}
-
-        <div className="flex flex-col gap-1.5">
-          <button
-            type="button"
-            onClick={getMyLocation}
-            disabled={locating}
-            className="w-full py-2 px-3 bg-tams-primary hover:bg-blue-700 disabled:opacity-50 rounded text-white text-xs font-medium transition"
-          >
-            {locating ? 'Getting location…' : '📍 Get My Location'}
-          </button>
-          {geoPoint && (
-            <button
-              type="button"
-              onClick={copyCoordinates}
-              className="w-full py-1.5 px-3 bg-gray-700 hover:bg-gray-600 rounded text-gray-200 text-xs transition"
-            >
-              {copied ? '✓ Copied!' : 'Copy Lat, Lng'}
-            </button>
-          )}
+          <div className="h-4 w-px bg-slate-800" />
+          <div>
+            <span className="text-slate-500 uppercase tracking-wider font-bold">Freshness:</span>
+            <span className="text-emerald-400 font-bold ml-1">REAL-TIME</span>
+          </div>
+          <div className="h-4 w-px bg-slate-800" />
+          <div className="flex items-center gap-1">
+            <span className="text-slate-500 uppercase tracking-wider font-bold">Status:</span>
+            <span className="text-indigo-400 font-bold ml-1 uppercase">Active Feed</span>
+          </div>
         </div>
-
-        {locationError && (
-          <p className="text-tams-danger text-[10px] mt-2 leading-relaxed">{locationError}</p>
-        )}
       </div>
 
       {mapStatus === 'loading' && (
