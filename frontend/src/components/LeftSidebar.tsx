@@ -8,17 +8,12 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import {
-  Activity,
-  CloudSun,
   ShieldAlert,
   Thermometer,
   Wind,
   Droplets,
-  AlertTriangle,
-  Zap,
   Flame,
   Search,
-  Compass,
 } from 'lucide-react'
 import type { Alert, Asset } from '@/lib/api'
 
@@ -208,7 +203,7 @@ export default function LeftSidebar({
               <div>
                 <h3 className="font-extrabold text-sm text-white truncate">{selectedAsset.name}</h3>
                 <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">
-                  {selectedAsset.asset_type} · {selectedAsset.metadata?.voltage_kv || '765'} KV Line
+                  {selectedAsset.asset_type} · {selectedAsset.metadata?.voltage_kv ? String(selectedAsset.metadata.voltage_kv) : '765'} KV Line
                 </p>
               </div>
 
@@ -216,7 +211,9 @@ export default function LeftSidebar({
               <div className="grid grid-cols-2 gap-2 text-[10px] border-t border-slate-800/60 pt-2.5">
                 <div>
                   <span className="text-slate-500">Region:</span>
-                  <p className="font-medium text-slate-300">{selectedAsset.metadata?.region || 'Global'}</p>
+                  <p className="font-medium text-slate-300">
+                    {selectedAsset.metadata?.region ? String(selectedAsset.metadata.region) : 'Global'}
+                  </p>
                 </div>
                 <div>
                   <span className="text-slate-500">Coordinates:</span>
@@ -312,7 +309,7 @@ export default function LeftSidebar({
                       </div>
                       <p className="text-[10px] text-slate-400 leading-normal">{anomaly.message}</p>
                       <div className="flex justify-between text-[9px] text-slate-500 font-mono pt-1">
-                        <span>Confidence: {(anomaly.confidence * 100).toFixed(0)}%</span>
+                        <span>Confidence: {anomaly.confidence ? (anomaly.confidence * 100).toFixed(0) : '85'}%</span>
                         <span>Dist: 4.8m</span>
                       </div>
                     </div>

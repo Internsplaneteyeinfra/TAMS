@@ -4,7 +4,7 @@
 
 import React, { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Play, Check, AlertCircle } from 'lucide-react'
+import { Play, AlertCircle } from 'lucide-react'
 
 import {
   getWorkflow,
@@ -19,14 +19,6 @@ const STAGE_LABELS: Record<string, string> = {
   compare: 'Change Detection',
   alert: 'Generate Alerts',
   complete: 'Complete',
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  completed: 'bg-emerald-400 text-emerald-400',
-  running: 'bg-amber-400 animate-pulse text-amber-400',
-  pending: 'bg-slate-500 text-slate-500',
-  skipped: 'bg-slate-600 text-slate-600',
-  failed: 'bg-red-400 text-red-400',
 }
 
 const STATUS_DOT_BG: Record<string, string> = {

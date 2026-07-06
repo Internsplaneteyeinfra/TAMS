@@ -7,8 +7,6 @@ import {
   AlertOctagon,
   Clock,
   UserCheck,
-  ShieldCheck,
-  Zap,
 } from 'lucide-react'
 import {
   runMonitoringCycle,
@@ -171,7 +169,6 @@ export default function RightSidebar({
           ].map((stage) => {
             const isCompleted = mutation.isSuccess || (pipelineProgress > 0 && activeStage !== null && stage.id < activeStage)
             const isRunning = mutation.isPending && activeStage === stage.id
-            const isPending = !isCompleted && !isRunning
 
             return (
               <div

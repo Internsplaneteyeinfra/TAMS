@@ -55,6 +55,7 @@ export interface Alert {
   alert_type: string
   status: string
   message?: string
+  confidence?: number
 }
 
 export interface WorkflowStage {
