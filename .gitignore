@@ -96,3 +96,9 @@ infrastructure/kubernetes/**/secrets.yaml
 # Cursor / agent artifacts
 .agent-transcripts/
 assets/
+
+# Cesium static assets (auto-copied to frontend/public/cesium on install/build)
+frontend/public/cesium/
+
+# Backend lives in its own repo: planeteyeai/TAMS-Backend
+/backend/
