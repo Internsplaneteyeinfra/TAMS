@@ -1,4 +1,21 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
+const CONFIGURED_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
+
+// Hosted backend (Railway). Used automatically when the app is served from a
+// non-local host and no absolute API base was provided at build time.
+const HOSTED_BACKEND_BASE = 'https://web-production-3cc0c.up.railway.app/api/v1'
+
+function resolveApiBase(): string {
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname
+    const isLocal = host === 'localhost' || host === '127.0.0.1'
+    if (!isLocal && CONFIGURED_BASE.startsWith('/')) {
+      return HOSTED_BACKEND_BASE
+    }
+  }
+  return CONFIGURED_BASE
+}
+
+const API_BASE = resolveApiBase()
 
 type FetchInit = Parameters<typeof fetch>[1]
 
