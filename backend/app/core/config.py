@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     CDSE_S3_ENDPOINT: str = "https://eodata.dataspace.copernicus.eu"
     CDSE_S3_ACCESS_KEY: Optional[str] = None
     CDSE_S3_SECRET_KEY: Optional[str] = None
-    ENABLE_CDSE_STAC: bool = True
+    ENABLE_CDSE_STAC: bool = False
 
 
 settings = Settings()
