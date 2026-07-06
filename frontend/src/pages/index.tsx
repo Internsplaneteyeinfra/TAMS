@@ -72,13 +72,15 @@ export default function Home() {
   const phase = (status as { phase?: string })?.phase ?? '1'
 
   return (
-    <div className="flex h-screen bg-gray-900 text-white">
-      <div className="w-80 bg-gray-800 shadow-lg overflow-y-auto flex-shrink-0 flex flex-col">
-        <div className="p-6 border-b border-gray-700">
-          <h1 className="text-2xl font-bold text-tams-primary">TAMS</h1>
-          <p className="text-gray-400 text-sm">Transmission Asset Monitoring</p>
-          <p className="text-gray-500 text-xs mt-1">
-            Phase {phase} — Satellite + AI Pipeline
+    <div className="flex h-screen bg-gray-900 text-slate-100 antialiased font-sans">
+      <div className="w-80 bg-slate-950 border-r border-gray-800 shadow-2xl overflow-y-auto flex-shrink-0 flex flex-col scrollbar-thin">
+        <div className="p-5 border-b border-gray-800">
+          <h1 className="text-2xl font-extrabold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent tracking-wide">
+            TAMS
+          </h1>
+          <p className="text-slate-400 text-xs font-medium">Transmission Asset Monitoring</p>
+          <p className="text-gray-500 text-[10px] uppercase font-bold tracking-wider mt-1.5">
+            Phase {phase} · Satellite + AI Pipeline
           </p>
         </div>
         <Dashboard

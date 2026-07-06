@@ -282,6 +282,8 @@ export default function GISMap({
     substation: true,
     line: true,
   })
+  const [showWildfireRisk, setShowWildfireRisk] = useState(false)
+  const [showFloodRisk, setShowFloodRisk] = useState(false)
 
   const filteredAssets = useMemo(
     () => assets.filter((a) => typeFilters[a.asset_type] && passesRegionFilter(a, regionFilter)),
@@ -600,6 +602,42 @@ export default function GISMap({
       marker.on('click', () => onSelectAsset?.(asset.id))
       markerByIdRef.current.set(asset.id, marker)
 
+      // Wildfire Risk overlay (Orange-red translucent circles)
+      if (showWildfireRisk && (asset.health_score === 'critical' || asset.health_score === 'attention_required')) {
+        const circle = L.circle([asset.latitude, asset.longitude], {
+          color: '#f97316',
+          fillColor: '#ea580c',
+          fillOpacity: 0.12,
+          radius: 8000,
+          weight: 1,
+        }).addTo(map)
+        overlaysRef.current.push(circle)
+      }
+
+      // Flood Hazard overlay (Cyan-blue translucent circles)
+      const desc = (asset.description || '').toLowerCase()
+      const name = (asset.name || '').toLowerCase()
+      const isFloodProne =
+        desc.includes('coastal') ||
+        desc.includes('flood') ||
+        desc.includes('river') ||
+        name.includes('mum') ||
+        name.includes('chn') ||
+        name.includes('ennore') ||
+        name.includes('mundra') ||
+        name.includes('viz') ||
+        name.includes('anakapalle')
+      if (showFloodRisk && isFloodProne) {
+        const circle = L.circle([asset.latitude, asset.longitude], {
+          color: '#06b6d4',
+          fillColor: '#0891b2',
+          fillOpacity: 0.12,
+          radius: 12000,
+          weight: 1,
+        }).addTo(map)
+        overlaysRef.current.push(circle)
+      }
+
       if (asset.asset_type === 'substation') {
         clusterRef.current!.addLayer(marker)
       } else {
@@ -617,6 +655,8 @@ export default function GISMap({
     showLabels,
     filteredIds,
     zoomVersion,
+    showWildfireRisk,
+    showFloodRisk,
   ])
 
   // Fit map only when region or asset filters change — never on user zoom
@@ -650,7 +690,7 @@ export default function GISMap({
 
       {/* Layer switcher */}
       <div className="absolute top-3 left-3 z-[1000] flex flex-col gap-2">
-        <div className="flex gap-1 bg-gray-900/90 rounded-lg p-1 shadow-lg border border-gray-700">
+        <div className="flex gap-1 bg-gray-900 rounded-lg p-1 shadow-lg border border-gray-700">
           <button
             type="button"
             onClick={() => setMapLayer('satellite')}
@@ -674,7 +714,7 @@ export default function GISMap({
         </div>
 
         {/* Region focus */}
-        <div className="flex flex-wrap gap-1 bg-gray-900/90 rounded-lg p-1 shadow-lg border border-gray-700">
+        <div className="flex flex-wrap gap-1 bg-gray-900 rounded-lg p-1 shadow-lg border border-gray-700">
           {(
             [
               ['india', `India (${indiaCount})`],
@@ -696,7 +736,7 @@ export default function GISMap({
         </div>
 
         {/* Asset type legend & filters */}
-        <div className="bg-gray-900/90 rounded-lg p-3 shadow-lg border border-gray-700 text-xs min-w-[180px] max-h-[50vh] overflow-y-auto">
+        <div className="bg-gray-900 rounded-lg p-3 shadow-lg border border-gray-700 text-xs min-w-[180px] max-h-[60vh] overflow-y-auto">
           <p className="text-gray-400 font-semibold mb-2 uppercase tracking-wide">Asset Types</p>
           {(Object.keys(ASSET_CONFIG) as AssetType[]).map((type) => {
             const cfg = ASSET_CONFIG[type]
@@ -721,6 +761,36 @@ export default function GISMap({
               </button>
             )
           })}
+
+          {/* Risk Zones Overlay Toggles */}
+          <div className="mt-3 border-t border-gray-700 pt-3 space-y-1.5">
+            <p className="text-gray-400 font-semibold mb-1 uppercase tracking-wide">Risk Overlays</p>
+            <button
+              type="button"
+              onClick={() => setShowWildfireRisk(!showWildfireRisk)}
+              className={`flex items-center gap-2 w-full py-1.5 px-1 rounded transition-all duration-150 ${
+                showWildfireRisk ? 'text-orange-400 font-medium bg-orange-500/5' : 'text-gray-400 hover:bg-gray-800'
+              }`}
+            >
+              <span className={`w-3.5 h-3.5 rounded-sm flex items-center justify-center border transition-all ${showWildfireRisk ? 'bg-orange-500 border-orange-600' : 'border-gray-600 bg-transparent'}`}>
+                {showWildfireRisk && '✓'}
+              </span>
+              <span>Wildfire Threat Zone</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowFloodRisk(!showFloodRisk)}
+              className={`flex items-center gap-2 w-full py-1.5 px-1 rounded transition-all duration-150 ${
+                showFloodRisk ? 'text-cyan-400 font-medium bg-cyan-500/5' : 'text-gray-400 hover:bg-gray-800'
+              }`}
+            >
+              <span className={`w-3.5 h-3.5 rounded-sm flex items-center justify-center border transition-all ${showFloodRisk ? 'bg-cyan-500 border-cyan-600' : 'border-gray-600 bg-transparent'}`}>
+                {showFloodRisk && '✓'}
+              </span>
+              <span>Flood Hazard Zone</span>
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={() => setShowLabels((v) => !v)}
@@ -735,7 +805,7 @@ export default function GISMap({
       </div>
 
       {/* Coordinates panel */}
-      <div className="absolute bottom-4 right-4 z-[1000] bg-gray-900/95 rounded-lg p-3 shadow-lg border border-gray-700 text-xs min-w-[240px]">
+      <div className="absolute bottom-4 right-4 z-[1000] bg-gray-900 rounded-lg p-3 shadow-lg border border-gray-700 text-xs min-w-[240px]">
         <p className="text-gray-400 font-semibold mb-2 uppercase tracking-wide">Coordinates</p>
 
         {/* Go to lat/lng */}
