@@ -6,9 +6,13 @@ if (-not (Test-Path "backend/venv")) {
     python -m venv backend/venv
 }
 
-# Install backend dependencies
-Write-Host "Ensuring backend dependencies are installed..." -ForegroundColor Cyan
-& backend/venv/Scripts/pip install -r backend/requirements.txt
+# Upgrade pip and setuptools to prevent pkg_resources issues
+Write-Host "Upgrading pip, setuptools, and wheel..." -ForegroundColor Cyan
+& backend/venv/Scripts/python -m pip install --upgrade pip setuptools wheel
+
+# Install backend dependencies using local lightweight requirements (avoids compilation of heavy libraries)
+Write-Host "Installing lightweight local development dependencies..." -ForegroundColor Cyan
+& backend/venv/Scripts/pip install -r backend/requirements-local.txt
 
 # 2. Setup Frontend Dependencies
 if (-not (Test-Path "frontend/node_modules")) {

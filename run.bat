@@ -9,9 +9,13 @@ if not exist "backend\venv" (
     python -m venv backend\venv
 )
 
+:: Upgrade pip and setuptools
+echo Upgrading pip, setuptools, and wheel...
+call backend\venv\Scripts\python -m pip install --upgrade pip setuptools wheel
+
 :: Install backend requirements
-echo Ensuring backend dependencies are installed...
-call backend\venv\Scripts\pip install -r backend\requirements.txt
+echo Installing backend dependencies...
+call backend\venv\Scripts\pip install -r backend\requirements-local.txt
 
 :: Check if frontend node_modules exists
 if not exist "frontend\node_modules" (
