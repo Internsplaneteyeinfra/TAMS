@@ -18,16 +18,16 @@ Write-Host "Installing lightweight local development dependencies..." -Foregroun
 if (-not (Test-Path "frontend/node_modules")) {
     Write-Host "Installing frontend dependencies (node_modules)..." -ForegroundColor Cyan
     Set-Location frontend
-    npm install
+    npm.cmd install
     Set-Location ..
 }
 
 # 3. Setup Root Workspace Dependencies
 if (-not (Test-Path "node_modules")) {
     Write-Host "Installing workspace dependencies..." -ForegroundColor Cyan
-    npm install
+    npm.cmd install
 }
 
 # 4. Start Services Concurrently
 Write-Host "Starting TAMS Frontend (Port 3000) & Backend (Port 8000)..." -ForegroundColor Green
-npm run dev
+npm.cmd run dev

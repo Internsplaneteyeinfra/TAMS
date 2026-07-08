@@ -7,13 +7,8 @@ import dynamic from 'next/dynamic'
 import { useQuery } from '@tanstack/react-query'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  ShieldAlert,
-  Activity,
-  Zap,
   TrendingUp,
   TrendingDown,
-  Layers,
-  Wrench,
 } from 'lucide-react'
 
 import LeftSidebar from '@/components/LeftSidebar'
@@ -42,12 +37,6 @@ export default function Home() {
   const { data: alerts = [] } = useQuery({
     queryKey: ['alerts'],
     queryFn: () => fetchApi<Alert[]>('/alerts'),
-    enabled: isClient,
-  })
-
-  const { data: status } = useQuery({
-    queryKey: ['status'],
-    queryFn: () => fetchApi<Record<string, unknown>>('/status'),
     enabled: isClient,
   })
 

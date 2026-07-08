@@ -1,10 +1,8 @@
 import React, { useState } from 'react'
 import dynamic from 'next/dynamic'
 import {
-  Layers,
   MapPin,
   Globe,
-  Grid,
   Zap,
   Flame,
   Activity,
@@ -162,7 +160,7 @@ export default function MapViewport({
           selectedAssetId={selectedAssetId}
           alertAssetIds={alertAssetIds}
           onSelectAsset={onSelectAsset}
-          activeLayers={activeLayers}
+          _activeLayers={activeLayers}
         />
       )}
     </div>

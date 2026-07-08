@@ -223,6 +223,13 @@ export default function GISMap3D({
   selectedAssetId?: string | null
   alertAssetIds?: string[]
   onSelectAsset?: (id: string) => void
+  _activeLayers?: {
+    heatmap: boolean
+    riskOverlay: boolean
+    satellite: boolean
+    terrain: boolean
+    corridors: boolean
+  }
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<import('cesium').Viewer | null>(null)

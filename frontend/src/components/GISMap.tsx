@@ -186,32 +186,10 @@ function toLatLngs(coords: number[][]): L.LatLngExpression[] {
   return coords.map(([lng, lat]) => [lat, lng] as L.LatLngExpression)
 }
 
-interface GeoPoint {
-  lat: number
-  lng: number
-  source: 'gps' | 'map_click' | 'manual'
-  accuracy?: number
-}
+
 
 function formatCoord(value: number, decimals = 6): string {
   return value.toFixed(decimals)
-}
-
-function parseLatLng(latStr: string, lngStr: string): { lat: number; lng: number } | null {
-  const lat = parseFloat(latStr.trim())
-  const lng = parseFloat(lngStr.trim())
-  if (Number.isNaN(lat) || Number.isNaN(lng)) return null
-  if (lat < -90 || lat > 90) return null
-  if (lng < -180 || lng > 180) return null
-  return { lat, lng }
-}
-
-/** Accept "lat, lng" or "lat lng" in one string */
-function parseCoordPair(text: string): { lat: number; lng: number } | null {
-  const cleaned = text.trim().replace(/[;,]/g, ' ')
-  const parts = cleaned.split(/\s+/).filter(Boolean)
-  if (parts.length < 2) return null
-  return parseLatLng(parts[0], parts[1])
 }
 
 function userLocationIcon() {
@@ -287,14 +265,7 @@ export default function GISMap({
   const [showLabels, setShowLabels] = useState(true)
   const [regionFilter, setRegionFilter] = useState<RegionFilter>('india')
   const [zoomVersion, setZoomVersion] = useState(0)
-  const [geoPoint, setGeoPoint] = useState<GeoPoint | null>(null)
-  const [inputLat, setInputLat] = useState('')
-  const [inputLng, setInputLng] = useState('')
-  const [inputPair, setInputPair] = useState('')
   const [cursorPoint, setCursorPoint] = useState<{ lat: number; lng: number } | null>(null)
-  const [locating, setLocating] = useState(false)
-  const [locationError, setLocationError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
   const [typeFilters, setTypeFilters] = useState<Record<AssetType, boolean>>({
     tower: true,
     substation: true,
@@ -371,78 +342,8 @@ export default function GISMap({
     []
   )
 
-  const getMyLocation = useCallback(() => {
-    if (!navigator.geolocation) {
-      setLocationError('Geolocation is not supported in this browser.')
-      return
-    }
-
-    setLocating(true)
-    setLocationError(null)
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude
-        const lng = pos.coords.longitude
-        const accuracy = pos.coords.accuracy
-
-        setGeoPoint({ lat, lng, source: 'gps', accuracy })
-        setLocating(false)
-        setInputLat(formatCoord(lat))
-        setInputLng(formatCoord(lng))
-        setInputPair(`${formatCoord(lat)}, ${formatCoord(lng)}`)
-
-        const map = mapRef.current
-        if (map) {
-          map.flyTo([lat, lng], 14, { duration: 1.2 })
-          placeMarker(
-            userLocationMarkerRef,
-            lat,
-            lng,
-            userLocationIcon(),
-            `<div style="font-family:sans-serif;font-size:13px">
-              <b>Your location</b><br/>
-              Lat: ${formatCoord(lat)}<br/>
-              Lng: ${formatCoord(lng)}<br/>
-              ${accuracy ? `Accuracy: ±${Math.round(accuracy)} m` : ''}
-            </div>`
-          )
-          setTimeout(() => userLocationMarkerRef.current?.openPopup(), 1300)
-        }
-      },
-      (err) => {
-        setLocating(false)
-        const messages: Record<number, string> = {
-          1: 'Location permission denied. Allow location access in browser settings.',
-          2: 'Location unavailable. Check GPS / network.',
-          3: 'Location request timed out. Try again.',
-        }
-        setLocationError(messages[err.code] || err.message || 'Could not get location.')
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    )
-  }, [placeMarker])
-
-  const copyCoordinates = useCallback(async () => {
-    if (!geoPoint) return
-    const text = `${formatCoord(geoPoint.lat)}, ${formatCoord(geoPoint.lng)}`
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      setLocationError('Could not copy to clipboard.')
-    }
-  }, [geoPoint])
-
   const flyToCoordinates = useCallback(
-    (lat: number, lng: number, source: GeoPoint['source']) => {
-      setGeoPoint({ lat, lng, source })
-      setInputLat(formatCoord(lat))
-      setInputLng(formatCoord(lng))
-      setInputPair(`${formatCoord(lat)}, ${formatCoord(lng)}`)
-      setLocationError(null)
-
+    (lat: number, lng: number, source: 'gps' | 'map_click' | 'manual') => {
       const map = mapRef.current
       if (!map) return
 
@@ -471,18 +372,6 @@ export default function GISMap({
     },
     [placeMarker]
   )
-
-  const goToLocation = useCallback(() => {
-    let parsed = parseLatLng(inputLat, inputLng)
-    if (!parsed && inputPair.trim()) {
-      parsed = parseCoordPair(inputPair)
-    }
-    if (!parsed) {
-      setLocationError('Enter valid coordinates. Lat: -90 to 90, Lng: -180 to 180.')
-      return
-    }
-    flyToCoordinates(parsed.lat, parsed.lng, 'manual')
-  }, [inputLat, inputLng, inputPair, flyToCoordinates])
 
   useEffect(() => {
     const container = mapContainer.current
@@ -514,9 +403,6 @@ export default function GISMap({
       map.on('click', (e) => {
         const lat = e.latlng.lat
         const lng = e.latlng.lng
-        setInputLat(formatCoord(lat))
-        setInputLng(formatCoord(lng))
-        setInputPair(`${formatCoord(lat)}, ${formatCoord(lng)}`)
         flyToCoordinates(lat, lng, 'map_click')
       })
 
@@ -713,6 +599,7 @@ export default function GISMap({
     zoomVersion,
     showWildfireRisk,
     showFloodRisk,
+    activeLayers,
   ])
 
   // Fit map only when region or asset filters change — never on user zoom
