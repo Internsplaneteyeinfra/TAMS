@@ -15,18 +15,34 @@ function resolveApiBase(): string {
   return CONFIGURED_BASE
 }
 
-const API_BASE = resolveApiBase()
+export function getApiBase(): string {
+  return resolveApiBase()
+}
 
 type FetchInit = Parameters<typeof fetch>[1]
 
-export async function fetchApi<T>(path: string, init?: FetchInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, init)
+async function parseApiResponse<T>(res: Response, path: string): Promise<T> {
   if (!res.ok) {
     const detail = await res.text()
     throw new Error(detail || `Failed to fetch ${path}`)
   }
   const json = await res.json()
   return json.data as T
+}
+
+export async function fetchApi<T>(path: string, init?: FetchInit): Promise<T> {
+  const res = await fetch(`${getApiBase()}${path}`, init)
+  return parseApiResponse<T>(res, path)
+}
+
+export async function postApi<T>(path: string, body: unknown, init?: FetchInit): Promise<T> {
+  const res = await fetch(`${getApiBase()}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+    body: JSON.stringify(body),
+    ...init,
+  })
+  return parseApiResponse<T>(res, path)
 }
 
 export interface AssetGeometry {
@@ -55,6 +71,7 @@ export interface Alert {
   alert_type: string
   status: string
   message?: string
+  confidence?: number
 }
 
 export interface WorkflowStage {
@@ -95,4 +112,38 @@ export async function getWorkflow(): Promise<WorkflowDefinition> {
 
 export async function acknowledgeAlert(alertId: string): Promise<Alert> {
   return fetchApi<Alert>(`/alerts/${alertId}/acknowledge`, { method: 'PATCH' })
+}
+
+export async function acknowledgeAlarm(alarmId: string, notes?: string): Promise<Alert> {
+  return postApi<Alert>(`/alarms/${alarmId}/acknowledge`, { notes: notes || 'Acknowledged from UI' })
+}
+
+export interface WorkOrder {
+  id: string
+  work_order_number: string
+  asset_id?: string
+  asset_code?: string
+  maintenance_type: string
+  priority: string
+  status: string
+  description?: string
+  assigned_crew?: string
+  progress_pct?: number
+}
+
+export interface MaintenanceDashboard {
+  open_work_orders: number
+  pm_compliance_pct: number
+}
+
+export async function getWorkOrders(pageSize = 20): Promise<WorkOrder[]> {
+  return fetchApi<WorkOrder[]>(`/workorders?page_size=${pageSize}`)
+}
+
+export async function getMaintenanceDashboard(): Promise<MaintenanceDashboard> {
+  return fetchApi<MaintenanceDashboard>('/dashboard/maintenance')
+}
+
+export async function createAsset(body: Record<string, unknown>): Promise<Asset> {
+  return postApi<Asset>('/assets', body)
 }

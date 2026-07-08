@@ -1,10 +1,11 @@
 # TAMS Project - Copilot Development Instructions
 
 ## Project Overview
-AI-Powered Transmission Asset Intelligence & Monitoring Platform (TAMS)
-- **Current Phase**: Phase 1 - Satellite Monitoring Platform
+**Transmission Asset Monitoring System (TAMS)**
+- **Current Phase**: Phase 1 MVP — Satellite monitoring + Asset Registry + GIS + Alarms + Health + Maintenance (prototype)
+- **Target Production**: Azure + .NET 8 (see `docs/enterprise/`)
 - **Team Size**: 3 developers
-- **Cloud**: AWS
+- **Cloud**: Local Docker; AWS Terraform scaffold; Azure target for production
 - **Language**: TypeScript (Frontend), Python (Backend)
 
 ## Core Principles
@@ -40,67 +41,77 @@ AI-Powered Transmission Asset Intelligence & Monitoring Platform (TAMS)
 #### Frontend (src/)
 ```
 components/
-  ├── maps/          # Map components (GISMap, LayerControl)
-  ├── dashboard/     # Dashboard components (AssetList, AlertsPanel)
-  ├── common/        # Shared components (Header, Sidebar)
-  └── ui/            # UI components (Button, Modal, Form)
+  ├── layout/        # AppLayout, MuiProvider
+  ├── pages/         # MUI module page components
+  ├── LeftSidebar.tsx
+  ├── RightSidebar.tsx
+  ├── MapViewport.tsx
+  ├── GISMap.tsx
+  └── MonitoringWorkflow.tsx
 
 pages/
-  ├── index.tsx      # Dashboard home
-  ├── command-center.tsx
-  ├── assets/
-  ├── alerts/
-  └── analytics/
+  ├── index.tsx      # GIS Command Center (map home)
+  ├── dashboard.tsx  # Operations dashboard (MUI)
+  ├── assets.tsx
+  ├── alarms.tsx
+  ├── health.tsx
+  ├── maintenance.tsx
+  ├── inspections.tsx
+  ├── analytics.tsx
+  └── monitoring.tsx
 
 lib/
-  ├── api/           # API client functions
-  ├── hooks/         # Custom React hooks
-  ├── utils/         # Utility functions
-  └── constants/     # Constants and enums
+  ├── api.ts         # API client
+  ├── store.ts       # Redux store
+  └── hooks/         # Custom React hooks
 ```
 
 #### Backend (app/)
 ```
-api/
-  ├── v1/
-  │   ├── assets.py     # Assets endpoints
-  │   ├── imagery.py    # Imagery endpoints
-  │   ├── alerts.py     # Alerts endpoints
-  │   └── analytics.py  # Analytics endpoints
-  └── middleware/       # Custom middleware
+api/v1/
+  ├── assets.py
+  ├── alarms.py
+  ├── alerts.py      # Legacy compat
+  ├── health.py
+  ├── workorders.py
+  ├── inspections.py
+  ├── gis.py
+  ├── dashboard.py
+  ├── analytics.py
+  ├── imagery.py
+  ├── monitoring.py
+  ├── predictive.py
+  └── risk.py
 
 services/
   ├── asset_service.py
-  ├── imagery_service.py
-  ├── alert_service.py
-  └── ml_service.py     # ML model integration
+  ├── alarm_service.py
+  ├── health_service.py
+  ├── maintenance_service.py
+  ├── inspection_service.py
+  ├── gis_service.py
+  ├── dashboard_service.py
+  ├── monitoring_workflow.py
+  └── mock_data.py
 
 models/
-  ├── asset.py         # ORM models
-  ├── imagery.py
-  └── alert.py
-
-schemas/
-  ├── asset.py         # Pydantic request/response schemas
-  ├── imagery.py
-  └── alert.py
+  └── entities.py    # SQLAlchemy ORM models
 
 db/
-  ├── database.py      # Connection setup
-  ├── session.py       # Session management
-  └── crud/            # CRUD operations
+  ├── database.py
+  └── init_db.py     # Schema create + seed
 ```
 
 ## Technology Stack Guidelines
 
 ### Frontend Stack
-- **Framework**: Next.js 14 with App Router
+- **Framework**: Next.js 14 (Pages Router)
 - **Type Safety**: TypeScript strict mode
 - **State**: Redux Toolkit for global state
-- **Maps**: Mapbox GL JS with type wrappers
-- **UI Library**: Shadcn/ui with Tailwind CSS
-- **Data Fetching**: React Query + Axios
-- **Forms**: React Hook Form + Zod validation
+- **Maps**: Leaflet, CesiumJS, Esri tiles
+- **Enterprise UI**: Material UI v5 (module pages use `dynamic(..., { ssr: false })`)
+- **GIS Home**: Tailwind CSS + LeftSidebar / RightSidebar / MapViewport
+- **Data Fetching**: React Query + fetch API client
 - **Testing**: Vitest + Playwright
 
 ### Backend Stack
@@ -240,5 +251,5 @@ def test_asset_service_get_by_id(db_session):
 
 ---
 
-**Last Updated**: 2024-06-10
+**Last Updated**: July 2026
 **Maintained By**: TAMS Development Team

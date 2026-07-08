@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import Link from 'next/link'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Play,
   CheckCircle2,
@@ -13,8 +14,10 @@ import {
 import {
   runMonitoringCycle,
   acknowledgeAlert,
+  getWorkOrders,
   type Alert,
   type Asset,
+  type WorkOrder,
 } from '@/lib/api'
 
 interface RightSidebarProps {
@@ -38,33 +41,21 @@ const SEVERITY_ICONS: Record<string, React.ReactNode> = {
   low: <CheckCircle2 className="w-3.5 h-3.5 text-slate-400" />,
 }
 
-// Static mock Work Orders for utility realism
-const MOCK_WORK_ORDERS = [
-  {
-    id: 'WO-8041',
-    team: 'Crew Alpha (HV)',
-    task: 'Phase B Bushing Replacement',
-    priority: 'critical',
-    eta: '45 mins',
-    progress: 75,
-  },
-  {
-    id: 'WO-8045',
-    team: 'Crew Delta (ROW)',
-    task: 'Conductor Clearance Trim',
-    priority: 'high',
-    eta: '2.5 hrs',
-    progress: 30,
-  },
-  {
-    id: 'WO-7998',
-    team: 'Crew Gamma',
-    task: 'Tower 42 Foundation Seal',
-    priority: 'medium',
-    eta: '12.0 hrs',
-    progress: 85,
-  },
-]
+const OPEN_WO_STATUSES = new Set(['Draft', 'Approved', 'Scheduled', 'Assigned', 'InProgress'])
+
+function woProgress(wo: WorkOrder): number {
+  if (typeof wo.progress_pct === 'number') return wo.progress_pct
+  const map: Record<string, number> = {
+    Draft: 10,
+    Approved: 20,
+    Scheduled: 35,
+    Assigned: 50,
+    InProgress: 75,
+    Completed: 100,
+    Closed: 100,
+  }
+  return map[wo.status] ?? 40
+}
 
 export default function RightSidebar({
   assets,
@@ -75,6 +66,16 @@ export default function RightSidebar({
   const queryClient = useQueryClient()
   const [pipelineProgress, setPipelineProgress] = React.useState(0)
   const [activeStage, setActiveStage] = React.useState<number | null>(null)
+
+  const { data: workOrders = [] } = useQuery({
+    queryKey: ['workorders-sidebar'],
+    queryFn: () => getWorkOrders(10),
+  })
+
+  const openWorkOrders = useMemo(
+    () => workOrders.filter((wo) => OPEN_WO_STATUSES.has(wo.status)).slice(0, 3),
+    [workOrders]
+  )
 
   const mutation = useMutation({
     mutationFn: () => runMonitoringCycle(selectedAssetId ? [selectedAssetId] : undefined),
@@ -212,14 +213,9 @@ export default function RightSidebar({
         <div className="p-4 space-y-3">
           <div className="flex justify-between items-center">
             <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Alert Center</h2>
-            <div className="flex gap-1.5 text-[9px] font-bold">
-              <span className="text-red-400 bg-red-400/10 border border-red-500/20 px-1.5 py-0.2 rounded font-mono">
-                {groupedAlerts.critical.length} Critical
-              </span>
-              <span className="text-amber-400 bg-amber-400/10 border border-amber-500/20 px-1.5 py-0.2 rounded font-mono">
-                {groupedAlerts.medium.length + groupedAlerts.low.length} Warning
-              </span>
-            </div>
+            <Link href="/alarms" className="text-[10px] text-blue-400 hover:text-blue-300 font-semibold">
+              Alarm Center →
+            </Link>
           </div>
 
           <div className="space-y-2 max-h-56 overflow-y-auto scrollbar-thin">
@@ -277,22 +273,32 @@ export default function RightSidebar({
         <div className="p-4 space-y-3">
           <div className="flex justify-between items-center">
             <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Maintenance dispatches</h2>
-            <span className="text-[10px] text-slate-500 font-mono">3 Active Crews</span>
+            <Link href="/maintenance" className="text-[10px] text-blue-400 hover:text-blue-300 font-semibold">
+              View all →
+            </Link>
           </div>
 
           <div className="space-y-2">
-            {MOCK_WORK_ORDERS.map((wo) => (
+            {openWorkOrders.length === 0 ? (
+              <div className="p-4 text-center text-slate-500 text-xs border border-slate-900 rounded-xl">
+                No open work orders
+              </div>
+            ) : (
+              openWorkOrders.map((wo) => {
+                const progress = woProgress(wo)
+                const priorityKey = wo.priority.toLowerCase()
+                return (
               <div
                 key={wo.id}
                 className="p-3 bg-slate-900 border border-slate-850 rounded-xl space-y-2"
               >
                 <div className="flex justify-between items-start">
                   <div>
-                    <span className="text-[10px] text-indigo-400 font-mono font-bold">{wo.id}</span>
-                    <h4 className="text-xs font-extrabold text-white leading-tight">{wo.task}</h4>
+                    <span className="text-[10px] text-indigo-400 font-mono font-bold">{wo.work_order_number}</span>
+                    <h4 className="text-xs font-extrabold text-white leading-tight">{wo.description || wo.maintenance_type}</h4>
                   </div>
                   <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded border uppercase font-mono ${
-                    SEVERITY_COLORS[wo.priority] || SEVERITY_COLORS.medium
+                    SEVERITY_COLORS[priorityKey] || SEVERITY_COLORS.medium
                   }`}>
                     {wo.priority}
                   </span>
@@ -301,29 +307,30 @@ export default function RightSidebar({
                 <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5 font-medium">
                   <div className="flex items-center gap-1">
                     <UserCheck className="w-3.5 h-3.5 text-slate-500" />
-                    <span>{wo.team}</span>
+                    <span>{wo.assigned_crew || 'Unassigned'}</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5 text-slate-500" />
-                    <span>ETA: {wo.eta}</span>
+                    <span>{wo.status}</span>
                   </div>
                 </div>
 
-                {/* Progress Bar */}
                 <div className="space-y-1">
                   <div className="flex justify-between text-[9px] text-slate-500 font-mono">
                     <span>Task Progress</span>
-                    <span>{wo.progress}%</span>
+                    <span>{progress}%</span>
                   </div>
                   <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-blue-600 rounded-full transition-all"
-                      style={{ width: `${wo.progress}%` }}
+                      style={{ width: `${progress}%` }}
                     />
                   </div>
                 </div>
               </div>
-            ))}
+                )
+              })
+            )}
           </div>
         </div>
 

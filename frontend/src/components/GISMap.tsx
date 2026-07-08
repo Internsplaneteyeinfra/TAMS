@@ -520,11 +520,19 @@ export default function GISMap({
         flyToCoordinates(lat, lng, 'map_click')
       })
 
-      setTimeout(() => map.invalidateSize(), 100)
-      const onResize = () => map.invalidateSize()
+      // Guard against calling invalidateSize after the map has been removed
+      // (React 18 StrictMode double-mount runs cleanup before this fires).
+      const isMapAlive = () => mapRef.current === map && Boolean((map as unknown as { _mapPane?: unknown })._mapPane)
+      const safeInvalidate = () => {
+        if (isMapAlive()) map.invalidateSize()
+      }
+
+      const invalidateTimer = setTimeout(safeInvalidate, 100)
+      const onResize = () => safeInvalidate()
       window.addEventListener('resize', onResize)
 
       return () => {
+        clearTimeout(invalidateTimer)
         window.removeEventListener('resize', onResize)
         clusterRef.current?.clearLayers()
         markerByIdRef.current.clear()

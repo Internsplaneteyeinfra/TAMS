@@ -1,10 +1,12 @@
-# TAMS - Transmission Asset Intelligence & Monitoring Platform
+# TAMS — Transmission Asset Monitoring System
 
 ## Overview
 
-TAMS is an AI-powered Transmission Asset Intelligence Platform that combines Earth Observation, Satellite Data Fusion, SCADA, PMU, Weather Intelligence, and Predictive Analytics to deliver proactive monitoring of high-voltage transmission networks.
+**TAMS** (Transmission Asset Monitoring System) is an enterprise digital platform for electric power transmission utilities. It combines Earth Observation, satellite monitoring, GIS visualization, asset registry, condition monitoring, alarm management, maintenance workflows, and predictive analytics.
 
-**Phase 1: Satellite Monitoring Platform** - Foundation for satellite data ingestion, processing, GIS visualization, and AI-powered anomaly detection.
+> **Naming note:** Older docs may refer to *Transmission Asset Intelligence & Monitoring Platform* — the official product name is **Transmission Asset Monitoring System (TAMS)** per [docs/enterprise/01-BRD.md](./docs/enterprise/01-BRD.md).
+
+**Current release:** Phase 1 MVP — Satellite monitoring + enterprise asset modules (FastAPI + PostgreSQL prototype; Azure/.NET target documented in [docs/enterprise/](./docs/enterprise/README.md)).
 
 ## Architecture
 
@@ -47,22 +49,22 @@ TAMS is an AI-powered Transmission Asset Intelligence Platform that combines Ear
 ## Technology Stack
 
 ### Frontend
-- **Framework**: React, Next.js 14+
+- **Framework**: React, Next.js 14+ (Pages Router)
 - **Language**: TypeScript
-- **Map Visualization**: Mapbox GL, CesiumJS
+- **Map Visualization**: Leaflet, CesiumJS, Esri tiles
+- **Enterprise UI**: Material UI v5 (module pages: `/dashboard`, `/assets`, `/alarms`, etc.)
+- **GIS Command Center**: `LeftSidebar`, `RightSidebar`, `MapViewport`, `GISMap`
 - **State Management**: Redux Toolkit
-- **Styling**: Tailwind CSS
-- **UI Components**: Shadcn/ui
-- **Testing**: Jest, Playwright
+- **Styling**: Tailwind CSS + MUI theme
+- **Testing**: Vitest, Playwright
 
 ### Backend
 - **Framework**: FastAPI
 - **Language**: Python 3.11+
-- **API Standards**: REST + GraphQL
-- **Database**: PostgreSQL + PostGIS
-- **Time-Series DB**: TimescaleDB
-- **Cache**: Redis
-- **Task Queue**: Celery + Redis
+- **API Standards**: REST (OpenAPI at `/docs`)
+- **Database**: PostgreSQL + PostGIS (SQLAlchemy async; mock fallback when DB unavailable)
+- **Cache**: Redis (Docker Compose)
+- **Task Queue**: Celery + Redis (planned)
 
 ### AI/ML
 - **Computer Vision**: PyTorch, TensorFlow
@@ -71,12 +73,12 @@ TAMS is an AI-powered Transmission Asset Intelligence Platform that combines Ear
 - **Model Registry**: MLflow
 
 ### Infrastructure
-- **Cloud**: AWS (S3, RDS, ECS, Lambda, CloudWatch)
+- **Local**: Docker Compose (PostgreSQL, Redis, backend, frontend)
+- **Prototype cloud**: Railway / Render (backend), optional AWS Terraform scaffold
+- **Target production**: Microsoft Azure — see [docs/enterprise/07-AZURE-DEPLOYMENT.md](./docs/enterprise/07-AZURE-DEPLOYMENT.md)
 - **Containerization**: Docker
-- **Orchestration**: Kubernetes (EKS)
-- **IaC**: Terraform, CloudFormation
+- **Orchestration**: Kubernetes manifests (dev/prod)
 - **CI/CD**: GitHub Actions
-- **Monitoring**: Prometheus, Grafana, ELK Stack
 
 ## Project Structure
 
@@ -197,33 +199,22 @@ npm run dev
 
 ## API Endpoints
 
-### Assets
-```
-GET    /api/v1/assets              # List assets
-POST   /api/v1/assets              # Create asset
-GET    /api/v1/assets/{id}         # Get asset details
-PUT    /api/v1/assets/{id}         # Update asset
-DELETE /api/v1/assets/{id}         # Delete asset
-```
+See [docs/API.md](./docs/API.md) and the full [Enterprise API Specification](./docs/enterprise/05-API-SPECIFICATION.md).
 
-### Imagery
+### Core modules (implemented)
 ```
-GET    /api/v1/imagery            # List imagery
-POST   /api/v1/imagery/process    # Process imagery
-GET    /api/v1/imagery/{id}       # Get imagery metadata
-```
-
-### Alerts
-```
-GET    /api/v1/alerts             # List alerts
-POST   /api/v1/alerts             # Create alert
-GET    /api/v1/alerts/{id}        # Get alert details
-```
-
-### Analytics
-```
-GET    /api/v1/analytics/health   # Asset health scores
-GET    /api/v1/analytics/risks    # Risk analysis
+GET/POST/PUT/DELETE  /api/v1/assets              # Asset registry
+GET/POST             /api/v1/alarms              # Alarm management
+GET/PATCH            /api/v1/alerts              # Legacy alerts (compat)
+GET                  /api/v1/health               # Condition monitoring
+GET/POST             /api/v1/workorders           # Maintenance
+GET/POST             /api/v1/inspections         # Inspections
+GET                  /api/v1/gis/features         # GIS GeoJSON
+GET                  /api/v1/dashboard/*          # Role dashboards
+GET                  /api/v1/analytics/*          # Analytics & risk
+GET                  /api/v1/predictive/*         # Recommendations (heuristic)
+POST                 /api/v1/monitoring/run        # Satellite pipeline
+GET                  /api/v1/imagery/night/*       # Sentinel-2 night imagery
 ```
 
 ## Deployment
@@ -276,11 +267,15 @@ npm run test:e2e
 
 ## Documentation
 
-- [Architecture Documentation](./docs/ARCHITECTURE.md)
-- [API Documentation](./docs/API.md)
-- [Deployment Guide](./docs/DEPLOYMENT.md)
+### Project guides
+- [Architecture](./docs/ARCHITECTURE.md) — Current FastAPI/Next.js architecture
+- [API Reference](./docs/API.md) — REST endpoints (summary)
 - [Development Guide](./docs/DEVELOPMENT.md)
-- [Data Schema](./docs/DATA_SCHEMA.md)
+- [Setup Summary](./SETUP_SUMMARY.md)
+- [Implementation Status](./docs/enterprise/IMPLEMENTATION.md)
+
+### Enterprise design (BRD, SRS, Azure, security)
+- [Enterprise Documentation Index](./docs/enterprise/README.md)
 
 ## Contributing
 
@@ -291,7 +286,7 @@ npm run test:e2e
 
 ## License
 
-Proprietary - Transmission Asset Intelligence Platform
+Proprietary — Transmission Asset Monitoring System (TAMS)
 
 ## Contact
 
@@ -299,5 +294,6 @@ For support and questions, contact: support@tams.io
 
 ---
 
-**Current Phase**: 1 - Satellite Monitoring Platform
-**Next Phase**: Phase 2 - GIS + Weather Integration
+**Current Phase**: 1 — MVP (Satellite + Asset Registry + GIS + Alarms + Health + Maintenance)  
+**Next Phase**: 2 — SCADA/IoT real-time ingestion, Azure AD, SignalR  
+**Roadmap**: [docs/enterprise/09-IMPLEMENTATION-PLAN.md](./docs/enterprise/09-IMPLEMENTATION-PLAN.md)

@@ -18,6 +18,7 @@ import {
 
 import LeftSidebar from '@/components/LeftSidebar'
 import RightSidebar from '@/components/RightSidebar'
+import ModuleNav from '@/components/layout/ModuleNav'
 import { fetchApi, type Alert, type Asset } from '@/lib/api'
 import { selectAsset, type RootState } from '@/lib/store'
 
@@ -50,6 +51,12 @@ export default function Home() {
     enabled: isClient,
   })
 
+  const { data: maintenanceDash } = useQuery({
+    queryKey: ['dashboard-maintenance'],
+    queryFn: () => fetchApi<{ open_work_orders: number }>('/dashboard/maintenance'),
+    enabled: isClient,
+  })
+
   const handleSelectAsset = useCallback(
     (id: string) => {
       dispatch(selectAsset(id))
@@ -77,14 +84,15 @@ export default function Home() {
       {/* 1. TOP GLOBAL KPI STRIP */}
       <div className="h-16 bg-[#0e172a] border-b border-white/10 flex items-center justify-between px-4 select-none shrink-0">
         
-        {/* Logo and system status */}
-        <div className="flex items-center gap-3">
+        {/* Logo and module navigation */}
+        <div className="flex flex-col gap-1.5 min-w-[140px]">
           <div className="flex flex-col">
             <h1 className="text-sm font-black tracking-widest text-white leading-none">TAMS GRID COMMAND</h1>
             <span className="text-[8px] text-slate-500 font-extrabold uppercase mt-0.5 tracking-wider">
               Utility Operations Center
             </span>
           </div>
+          <ModuleNav variant="strip" />
         </div>
 
         {/* 7 KPI Cards */}
@@ -160,7 +168,7 @@ export default function Home() {
           <div className="bg-slate-950/40 border border-white/5 rounded-lg px-2.5 py-1.5 flex flex-col justify-center">
             <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider">Work Orders</span>
             <div className="flex items-baseline justify-between mt-0.5">
-              <span className="text-sm font-mono font-black text-white">3</span>
+              <span className="text-sm font-mono font-black text-white">{maintenanceDash?.open_work_orders ?? '—'}</span>
               <span className="text-[8px] text-slate-400 font-bold">Hold</span>
             </div>
           </div>

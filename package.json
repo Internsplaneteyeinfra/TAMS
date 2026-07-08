@@ -26,5 +26,13 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.0"
+  },
+  "overrides": {
+    "@mui/material": "5.16.14",
+    "@mui/icons-material": "5.16.14",
+    "@mui/system": "5.16.14",
+    "@mui/styled-engine": "5.16.14",
+    "@emotion/react": "11.13.5",
+    "@emotion/styled": "11.13.5"
   }
 }

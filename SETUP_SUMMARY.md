@@ -1,8 +1,8 @@
-# TAMS Platform - Phase 1 Setup Summary
+# TAMS Platform — Phase 1 Setup Summary
 
 ## ✅ Project Successfully Scaffolded!
 
-Your **Transmission Asset Intelligence & Monitoring Platform** is now fully set up and ready for development.
+Your **Transmission Asset Monitoring System (TAMS)** is fully set up and ready for development.
 
 ---
 
@@ -23,10 +23,10 @@ tams/
 ```
 
 ### Technology Stack
-**Frontend**: Next.js 14, React, TypeScript, Mapbox GL, Tailwind CSS, Redux Toolkit  
+**Frontend**: Next.js 14, React, TypeScript, Leaflet/Cesium, Material UI v5, Tailwind CSS, Redux Toolkit  
 **Backend**: FastAPI, Python 3.11+, PostgreSQL+PostGIS, Redis, Celery  
 **ML**: PyTorch, TensorFlow, YOLOv11, U-Net, MLflow  
-**Infrastructure**: AWS (Terraform), Kubernetes, Docker Compose  
+**Infrastructure**: Docker Compose (local), AWS Terraform scaffold, Azure target (enterprise docs)  
 **CI/CD**: GitHub Actions with automated testing, linting, building  
 
 ---
@@ -74,6 +74,8 @@ npm run dev
 - **[docs/API.md](docs/API.md)** - Complete API reference with examples
 - **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** - Development workflow and common tasks
 - **[.github/copilot-instructions.md](.github/copilot-instructions.md)** - Development standards and guidelines
+- **[docs/enterprise/IMPLEMENTATION.md](docs/enterprise/IMPLEMENTATION.md)** - What is implemented vs enterprise target
+- **[docs/enterprise/README.md](docs/enterprise/README.md)** - Enterprise BRD, SRS, Azure architecture
 
 ### Configuration
 - **[backend/.env.example](backend/.env.example)** - Backend configuration template
@@ -83,7 +85,7 @@ npm run dev
 ### Core Application Files
 - **[backend/app/main.py](backend/app/main.py)** - FastAPI entry point
 - **[frontend/src/pages/index.tsx](frontend/src/pages/index.tsx)** - Frontend home page with map
-- **[frontend/src/components/GISMap.tsx](frontend/src/components/GISMap.tsx)** - Mapbox GL map component
+- **[frontend/src/components/GISMap.tsx](frontend/src/components/GISMap.tsx)** - Leaflet map component
 
 ### Infrastructure
 - **[infrastructure/terraform/](infrastructure/terraform/)** - AWS Infrastructure as Code
@@ -272,7 +274,7 @@ kubectl apply -f infrastructure/kubernetes/prod/
 
 ### Frontend
 - React 18, Next.js 14, TypeScript
-- Mapbox GL, CesiumJS, Tailwind CSS
+- Leaflet, CesiumJS, Material UI, Tailwind CSS
 - Redux Toolkit, React Query
 - React Hook Form, Zod validation
 
@@ -382,11 +384,13 @@ psql -U tams_user -d tams_db -h localhost -W
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| **1** | Satellite Monitoring Platform | ✅ Complete |
-| **2** | GIS + Weather Integration | 📋 Planned |
-| **3** | SCADA + PMU Integration | 📋 Planned |
-| **4** | Drone Analytics Integration | 📋 Planned |
-| **5** | Digital Twin Deployment | 📋 Planned |
+| **1** | MVP — Satellite + Asset Registry + GIS + Alarms + Health + Maintenance | ✅ Prototype implemented |
+| **2** | SCADA/IoT real-time ingestion, Azure AD, SignalR | 📋 Planned |
+| **3** | Mobile app, EAM integration, full reporting | 📋 Planned |
+| **4** | Predictive maintenance, AI Copilot | 📋 Planned |
+| **5** | Digital Twin, full Azure/.NET migration | 📋 Planned |
+
+See [docs/enterprise/09-IMPLEMENTATION-PLAN.md](docs/enterprise/09-IMPLEMENTATION-PLAN.md) for the enterprise delivery roadmap.
 
 ---
 
@@ -414,5 +418,6 @@ For questions or issues:
 **Happy Coding! 🚀**
 
 **Created**: June 10, 2024  
-**Phase**: 1 - Satellite Monitoring Platform  
+**Updated**: July 2026  
+**Phase**: 1 — MVP (Satellite + Enterprise Asset Modules)  
 **Status**: ✅ READY FOR DEVELOPMENT

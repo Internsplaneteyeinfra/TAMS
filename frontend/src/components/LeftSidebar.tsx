@@ -21,6 +21,7 @@ import {
   Compass,
 } from 'lucide-react'
 import type { Alert, Asset } from '@/lib/api'
+import ModuleNav from '@/components/layout/ModuleNav'
 
 interface LeftSidebarProps {
   assets: Asset[]
@@ -130,6 +131,8 @@ export default function LeftSidebar({
           ONLINE
         </div>
       </div>
+
+      <ModuleNav variant="sidebar" />
 
       <div className="flex-1 overflow-y-auto scrollbar-thin divide-y divide-slate-900">
         

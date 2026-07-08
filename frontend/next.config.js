@@ -11,6 +11,7 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000'
 const config = {
   reactStrictMode: true,
   swcMinify: true,
+  transpilePackages: ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
   typescript: {
     tsconfigPath: './tsconfig.json',
   },

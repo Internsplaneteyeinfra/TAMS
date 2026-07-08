@@ -2,7 +2,7 @@
 
 ## Overview
 
-TAMS (Transmission Asset Intelligence & Monitoring Platform) is an enterprise-grade, AI-powered platform for monitoring high-voltage transmission networks using satellite data, GIS visualization, and predictive analytics.
+TAMS (Transmission Asset Monitoring System) is an enterprise-grade platform for monitoring high-voltage transmission networks using satellite data, GIS visualization, asset registry, condition monitoring, and predictive analytics.
 
 ## Architecture Diagram
 
@@ -64,7 +64,7 @@ TAMS (Transmission Asset Intelligence & Monitoring Platform) is an enterprise-gr
 ## Core Components
 
 ### 1. Frontend (GIS Command Center)
-**Technology**: React, Next.js 14, TypeScript, Mapbox GL, CesiumJS
+**Technology**: React, Next.js 14, TypeScript, Leaflet, CesiumJS, Material UI
 
 **Responsibilities**:
 - Interactive map visualization
@@ -319,12 +319,17 @@ Anomaly Detection ─┬─→ Thermal Alerts
 
 ## Future Roadmap
 
-**Phase 2**: GIS + Weather Integration
-**Phase 3**: SCADA + PMU Integration
-**Phase 4**: Drone Analytics Integration
-**Phase 5**: Digital Twin Deployment
+| Phase | Focus | Prototype status |
+|-------|-------|------------------|
+| **1** | Satellite + Asset Registry + GIS + Alarms + Health + Maintenance | ✅ Implemented (FastAPI + Next.js) |
+| **2** | SCADA/IoT ingestion, Azure AD, SignalR | 📋 Planned |
+| **3** | Mobile app, EAM integration, reporting engine | 📋 Planned |
+| **4** | Predictive maintenance, AI Copilot | 📋 Planned |
+| **5** | Digital Twin, Azure/.NET production stack | 📋 Target |
+
+Enterprise delivery plan: [enterprise/09-IMPLEMENTATION-PLAN.md](./enterprise/09-IMPLEMENTATION-PLAN.md)
 
 ---
 
-**Last Updated**: 2024-06-10
+**Last Updated**: July 2026
 **Architecture Maintained By**: TAMS Development Team

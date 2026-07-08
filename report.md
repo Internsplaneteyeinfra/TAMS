@@ -1,6 +1,6 @@
 # TAMS Project Overview & Documentation Report
 
-This document provides a comprehensive business-level and technical-level overview of **TAMS** (Transmission Asset Intelligence & Monitoring Platform), details all current API routes, and maps out the function of every file in the project.
+This document provides a comprehensive business-level and technical-level overview of **TAMS** (Transmission Asset Monitoring System), details all current API routes, and maps out the function of every file in the project.
 
 ---
 
@@ -12,7 +12,7 @@ Electrical transmission grids span thousands of kilometers across rugged, remote
 *   **Reactive:** Utilities often discover vegetation overgrowth or hardware degradation only *after* a power outage, wildfire, or catastrophic equipment failure occurs.
 
 ### The TAMS Solution
-TAMS is an **AI-powered Transmission Asset Intelligence & Monitoring Platform** that automates corridor inspection by combining:
+TAMS is an **AI-powered Transmission Asset Monitoring System** that automates corridor inspection by combining:
 1.  **Earth Observation & Satellite Data Fusion:** Acquires optical, SAR (Radar), and night thermal imagery from satellites like Sentinel-1, Sentinel-2, and Landsat 9.
 2.  **Computer Vision & AI:** Automatically detects structures (YOLOv11), segments vegetation boundaries (U-Net), and checks for thermal anomalies (Autoencoders).
 3.  **Command Center UI:** Integrates maps, alerts, and analytics dashboards to notify operators in real time.
@@ -65,7 +65,7 @@ TAMS is organized as a decoupled microservices/monorepo structure:
 ```
 
 ### The Technology Stack
-*   **Frontend Command Center:** Built with [Next.js 14](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend), TypeScript, Leaflet (Map visualization), Redux Toolkit (State Management), Tailwind CSS (Styling), and React Query (Server caching).
+*   **Frontend Command Center:** Built with [Next.js 14](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend), TypeScript, Leaflet/Cesium (map visualization), Material UI v5 (enterprise module pages), Redux Toolkit, Tailwind CSS, and React Query.
 *   **Backend Application:** Implemented with [FastAPI](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/backend) (Python 3.11+). Runs asynchronously and uses Pydantic schemas for request/response serialization.
 *   **AI/ML Models:** Built on PyTorch and Ultralytics (YOLO) located inside the [ml](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/ml) folder.
 *   **Storage Systems:** Uses PostgreSQL with PostGIS extension for spatial queries, TimescaleDB for telemetry/sensor time-series logs, Redis for caching, and AWS S3 for hosting heavy GeoTIFF imagery.
@@ -150,6 +150,21 @@ All backend routes are registered in [backend/app/api/v1/__init__.py](file:///c:
     *   **File:** [backend/app/api/v1/analytics.py](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/backend/app/api/v1/analytics.py)
     *   **Description:** Provides risk intelligence assessment including overall regional scores, wildfire risk index, and 90-day outage probabilities.
 
+### 7. Enterprise Modules (Alarms, Health, Maintenance, GIS, Dashboards)
+
+| Route prefix | File | Description |
+|--------------|------|-------------|
+| `/api/v1/alarms` | `alarms.py` | Alarm lifecycle — list, create, acknowledge, close, summary |
+| `/api/v1/health` | `health.py` | Portfolio and per-asset condition scores |
+| `/api/v1/workorders` | `workorders.py` | Maintenance work order queue and history |
+| `/api/v1/inspections` | `inspections.py` | Inspection records and analysis |
+| `/api/v1/gis/*` | `gis.py` | GeoJSON features, layers, proximity analytics |
+| `/api/v1/dashboard/*` | `dashboard.py` | Role-based KPI dashboards (operations, maintenance, executive) |
+| `/api/v1/predictive/*` | `predictive.py` | Heuristic maintenance recommendations |
+| `/api/v1/risk` | `risk.py` | Aggregated risk scores |
+
+Full endpoint list: [docs/enterprise/IMPLEMENTATION.md](docs/enterprise/IMPLEMENTATION.md) and OpenAPI at `/docs`.
+
 ---
 
 ## 5. Directory Structure & File Map
@@ -169,7 +184,7 @@ Here is the file-by-file map explaining what every component does in the project
 *   **`backend/app/db/`**
     *   [database.py](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/backend/app/db/database.py): Configures SQLAlchemy engine, connection pools, and database sessions.
 *   **`backend/app/models/`**
-    *   [\_\_init\_\_.py](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/backend/app/models/__init__.py): Defines SQLAlchemy models mapping database tables (`transmission_assets`, `alerts`, `health_scores`).
+    *   [entities.py](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/backend/app/models/entities.py): SQLAlchemy models — assets, substations, alarms, health scores, work orders, inspections, users/roles, audit logs.
 *   **`backend/app/schemas/`**
     *   [asset.py](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/backend/app/schemas/asset.py): Pydantic validation structures for asset creation and serialization.
     *   [imagery.py](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/backend/app/schemas/imagery.py): Types and schemas for satellite products (orthorectified geotiff, raw L1B).
@@ -184,14 +199,19 @@ Here is the file-by-file map explaining what every component does in the project
     *   [change_detection.py](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/backend/app/services/change_detection.py): Logic comparing current detections against historical properties to calculate changes.
     *   [alert_engine.py](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/backend/app/services/alert_engine.py): Generates active alerts based on clearance violations or structural anomalies.
 
-### 2. Frontend GIS Dashboard (`/frontend`)
+### 2. Frontend GIS Command Center (`/frontend`)
+
 *   **`frontend/src/pages/`**
-    *   [\_app.tsx](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend/src/pages/_app.tsx): Configures React Query Provider, Redux Provider, and injects global styles.
-    *   [index.tsx](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend/src/pages/index.tsx): Main dashboard landing view. Layout splits into the control sidebar (Dashboard controls, trigger controls) and the interactive map component.
+    *   [\_app.tsx](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend/src/pages/_app.tsx): Global providers (Redux, React Query) and styles.
+    *   [index.tsx](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend/src/pages/index.tsx): GIS Command Center home — map viewport with left/right sidebars.
+    *   **MUI module pages** (client-only SSR): `/dashboard`, `/assets`, `/alarms`, `/health`, `/maintenance`, `/inspections`, `/analytics`, `/monitoring`.
 *   **`frontend/src/components/`**
-    *   [Dashboard.tsx](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend/src/components/Dashboard.tsx): Displays asset catalogs, filters by health status, lists critical open alerts, and links UI triggers.
-    *   [GISMap.tsx](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend/src/components/GISMap.tsx): Interactive map layer using Leaflet. Generates custom SVG icons (towers, substations, lines), styles them based on health (green, orange, red outlines), adds alert glow rings, renders substation polygon coordinates, and supports satellite/street layer switching.
-    *   [MonitoringWorkflow.tsx](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend/src/components/MonitoringWorkflow.tsx): Sidebar monitoring status panel. Allows user to trigger a fresh cycle and displays real-time execution steps (Acquire, Detect, Compare, Alert).
+    *   [LeftSidebar.tsx](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend/src/components/LeftSidebar.tsx): Navigation, asset filters, monitoring controls, alert summaries.
+    *   [RightSidebar.tsx](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend/src/components/RightSidebar.tsx): Asset detail panel, health metrics, quick actions.
+    *   [MapViewport.tsx](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend/src/components/MapViewport.tsx): Map container orchestrating 2D/3D views.
+    *   [GISMap.tsx](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend/src/components/GISMap.tsx): Leaflet map — towers, substations, lines, health styling, layer switching.
+    *   [MonitoringWorkflow.tsx](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend/src/components/MonitoringWorkflow.tsx): Satellite pipeline status and run trigger.
+    *   [layout/AppLayout.tsx](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend/src/components/layout/AppLayout.tsx): MUI shell for enterprise module pages.
 *   **`frontend/src/lib/`**
     *   [api.ts](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend/src/lib/api.ts): Wraps fetch requests with default headers and base URL configuration.
     *   [store.ts](file:///c:/Users/shivam.nikam/Desktop/Full%20stack/TAMS/frontend/src/lib/store.ts): Configures Redux store to manage current selected asset ID and map zoom coordinates.

@@ -2,7 +2,24 @@
 
 ## Overview
 
-The TAMS API provides RESTful access to transmission asset data, imagery, alerts, and analytics. All endpoints return standardized responses with metadata.
+The TAMS API provides RESTful access to transmission asset data, imagery, alerts, analytics, and enterprise modules (alarms, health, maintenance, GIS, dashboards). All endpoints return standardized responses with metadata.
+
+> **Implementation status:** See [enterprise/IMPLEMENTATION.md](./enterprise/IMPLEMENTATION.md) for the full module matrix. OpenAPI docs: `http://localhost:8000/docs`.
+
+### Enterprise module endpoints (implemented)
+
+```
+GET/POST/PATCH     /api/v1/alarms              /alarms/{id}/acknowledge  /alarms/{id}/close
+GET                /api/v1/health               /health/assets/{id}
+GET/POST           /api/v1/workorders           /maintenance/assets/{id}/history
+GET/POST           /api/v1/inspections          /inspections/{id}/analyze
+GET/POST           /api/v1/gis/features         /gis/layers  /gis/analytics/proximity
+GET                /api/v1/dashboard/operations /dashboard/maintenance /dashboard/executive
+GET                /api/v1/predictive/recommendations
+GET                /api/v1/risk
+```
+
+Full enterprise API spec: [enterprise/05-API-SPECIFICATION.md](./enterprise/05-API-SPECIFICATION.md).
 
 ## Base URL
 

@@ -251,4 +251,4 @@ docker-compose logs -f <service-name>
 
 - [API Documentation](../docs/API.md)
 - [Architecture Guide](../docs/ARCHITECTURE.md)
-- [Database Schema](../docs/DATA_SCHEMA.md)
+- [Database Schema](./enterprise/04-DATABASE-DESIGN.md)
