@@ -1,6 +1,6 @@
 @echo off
 echo ===================================================
-echo Starting TAMS Project Environment Setup & Run
+echo Starting TAMS Project Environment Setup and Run
 echo ===================================================
 
 :: Check if backend venv exists
