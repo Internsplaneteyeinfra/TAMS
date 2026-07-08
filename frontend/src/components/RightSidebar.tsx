@@ -129,8 +129,8 @@ export default function RightSidebar({
   }, [alerts])
 
   return (
-    <div className="w-90 bg-slate-950 border-l border-slate-800 flex flex-col min-h-0 h-full overflow-hidden select-none">
-      
+    <div className="w-full h-full bg-slate-950 border-l border-slate-800 flex flex-col min-h-0 overflow-hidden select-none">
+
       {/* SECTION 1: Pipeline Control & Workflow */}
       <div className="p-4 border-b border-slate-900 space-y-3">
         <div className="flex justify-between items-center">
@@ -174,13 +174,12 @@ export default function RightSidebar({
             return (
               <div
                 key={stage.id}
-                className={`p-2 rounded-lg border text-left flex items-start gap-2.5 transition-all duration-200 ${
-                  isRunning
-                    ? 'bg-blue-950/20 border-blue-500/30'
-                    : isCompleted
+                className={`p-2 rounded-lg border text-left flex items-start gap-2.5 transition-all duration-200 ${isRunning
+                  ? 'bg-blue-950/20 border-blue-500/30'
+                  : isCompleted
                     ? 'bg-emerald-950/5 border-emerald-500/10 opacity-70'
                     : 'bg-slate-900/30 border-slate-900/60 opacity-40'
-                }`}
+                  }`}
               >
                 {isCompleted ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
@@ -205,7 +204,7 @@ export default function RightSidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin divide-y divide-slate-900">
-        
+
         {/* SECTION 2: Alert Center */}
         <div className="p-4 space-y-3">
           <div className="flex justify-between items-center">
@@ -236,9 +235,8 @@ export default function RightSidebar({
                       <div className="flex-1 space-y-1">
                         <div className="flex justify-between items-start">
                           <span className="font-bold text-slate-200 text-xs">{alert.title}</span>
-                          <span className={`text-[8px] font-black px-1.5 py-0.2 rounded border uppercase font-mono ${
-                            SEVERITY_COLORS[alert.priority] || SEVERITY_COLORS.medium
-                          }`}>
+                          <span className={`text-[8px] font-black px-1.5 py-0.2 rounded border uppercase font-mono ${SEVERITY_COLORS[alert.priority] || SEVERITY_COLORS.medium
+                            }`}>
                             {alert.priority}
                           </span>
                         </div>
@@ -294,9 +292,14 @@ export default function RightSidebar({
                     <span className="text-[10px] text-indigo-400 font-mono font-bold">{wo.work_order_number}</span>
                     <h4 className="text-xs font-extrabold text-white leading-tight">{wo.description || wo.maintenance_type}</h4>
                   </div>
+<<<<<<< Updated upstream
                   <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded border uppercase font-mono ${
                     SEVERITY_COLORS[priorityKey] || SEVERITY_COLORS.medium
                   }`}>
+=======
+                  <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded border uppercase font-mono ${SEVERITY_COLORS[wo.priority] || SEVERITY_COLORS.medium
+                    }`}>
+>>>>>>> Stashed changes
                     {wo.priority}
                   </span>
                 </div>

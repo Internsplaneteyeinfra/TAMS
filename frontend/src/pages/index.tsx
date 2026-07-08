@@ -9,6 +9,8 @@ import { useDispatch, useSelector } from 'react-redux'
 import {
   TrendingUp,
   TrendingDown,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 
 import LeftSidebar from '@/components/LeftSidebar'
@@ -19,14 +21,25 @@ import { selectAsset, type RootState } from '@/lib/store'
 
 const MapViewport = dynamic(() => import('@/components/MapViewport'), { ssr: false })
 
+const OPERATIONS_PANEL_WIDTH = '20rem' // w-80 — matches left sidebar width
+
 export default function Home() {
   const [isClient, setIsClient] = useState(false)
+  const [isOperationsPanelOpen, setIsOperationsPanelOpen] = useState(true)
+  const [mapResizeSignal, setMapResizeSignal] = useState(0)
   const dispatch = useDispatch()
   const selectedAssetId = useSelector((state: RootState) => state.assets.selected)
 
   useEffect(() => {
     setIsClient(true)
   }, [])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setMapResizeSignal((n) => n + 1)
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [isOperationsPanelOpen])
 
   const { data: assets = [], isLoading: assetsLoading } = useQuery({
     queryKey: ['assets'],
@@ -69,12 +82,18 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-[#060B17] text-slate-100 antialiased font-sans overflow-hidden">
-      
+
       {/* 1. TOP GLOBAL KPI STRIP */}
       <div className="h-16 bg-[#0e172a] border-b border-white/10 flex items-center justify-between px-4 select-none shrink-0">
+<<<<<<< Updated upstream
         
         {/* Logo and module navigation */}
         <div className="flex flex-col gap-1.5 min-w-[140px]">
+=======
+
+        {/* Logo and system status */}
+        <div className="flex items-center gap-3">
+>>>>>>> Stashed changes
           <div className="flex flex-col">
             <h1 className="text-sm font-black tracking-widest text-white leading-none">TAMS GRID COMMAND</h1>
             <span className="text-[8px] text-slate-500 font-extrabold uppercase mt-0.5 tracking-wider">
@@ -86,7 +105,7 @@ export default function Home() {
 
         {/* 7 KPI Cards */}
         <div className="flex-1 max-w-[80%] grid grid-cols-7 gap-2.5 px-6">
-          
+
           {/* Card 1: Assets Monitored */}
           <div className="bg-slate-950/40 border border-white/5 rounded-lg px-2.5 py-1.5 flex flex-col justify-center">
             <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider">Monitored Assets</span>
@@ -174,7 +193,7 @@ export default function Home() {
 
       {/* 2. LOWER THREE-PANEL CORE SYSTEM */}
       <div className="flex-1 flex min-h-0 w-full overflow-hidden">
-        
+
         {/* Left Intelligence Sidebar */}
         <LeftSidebar
           assets={assets}
@@ -184,23 +203,46 @@ export default function Home() {
           isLoading={assetsLoading}
         />
 
-        {/* Center GIS Viewport Map */}
-        <div className="flex-1 relative min-h-0 h-full bg-[#060B17]">
-          <MapViewport
-            assets={assets}
-            selectedAssetId={selectedAssetId}
-            alertAssetIds={alertAssetIds}
-            onSelectAsset={handleSelectAsset}
-          />
-        </div>
+        {/* Center GIS Viewport + Operations Panel */}
+        <div className="flex-1 relative min-h-0 min-w-0 overflow-hidden">
+          <div className="absolute inset-0 bg-[#060B17]">
+            <MapViewport
+              assets={assets}
+              selectedAssetId={selectedAssetId}
+              alertAssetIds={alertAssetIds}
+              onSelectAsset={handleSelectAsset}
+              resizeSignal={mapResizeSignal}
+            />
+          </div>
 
-        {/* Right Operations Panel */}
-        <RightSidebar
-          assets={assets}
-          alerts={alerts}
-          selectedAssetId={selectedAssetId}
-          onSelectAsset={handleSelectAsset}
-        />
+          <div
+            className={`absolute top-0 bottom-0 right-0 z-20 w-80 transition-transform duration-300 ease-in-out ${isOperationsPanelOpen ? 'translate-x-0' : 'translate-x-full'
+              }`}
+          >
+            <RightSidebar
+              assets={assets}
+              alerts={alerts}
+              selectedAssetId={selectedAssetId}
+              onSelectAsset={handleSelectAsset}
+            />
+          </div>
+
+          <button
+            type="button"
+            title={isOperationsPanelOpen ? 'Hide Operations Panel' : 'Show Operations Panel'}
+            aria-label={isOperationsPanelOpen ? 'Hide Operations Panel' : 'Show Operations Panel'}
+            onClick={() => setIsOperationsPanelOpen((open) => !open)}
+            className={`absolute top-1/2 z-30 w-6 h-9 flex items-center justify-center bg-slate-950 border border-slate-700 rounded-md text-slate-400 hover:text-slate-100 hover:border-slate-500 shadow-lg transition-[right] duration-300 ease-in-out -translate-y-1/2 ${isOperationsPanelOpen ? '-translate-x-1/2' : 'translate-x-0'
+              }`}
+            style={{ right: isOperationsPanelOpen ? OPERATIONS_PANEL_WIDTH : 0 }}
+          >
+            {isOperationsPanelOpen ? (
+              <ChevronRight className="w-4 h-4" />
+            ) : (
+              <ChevronLeft className="w-4 h-4" />
+            )}
+          </button>
+        </div>
 
       </div>
     </div>

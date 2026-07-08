@@ -26,6 +26,18 @@ const HEALTH_RING: Record<string, string> = {
   critical: '#d62828',
 }
 
+function safeInvalidateMapSize(map: L.Map | null | undefined) {
+  if (!map) return
+  try {
+    const container = map.getContainer()
+    if (!container.isConnected || container.offsetWidth === 0 || container.offsetHeight === 0) return
+    if (!map.getPane('mapPane')) return
+    map.invalidateSize({ animate: false })
+  } catch {
+    // Map panes not ready yet — skip until layout stabilizes
+  }
+}
+
 function buildTileLayer(layer: MapLayer): L.Layer {
   if (layer === 'satellite') {
     return L.tileLayer(
@@ -237,6 +249,7 @@ export default function GISMap({
   alertAssetIds = [],
   onSelectAsset,
   activeLayers,
+  resizeSignal = 0,
 }: {
   assets: Asset[]
   selectedAssetId?: string | null
@@ -249,6 +262,7 @@ export default function GISMap({
     terrain: boolean
     corridors: boolean
   }
+  resizeSignal?: number
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -406,6 +420,7 @@ export default function GISMap({
         flyToCoordinates(lat, lng, 'map_click')
       })
 
+<<<<<<< Updated upstream
       // Guard against calling invalidateSize after the map has been removed
       // (React 18 StrictMode double-mount runs cleanup before this fires).
       const isMapAlive = () => mapRef.current === map && Boolean((map as unknown as { _mapPane?: unknown })._mapPane)
@@ -415,6 +430,12 @@ export default function GISMap({
 
       const invalidateTimer = setTimeout(safeInvalidate, 100)
       const onResize = () => safeInvalidate()
+=======
+      map.whenReady(() => {
+        requestAnimationFrame(() => safeInvalidateMapSize(map))
+      })
+      const onResize = () => safeInvalidateMapSize(map)
+>>>>>>> Stashed changes
       window.addEventListener('resize', onResize)
 
       return () => {
@@ -439,6 +460,11 @@ export default function GISMap({
       return undefined
     }
   }, [placeMarker, flyToCoordinates])
+
+  useEffect(() => {
+    if (resizeSignal === 0) return
+    safeInvalidateMapSize(mapRef.current)
+  }, [resizeSignal])
 
   useEffect(() => {
     const map = mapRef.current
@@ -485,8 +511,8 @@ export default function GISMap({
           hasAlert || lineHealth === 'critical'
             ? '#ef4444' // Red (Critical)
             : lineHealth === 'attention_required'
-            ? '#F59E0B' // Yellow (Warning)
-            : '#2563EB' // Blue (Healthy)
+              ? '#F59E0B' // Yellow (Warning)
+              : '#2563EB' // Blue (Healthy)
 
         const polyline = L.polyline(latlngs, {
           color: lineColor,
@@ -637,20 +663,18 @@ export default function GISMap({
           <button
             type="button"
             onClick={() => setMapLayer('satellite')}
-            className={`px-3 py-1.5 text-xs rounded-md transition ${
-              mapLayer === 'satellite' ? 'bg-tams-primary text-white' : 'text-gray-300 hover:bg-gray-700'
-            }`}
+            className={`px-3 py-1.5 text-xs rounded-md transition ${mapLayer === 'satellite' ? 'bg-tams-primary text-white' : 'text-gray-300 hover:bg-gray-700'
+              }`}
           >
             Satellite
           </button>
           <button
             type="button"
             onClick={() => setMapLayer('satellite-labels')}
-            className={`px-3 py-1.5 text-xs rounded-md transition ${
-              mapLayer === 'satellite-labels'
+            className={`px-3 py-1.5 text-xs rounded-md transition ${mapLayer === 'satellite-labels'
                 ? 'bg-tams-primary text-white'
                 : 'text-gray-300 hover:bg-gray-700'
-            }`}
+              }`}
           >
             + Labels
           </button>
@@ -669,9 +693,8 @@ export default function GISMap({
               key={key}
               type="button"
               onClick={() => setRegionFilter(key)}
-              className={`px-2.5 py-1.5 text-xs rounded-md transition ${
-                regionFilter === key ? 'bg-tams-primary text-white' : 'text-gray-300 hover:bg-gray-700'
-              }`}
+              className={`px-2.5 py-1.5 text-xs rounded-md transition ${regionFilter === key ? 'bg-tams-primary text-white' : 'text-gray-300 hover:bg-gray-700'
+                }`}
             >
               {label}
             </button>
@@ -691,9 +714,8 @@ export default function GISMap({
                 key={type}
                 type="button"
                 onClick={() => toggleType(type)}
-                className={`flex items-center gap-2 w-full py-1.5 px-1 rounded transition ${
-                  typeFilters[type] ? 'opacity-100' : 'opacity-40'
-                } hover:bg-gray-800`}
+                className={`flex items-center gap-2 w-full py-1.5 px-1 rounded transition ${typeFilters[type] ? 'opacity-100' : 'opacity-40'
+                  } hover:bg-gray-800`}
               >
                 <span
                   className="w-3 h-3 rounded-sm flex-shrink-0"
@@ -711,9 +733,8 @@ export default function GISMap({
             <button
               type="button"
               onClick={() => setShowWildfireRisk(!showWildfireRisk)}
-              className={`flex items-center gap-2 w-full py-1.5 px-1 rounded transition-all duration-150 ${
-                showWildfireRisk ? 'text-orange-400 font-medium bg-orange-500/5' : 'text-gray-400 hover:bg-gray-800'
-              }`}
+              className={`flex items-center gap-2 w-full py-1.5 px-1 rounded transition-all duration-150 ${showWildfireRisk ? 'text-orange-400 font-medium bg-orange-500/5' : 'text-gray-400 hover:bg-gray-800'
+                }`}
             >
               <span className={`w-3.5 h-3.5 rounded-sm flex items-center justify-center border transition-all ${showWildfireRisk ? 'bg-orange-500 border-orange-600' : 'border-gray-600 bg-transparent'}`}>
                 {showWildfireRisk && '✓'}
@@ -723,9 +744,8 @@ export default function GISMap({
             <button
               type="button"
               onClick={() => setShowFloodRisk(!showFloodRisk)}
-              className={`flex items-center gap-2 w-full py-1.5 px-1 rounded transition-all duration-150 ${
-                showFloodRisk ? 'text-cyan-400 font-medium bg-cyan-500/5' : 'text-gray-400 hover:bg-gray-800'
-              }`}
+              className={`flex items-center gap-2 w-full py-1.5 px-1 rounded transition-all duration-150 ${showFloodRisk ? 'text-cyan-400 font-medium bg-cyan-500/5' : 'text-gray-400 hover:bg-gray-800'
+                }`}
             >
               <span className={`w-3.5 h-3.5 rounded-sm flex items-center justify-center border transition-all ${showFloodRisk ? 'bg-cyan-500 border-cyan-600' : 'border-gray-600 bg-transparent'}`}>
                 {showFloodRisk && '✓'}

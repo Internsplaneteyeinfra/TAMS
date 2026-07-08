@@ -14,6 +14,7 @@ Write-Host "Upgrading pip, setuptools, and wheel..." -ForegroundColor Cyan
 Write-Host "Installing lightweight local development dependencies..." -ForegroundColor Cyan
 & backend/venv/Scripts/pip install -r backend/requirements-local.txt
 
+<<<<<<< Updated upstream
 # 2. Setup Frontend Dependencies
 if (-not (Test-Path "frontend/node_modules")) {
     Write-Host "Installing frontend dependencies (node_modules)..." -ForegroundColor Cyan
@@ -27,6 +28,11 @@ if (-not (Test-Path "node_modules")) {
     Write-Host "Installing workspace dependencies..." -ForegroundColor Cyan
     npm.cmd install
 }
+=======
+# 2. Install workspace dependencies (frontend workspace + root devDependencies like concurrently)
+Write-Host "Installing workspace dependencies..." -ForegroundColor Cyan
+npm install
+>>>>>>> Stashed changes
 
 # 4. Start Services Concurrently
 Write-Host "Starting TAMS Frontend (Port 3000) & Backend (Port 8000)..." -ForegroundColor Green

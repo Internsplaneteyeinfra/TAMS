@@ -17,19 +17,9 @@ call backend\venv\Scripts\python -m pip install --upgrade pip setuptools wheel
 echo Installing backend dependencies...
 call backend\venv\Scripts\pip install -r backend\requirements-local.txt
 
-:: Check if frontend node_modules exists
-if not exist "frontend\node_modules" (
-    echo Installing frontend dependencies...
-    cd frontend
-    call npm install
-    cd ..
-)
-
-:: Check if root node_modules exists
-if not exist "node_modules" (
-    echo Installing workspace dependencies...
-    call npm install
-)
+:: Install workspace dependencies (frontend workspace + root devDependencies like concurrently)
+echo Installing workspace dependencies...
+call npm install
 
 echo Starting Frontend (3000) and Backend (8000) concurrently...
 call npm run dev
