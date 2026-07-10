@@ -13,6 +13,10 @@ from app.services.mock_data import MOCK_ASSETS
 
 async def portfolio_health(session: AsyncSession | None) -> dict:
     if not is_db_ready() or session is None:
+        from app.services.kml_loader import get_region_stats
+
+        stats = get_region_stats()
+        total = stats["total"]
         scores = []
         for a in MOCK_ASSETS:
             hs = a.get("health_score", "healthy")
@@ -32,7 +36,7 @@ async def portfolio_health(session: AsyncSession | None) -> dict:
                 "poor": sum(1 for s in scores if 20 <= s < 40),
                 "critical": sum(1 for s in scores if s < 20),
             },
-            "total_assets": len(MOCK_ASSETS),
+            "total_assets": total,
         }
 
     subq = (

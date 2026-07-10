@@ -99,3 +99,15 @@ assets/
 
 # Cesium static assets (auto-copied to frontend/public/cesium on install/build)
 frontend/public/cesium/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
+
+# Backend KML helper app (local only — not part of TAMS deploy)
+backend/indian_KML/tower_corridor_api/
+
+# Local uvicorn / agent logs
+backend/*.out.log
+backend/*.err.log
+uvicorn*.log

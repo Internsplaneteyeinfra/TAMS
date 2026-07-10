@@ -6,10 +6,19 @@ import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 
 import type { Asset } from '@/lib/api'
+import { fetchGisTowers } from '@/lib/api'
+import { assetMatchesPlace, filterAssetsByPlace } from '@/lib/placeFilter'
+import {
+  DEFAULT_PLACE_ID,
+  getPlaceById,
+  getStateFilterForPlace,
+  INDIA_MAP_BOUNDS,
+  placeShowsTowers,
+} from '@/config/places'
+import type { MapStatusSnapshot } from '@/types/mapStatus'
 
 type MapLayer = 'satellite' | 'satellite-labels'
 type AssetType = Asset['asset_type']
-type RegionFilter = 'all' | 'india' | 'world'
 
 const ASSET_CONFIG: Record<
   AssetType,
@@ -67,14 +76,28 @@ function healthColor(asset: Asset): string {
   return HEALTH_RING[asset.health_score || ''] || ASSET_CONFIG[asset.asset_type].color
 }
 
+function voltageLineColor(kv: number | null | undefined): string {
+  if (kv == null || Number.isNaN(kv)) return '#94a3b8'
+  if (kv >= 765) return '#dc2626'
+  if (kv >= 400) return '#ea580c'
+  if (kv >= 220) return '#2563eb'
+  if (kv >= 132) return '#0891b2'
+  if (kv >= 66) return '#16a34a'
+  return '#64748b'
+}
+
+function lineWeightForVoltage(kv: number | null | undefined, selected: boolean): number {
+  const base = kv != null && kv >= 400 ? 4 : kv != null && kv >= 220 ? 3 : 2
+  return selected ? base + 2 : base
+}
+
 function makeAssetIcon(asset: Asset, isSelected: boolean, hasAlert: boolean) {
   const cfg = ASSET_CONFIG[asset.asset_type]
-  const ring = healthColor(asset)
+  const ring = hasAlert ? '#f77f00' : healthColor(asset)
   const scale = isSelected ? 1.15 : 1
   const w = Math.round(cfg.size * scale)
   const h = Math.round(cfg.size * scale)
-  const alertGlow = hasAlert ? 'filter:drop-shadow(0 0 6px #f77f00);' : ''
-  const selectRing = isSelected ? 'outline:3px solid #fff;outline-offset:2px;' : ''
+  const selectRing = isSelected ? 'outline:2px solid #fff;outline-offset:2px;' : ''
 
   let symbol = ''
   if (asset.asset_type === 'tower') {
@@ -106,18 +129,8 @@ function makeAssetIcon(asset: Asset, isSelected: boolean, hasAlert: boolean) {
     className: '',
     iconSize: [Math.max(w, 90), totalH],
     iconAnchor: [Math.max(w, 90) / 2, h / 2],
-    html: `<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;${alertGlow}${selectRing}">
+    html: `<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;${selectRing}">
       <div style="border:3px solid ${ring};border-radius:6px;padding:2px;background:rgba(0,0,0,0.35);position:relative;">
-        ${asset.health_score === 'critical' ? `
-        <div style="
-          position:absolute;
-          inset:-5px;
-          border:2px solid #ef4444;
-          border-radius:8px;
-          animation: markerPulse 1.8s infinite ease-in-out;
-          pointer-events:none;
-        "></div>
-        ` : ''}
         ${symbol}
       </div>
       <div style="
@@ -145,41 +158,91 @@ function makeAssetIcon(asset: Asset, isSelected: boolean, hasAlert: boolean) {
   })
 }
 
+function healthPct(asset: Asset): number {
+  if (asset.health_score === 'healthy') return 96
+  if (asset.health_score === 'attention_required') return 72
+  if (asset.health_score === 'critical') return 38
+  return 85
+}
+
 function buildPopupHtml(asset: Asset): string {
-  const cfg = ASSET_CONFIG[asset.asset_type]
   const meta = asset.metadata || {}
-  const voltage = meta.voltage_kv ? `${meta.voltage_kv} kV` : '—'
-  const location = meta.country_or_state ? String(meta.country_or_state) : ''
-  const region = meta.region ? String(meta.region) : ''
-  const operator = meta.operator ? String(meta.operator) : ''
-  return `<div>
-    <div style="font-weight:700;font-size:14px;margin-bottom:4px">${asset.name}</div>
-    <div style="display:inline-block;background:${cfg.color};color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;margin-bottom:6px">
-      ${cfg.label}
+  const voltageRaw = meta.voltage_kv ?? meta.voltage
+  const voltage =
+    typeof voltageRaw === 'number'
+      ? `${voltageRaw} kV`
+      : typeof voltageRaw === 'string' && voltageRaw
+        ? `${Number(voltageRaw) > 1000 ? Number(voltageRaw) / 1000 : voltageRaw} kV`
+        : '—'
+  const statusLabel =
+    asset.health_score === 'healthy'
+      ? 'Healthy'
+      : asset.health_score === 'attention_required'
+        ? 'Warning'
+        : asset.health_score === 'critical'
+          ? 'Critical'
+          : 'Active'
+  const statusColor =
+    asset.health_score === 'healthy'
+      ? '#34d399'
+      : asset.health_score === 'attention_required'
+        ? '#fbbf24'
+        : asset.health_score === 'critical'
+          ? '#f87171'
+          : '#94a3b8'
+  const osmId = meta.osm_id ? String(meta.osm_id) : '—'
+  const power = meta.power ? String(meta.power) : asset.asset_type
+  const state = meta.country_or_state ? String(meta.country_or_state) : 'India'
+  const operator = meta.operator ? String(meta.operator) : '—'
+  const lengthKm = typeof meta.length_km === 'number' ? `${meta.length_km} km` : null
+  return `<div style="padding:14px 16px;min-width:260px;font-family:system-ui,sans-serif">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <span style="font-size:16px">⚡</span>
+      <div style="font-weight:800;font-size:14px;color:#f8fafc;letter-spacing:0.02em">${asset.name}</div>
     </div>
-    <div style="font-size:12px;color:#374151">
-      ${location ? `<div><b>Location:</b> ${location}${region ? ` (${region})` : ''}</div>` : ''}
-      ${operator ? `<div><b>Operator:</b> ${operator}</div>` : ''}
-      <div><b>Health:</b> ${(asset.health_score || 'unknown').replace(/_/g, ' ')}</div>
-      <div><b>Voltage:</b> ${voltage}</div>
-      <div><b>Status:</b> ${asset.status || 'active'}</div>
-      <div><b>Lat:</b> ${formatCoord(asset.latitude)} · <b>Lng:</b> ${formatCoord(asset.longitude)}</div>
-      ${asset.description ? `<div style="margin-top:4px;color:#6b7280">${asset.description}</div>` : ''}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;font-size:11px;margin-bottom:12px">
+      <div><div style="color:#64748b;font-size:9px;text-transform:uppercase;font-weight:700;margin-bottom:2px">Type</div><div style="font-weight:800;color:#e2e8f0">${power}</div></div>
+      <div><div style="color:#64748b;font-size:9px;text-transform:uppercase;font-weight:700;margin-bottom:2px">Voltage</div><div style="font-family:ui-monospace,monospace;font-weight:800;color:#e2e8f0">${voltage}</div></div>
+      <div><div style="color:#64748b;font-size:9px;text-transform:uppercase;font-weight:700;margin-bottom:2px">State</div><div style="font-weight:800;color:#e2e8f0">${state}</div></div>
+      <div><div style="color:#64748b;font-size:9px;text-transform:uppercase;font-weight:700;margin-bottom:2px">Status</div><div style="font-weight:800;color:${statusColor}">${statusLabel}</div></div>
+      <div><div style="color:#64748b;font-size:9px;text-transform:uppercase;font-weight:700;margin-bottom:2px">OSM ID</div><div style="font-family:ui-monospace,monospace;font-weight:800;color:#e2e8f0">${osmId}</div></div>
+      <div><div style="color:#64748b;font-size:9px;text-transform:uppercase;font-weight:700;margin-bottom:2px">Operator</div><div style="font-weight:800;color:#e2e8f0">${operator}</div></div>
+      ${lengthKm ? `<div style="grid-column:1/-1"><div style="color:#64748b;font-size:9px;text-transform:uppercase;font-weight:700;margin-bottom:2px">Corridor length</div><div style="font-family:ui-monospace,monospace;font-weight:800;color:#e2e8f0">${lengthKm}</div></div>` : ''}
+    </div>
+    <div style="font-size:9px;color:#64748b;margin-bottom:10px">Source: indian_KML / OSM transmission data</div>
+    <div style="display:flex;gap:8px">
+      <button type="button" data-asset-action="view" data-asset-id="${asset.id}" style="flex:1;padding:8px 12px;border-radius:8px;border:none;background:#2563eb;color:#fff;font-size:11px;font-weight:800;cursor:pointer">View</button>
+      <button type="button" data-asset-action="analytics" data-asset-id="${asset.id}" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:11px;font-weight:800;cursor:pointer">Analytics</button>
     </div>
   </div>`
 }
 
-function assetRegion(asset: Asset): string | undefined {
-  return asset.metadata?.region as string | undefined
+function clusterHealthColor(markers: L.Marker[]): string {
+  let worst = 0
+  markers.forEach((m) => {
+    const asset = (m as L.Marker & { assetRef?: Asset }).assetRef
+    if (!asset) return
+    if (asset.health_score === 'critical') worst = Math.max(worst, 3)
+    else if (asset.health_score === 'attention_required') worst = Math.max(worst, 2)
+    else worst = Math.max(worst, 1)
+  })
+  if (worst >= 3) return 'linear-gradient(135deg,#dc2626,#ef4444)'
+  if (worst >= 2) return 'linear-gradient(135deg,#d97706,#f59e0b)'
+  return 'linear-gradient(135deg,#059669,#10b981)'
 }
 
-function passesRegionFilter(asset: Asset, regionFilter: RegionFilter): boolean {
-  if (regionFilter === 'all') return true
-  if (asset.asset_type !== 'substation') return true
-  const region = assetRegion(asset)
-  if (regionFilter === 'india') return region === 'India'
-  if (regionFilter === 'world') return region !== undefined && region !== 'India'
-  return true
+function clusterHealthGlow(markers: L.Marker[]): string {
+  let worst = 0
+  markers.forEach((m) => {
+    const asset = (m as L.Marker & { assetRef?: Asset }).assetRef
+    if (!asset) return
+    if (asset.health_score === 'critical') worst = Math.max(worst, 3)
+    else if (asset.health_score === 'attention_required') worst = Math.max(worst, 2)
+    else worst = Math.max(worst, 1)
+  })
+  if (worst >= 3) return 'rgba(239,68,68,0.55)'
+  if (worst >= 2) return 'rgba(245,158,11,0.5)'
+  return 'rgba(16,185,129,0.45)'
 }
 
 function collectBounds(assets: Asset[]): L.LatLngBounds | null {
@@ -250,6 +313,15 @@ export default function GISMap({
   onSelectAsset,
   activeLayers,
   resizeSignal = 0,
+  onMapStatusChange,
+  suppressInternalStatusBar = false,
+  onMapReady,
+  selectedPlaceId = DEFAULT_PLACE_ID,
+  heatMapMode = 'normal',
+  typeFilters: externalTypeFilters,
+  showLabels: externalShowLabels,
+  showWildfireRisk = false,
+  showFloodRisk = false,
 }: {
   assets: Asset[]
   selectedAssetId?: string | null
@@ -263,6 +335,15 @@ export default function GISMap({
     corridors: boolean
   }
   resizeSignal?: number
+  onMapStatusChange?: (status: MapStatusSnapshot) => void
+  suppressInternalStatusBar?: boolean
+  onMapReady?: (api: { zoomIn: () => void; zoomOut: () => void }) => void
+  selectedPlaceId?: string
+  heatMapMode?: string
+  typeFilters?: Record<AssetType, boolean>
+  showLabels?: boolean
+  showWildfireRisk?: boolean
+  showFloodRisk?: boolean
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -276,72 +357,109 @@ export default function GISMap({
   const lastFitKeyRef = useRef('')
   const [mapLayer, setMapLayer] = useState<MapLayer>('satellite-labels')
   const [mapStatus, setMapStatus] = useState<'loading' | 'ready' | 'error'>('loading')
-  const [showLabels, setShowLabels] = useState(true)
-  const [regionFilter, setRegionFilter] = useState<RegionFilter>('india')
+  const showLabels = externalShowLabels ?? true
   const [zoomVersion, setZoomVersion] = useState(0)
   const [cursorPoint, setCursorPoint] = useState<{ lat: number; lng: number } | null>(null)
-  const [typeFilters, setTypeFilters] = useState<Record<AssetType, boolean>>({
+  const typeFilters = externalTypeFilters ?? {
     tower: true,
     substation: true,
     line: true,
-  })
-  const [showWildfireRisk, setShowWildfireRisk] = useState(false)
-  const [showFloodRisk, setShowFloodRisk] = useState(false)
+  }
 
-  // Sync activeLayers props with internal state variables
+  const [viewportTowers, setViewportTowers] = useState<Asset[]>([])
+  const [towersLoading, setTowersLoading] = useState(false)
+  const towerFetchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadViewportTowersRef = useRef<() => void>(() => { })
+
+  const wildfireOn = showWildfireRisk || Boolean(activeLayers?.riskOverlay || heatMapMode === 'ai-risk')
+  const floodOn = showFloodRisk || Boolean(activeLayers?.riskOverlay || heatMapMode === 'flood')
+
+  const showTowers = placeShowsTowers(selectedPlaceId) && typeFilters.tower
+
+  const filteredAssets = useMemo(() => {
+    const base = filterAssetsByPlace(assets, selectedPlaceId).filter((a) => {
+      if (a.asset_type === 'tower') return false
+      return typeFilters[a.asset_type]
+    })
+    if (!showTowers) return base
+    const towers = viewportTowers.filter((t) => assetMatchesPlace(t, selectedPlaceId))
+    return [...base, ...towers]
+  }, [assets, typeFilters, selectedPlaceId, viewportTowers, showTowers])
+  // Fit only on place / type filters — not when viewport towers refresh
+  const corridorIds = useMemo(
+    () =>
+      filterAssetsByPlace(assets, selectedPlaceId)
+        .filter((a) => a.asset_type !== 'tower' && typeFilters[a.asset_type])
+        .map((a) => a.id)
+        .join(','),
+    [assets, selectedPlaceId, typeFilters]
+  )
+  const fitKey = `${selectedPlaceId}:${corridorIds}`
+
+  const loadViewportTowers = useCallback(() => {
+    const map = mapRef.current
+    if (!map || !showTowers) {
+      setViewportTowers([])
+      return
+    }
+    const zoom = map.getZoom()
+    // Dense towers only when zoomed in enough; sample more at higher zoom
+    const limit = zoom >= 11 ? 8000 : zoom >= 9 ? 5000 : zoom >= 7 ? 3000 : 1500
+    const bounds = map.getBounds()
+    const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`
+    const state = getStateFilterForPlace(selectedPlaceId)
+    setTowersLoading(true)
+    fetchGisTowers(bbox, state === 'Gujarat' ? 'Gujarat' : undefined, limit)
+      .then((towers) => setViewportTowers(towers))
+      .catch(() => setViewportTowers([]))
+      .finally(() => setTowersLoading(false))
+  }, [selectedPlaceId, showTowers])
+
+  useEffect(() => {
+    loadViewportTowersRef.current = loadViewportTowers
+  }, [loadViewportTowers])
+
+  useEffect(() => {
+    if (!showTowers) {
+      setViewportTowers([])
+      return
+    }
+    if (towerFetchRef.current) clearTimeout(towerFetchRef.current)
+    towerFetchRef.current = setTimeout(loadViewportTowers, 350)
+    return () => {
+      if (towerFetchRef.current) clearTimeout(towerFetchRef.current)
+    }
+  }, [loadViewportTowers, showTowers, zoomVersion, selectedPlaceId])
+
+  // Sync basemap layer with activeLayers
   useEffect(() => {
     if (activeLayers) {
-      setShowWildfireRisk(activeLayers.riskOverlay)
-      setShowFloodRisk(activeLayers.riskOverlay)
-      setMapLayer(activeLayers.satellite ? 'satellite-labels' : 'satellite')
+      setMapLayer(activeLayers.satellite && showLabels ? 'satellite-labels' : 'satellite')
     }
-  }, [activeLayers])
+  }, [activeLayers, showLabels])
 
-  const filteredAssets = useMemo(
-    () => assets.filter((a) => typeFilters[a.asset_type] && passesRegionFilter(a, regionFilter)),
-    [assets, typeFilters, regionFilter]
-  )
-  const filteredIds = filteredAssets.map((a) => a.id).join(',')
-  const fitKey = `${regionFilter}:${filteredIds}`
-
-  const indiaCount = assets.filter(
-    (a) => a.asset_type === 'substation' && assetRegion(a) === 'India'
-  ).length
-  const worldSubCount = assets.filter(
-    (a) => a.asset_type === 'substation' && assetRegion(a) && assetRegion(a) !== 'India'
-  ).length
-
-  const fitToRegion = useCallback(
-    (target: RegionFilter, assetList: Asset[]) => {
+  const fitToPlace = useCallback(
+    (placeId: string, assetList: Asset[]) => {
       const map = mapRef.current
-      if (!map || assetList.length === 0) return
+      if (!map) return
 
-      let subset = assetList
-      if (target === 'india') {
-        const indiaSubs = assets.filter(
-          (a) => a.asset_type === 'substation' && assetRegion(a) === 'India'
+      const place = getPlaceById(placeId)
+      if (place?.bounds) {
+        const [[south, west], [north, east]] = place.bounds
+        map.fitBounds(
+          L.latLngBounds([south, west], [north, east]),
+          { padding: [50, 50], maxZoom: placeId === 'india' ? 6 : placeId === 'gujarat' ? 8 : 11 }
         )
-        subset = indiaSubs.length ? indiaSubs : assetList
-      } else if (target === 'world') {
-        const worldSubs = assets.filter(
-          (a) =>
-            a.asset_type === 'substation' && assetRegion(a) && assetRegion(a) !== 'India'
-        )
-        subset = worldSubs.length ? worldSubs : assetList
+        return
       }
 
-      const bounds = collectBounds(subset)
+      if (assetList.length === 0) return
+      const bounds = collectBounds(assetList)
       if (!bounds) return
-
-      const maxZoom = target === 'india' ? 6 : target === 'world' ? 4 : 5
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom })
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 6 })
     },
-    [assets]
+    []
   )
-
-  const toggleType = (type: AssetType) => {
-    setTypeFilters((prev) => ({ ...prev, [type]: !prev[type] }))
-  }
 
   const placeMarker = useCallback(
     (ref: React.MutableRefObject<L.Marker | null>, lat: number, lng: number, icon: L.DivIcon, popupHtml: string) => {
@@ -393,13 +511,23 @@ export default function GISMap({
 
     try {
       const map = L.map(container, {
-        center: [22.5, 79.0],
-        zoom: 5,
+        center: [22.5, 72.5],
+        zoom: 7,
         zoomControl: false,
+        maxBounds: L.latLngBounds(
+          [INDIA_MAP_BOUNDS[0][0], INDIA_MAP_BOUNDS[0][1]],
+          [INDIA_MAP_BOUNDS[1][0], INDIA_MAP_BOUNDS[1][1]]
+        ),
+        maxBoundsViscosity: 0.85,
+        minZoom: 5,
       })
 
-      L.control.zoom({ position: 'topright' }).addTo(map)
       L.control.attribution({ position: 'bottomright', prefix: false }).addTo(map)
+
+      onMapReady?.({
+        zoomIn: () => map.zoomIn(),
+        zoomOut: () => map.zoomOut(),
+      })
 
       const layer = buildTileLayer('satellite-labels')
       layer.addTo(map)
@@ -408,7 +536,15 @@ export default function GISMap({
       setMapStatus('ready')
 
       // Refresh labels/footprints on zoom — do NOT reset map bounds
-      map.on('zoomend', () => setZoomVersion((v) => v + 1))
+      map.on('zoomend', () => {
+        setZoomVersion((v) => v + 1)
+        loadViewportTowersRef.current()
+      })
+
+      map.on('moveend', () => {
+        if (towerFetchRef.current) clearTimeout(towerFetchRef.current)
+        towerFetchRef.current = setTimeout(() => loadViewportTowersRef.current(), 300)
+      })
 
       map.on('mousemove', (e) => {
         setCursorPoint({ lat: e.latlng.lat, lng: e.latlng.lng })
@@ -420,22 +556,16 @@ export default function GISMap({
         flyToCoordinates(lat, lng, 'map_click')
       })
 
-<<<<<<< Updated upstream
-      // Guard against calling invalidateSize after the map has been removed
-      // (React 18 StrictMode double-mount runs cleanup before this fires).
-      const isMapAlive = () => mapRef.current === map && Boolean((map as unknown as { _mapPane?: unknown })._mapPane)
+      const isMapAlive = () => mapRef.current === map && Boolean(map.getPane('mapPane'))
       const safeInvalidate = () => {
-        if (isMapAlive()) map.invalidateSize()
+        if (isMapAlive()) safeInvalidateMapSize(map)
       }
 
+      map.whenReady(() => {
+        requestAnimationFrame(() => safeInvalidate())
+      })
       const invalidateTimer = setTimeout(safeInvalidate, 100)
       const onResize = () => safeInvalidate()
-=======
-      map.whenReady(() => {
-        requestAnimationFrame(() => safeInvalidateMapSize(map))
-      })
-      const onResize = () => safeInvalidateMapSize(map)
->>>>>>> Stashed changes
       window.addEventListener('resize', onResize)
 
       return () => {
@@ -467,6 +597,15 @@ export default function GISMap({
   }, [resizeSignal])
 
   useEffect(() => {
+    if (!onMapStatusChange || mapStatus !== 'ready') return
+    onMapStatusChange({
+      coordinates: cursorPoint,
+      zoom: mapRef.current?.getZoom() ?? null,
+      viewMode: '2d',
+    })
+  }, [cursorPoint, zoomVersion, mapStatus, onMapStatusChange])
+
+  useEffect(() => {
     const map = mapRef.current
     if (!map || mapStatus !== 'ready') return
 
@@ -485,17 +624,38 @@ export default function GISMap({
       map.removeLayer(clusterRef.current)
     }
     clusterRef.current = L.markerClusterGroup({
-      maxClusterRadius: 45,
+      maxClusterRadius: 55,
       spiderfyOnMaxZoom: true,
       showCoverageOnHover: false,
-      disableClusteringAtZoom: 9,
+      disableClusteringAtZoom: 12,
+      iconCreateFunction: (cluster) => {
+        const count = cluster.getChildCount()
+        const size = count > 100 ? 48 : count > 50 ? 44 : count > 15 ? 38 : 32
+        const childMarkers = cluster.getAllChildMarkers() as L.Marker[]
+        const bg = clusterHealthColor(childMarkers)
+        const glow = clusterHealthGlow(childMarkers)
+        return L.divIcon({
+          html: `<div style="
+            width:${size}px;height:${size}px;border-radius:10px;
+            display:flex;align-items:center;justify-content:center;
+            background:${bg};
+            border:2px solid rgba(255,255,255,0.9);
+            box-shadow:0 0 16px ${glow},0 6px 14px rgba(0,0,0,0.4);
+            color:#fff;font-weight:800;font-size:${size > 38 ? 13 : 11}px;
+            font-family:ui-monospace,monospace;
+          ">${count}</div>`,
+          className: '',
+          iconSize: L.point(size, size),
+        })
+      },
     })
     markerByIdRef.current.clear()
     overlaysRef.current.forEach((o) => o.remove())
     overlaysRef.current = []
 
     const zoom = map.getZoom()
-    const labelsVisible = showLabels && zoom >= 7
+    const labelsVisible = showLabels && zoom >= 10
+    const compactTowers = zoom < 10
 
     filteredAssets.forEach((asset) => {
       const isSelected = asset.id === selectedAssetId
@@ -506,23 +666,27 @@ export default function GISMap({
       if (asset.asset_type === 'line' && asset.geometry?.type === 'LineString') {
         if (activeLayers && !activeLayers.corridors) return
         const latlngs = toLatLngs(asset.geometry.coordinates as number[][])
+        const kvRaw = asset.metadata?.voltage_kv
+        const kv = typeof kvRaw === 'number' ? kvRaw : typeof kvRaw === 'string' ? Number(kvRaw) : null
         const lineHealth = asset.health_score || 'healthy'
         const lineColor =
           hasAlert || lineHealth === 'critical'
-            ? '#ef4444' // Red (Critical)
+            ? '#ef4444'
             : lineHealth === 'attention_required'
-              ? '#F59E0B' // Yellow (Warning)
-              : '#2563EB' // Blue (Healthy)
+              ? '#F59E0B'
+              : voltageLineColor(kv)
 
         const polyline = L.polyline(latlngs, {
           color: lineColor,
-          weight: isSelected ? 6 : 4,
-          opacity: 0.9,
-          dashArray: hasAlert || asset.status === 'investigation' || asset.status === 'maintenance' ? '6 6' : undefined,
+          weight: lineWeightForVoltage(kv, isSelected),
+          opacity: kv != null && kv >= 220 ? 0.95 : 0.75,
+          dashArray: kv != null && kv >= 400 ? undefined : '8 6',
+          className: 'tams-line-flow',
         }).addTo(map)
         polyline.bindPopup(buildPopupHtml(asset))
         polyline.on('click', () => onSelectAsset?.(asset.id))
         overlaysRef.current.push(polyline)
+        return
       }
 
       if (asset.asset_type === 'substation' && asset.geometry?.type === 'Polygon' && zoom >= 8) {
@@ -539,14 +703,29 @@ export default function GISMap({
         overlaysRef.current.push(polygon)
       }
 
-      const marker = L.marker([asset.latitude, asset.longitude], {
-        icon: makeAssetIcon(asset, isSelected, hasAlert),
-        zIndexOffset: asset.asset_type === 'substation' ? 300 : 200,
-      })
+      // Compact tower dots at overview zoom — full icons when zoomed in
+      let marker: L.Marker & { assetRef?: Asset }
+      if (asset.asset_type === 'tower' && compactTowers) {
+        marker = L.marker([asset.latitude, asset.longitude], {
+          icon: L.divIcon({
+            className: '',
+            iconSize: [10, 10],
+            iconAnchor: [5, 5],
+            html: `<div style="width:10px;height:10px;border-radius:50%;background:${cfg.color};border:1.5px solid #fff;box-shadow:0 0 4px rgba(0,0,0,0.5)"></div>`,
+          }),
+          zIndexOffset: 150,
+        }) as L.Marker & { assetRef?: Asset }
+      } else {
+        marker = L.marker([asset.latitude, asset.longitude], {
+          icon: makeAssetIcon(asset, isSelected, hasAlert),
+          zIndexOffset: asset.asset_type === 'substation' ? 300 : 200,
+        }) as L.Marker & { assetRef?: Asset }
+      }
+      marker.assetRef = asset
 
       marker.bindPopup(buildPopupHtml(asset), { className: 'asset-popup', maxWidth: 280 })
 
-      if (labelsVisible) {
+      if (labelsVisible && asset.asset_type !== 'tower') {
         marker.bindTooltip(`${cfg.badge}: ${asset.name}`, {
           permanent: true,
           direction: 'top',
@@ -558,14 +737,16 @@ export default function GISMap({
       marker.on('click', () => onSelectAsset?.(asset.id))
       markerByIdRef.current.set(asset.id, marker)
 
-      // Wildfire Risk overlay (Orange-red translucent circles)
-      if (showWildfireRisk && (asset.health_score === 'critical' || asset.health_score === 'attention_required')) {
+      // Wildfire Risk overlay — thin outline only
+      if (wildfireOn && (asset.health_score === 'critical' || asset.health_score === 'attention_required')) {
         const circle = L.circle([asset.latitude, asset.longitude], {
           color: '#f97316',
           fillColor: '#ea580c',
-          fillOpacity: 0.12,
-          radius: 8000,
+          fillOpacity: 0,
+          radius: 5000,
           weight: 1,
+          opacity: 0.45,
+          dashArray: '6 8',
         }).addTo(map)
         overlaysRef.current.push(circle)
       }
@@ -583,30 +764,34 @@ export default function GISMap({
         name.includes('mundra') ||
         name.includes('viz') ||
         name.includes('anakapalle')
-      if (showFloodRisk && isFloodProne) {
+      if (floodOn && isFloodProne) {
         const circle = L.circle([asset.latitude, asset.longitude], {
           color: '#06b6d4',
           fillColor: '#0891b2',
-          fillOpacity: 0.12,
-          radius: 12000,
+          fillOpacity: 0,
+          radius: 6000,
           weight: 1,
+          opacity: 0.4,
+          dashArray: '6 8',
         }).addTo(map)
         overlaysRef.current.push(circle)
       }
 
       // Heatmap Anomaly Density overlay
-      if (activeLayers?.heatmap && hasAlert) {
+      if ((activeLayers?.heatmap || heatMapMode === 'heatmap') && hasAlert) {
         const circle = L.circle([asset.latitude, asset.longitude], {
           color: '#ef4444',
           fillColor: '#ef4444',
-          fillOpacity: 0.18,
-          radius: 20000,
-          weight: 0,
+          fillOpacity: 0.04,
+          radius: 4000,
+          weight: 1,
+          opacity: 0.35,
         }).addTo(map)
         overlaysRef.current.push(circle)
       }
 
-      if (asset.asset_type === 'substation') {
+      // Cluster towers + substations for accurate Gujarat density visibility
+      if (asset.asset_type === 'tower' || asset.asset_type === 'substation') {
         clusterRef.current!.addLayer(marker)
       } else {
         marker.addTo(map)
@@ -621,11 +806,11 @@ export default function GISMap({
     onSelectAsset,
     mapStatus,
     showLabels,
-    filteredIds,
     zoomVersion,
-    showWildfireRisk,
-    showFloodRisk,
+    wildfireOn,
+    floodOn,
     activeLayers,
+    heatMapMode,
   ])
 
   // Fit map only when region or asset filters change — never on user zoom
@@ -635,179 +820,98 @@ export default function GISMap({
     if (lastFitKeyRef.current === fitKey) return
 
     lastFitKeyRef.current = fitKey
-    fitToRegion(regionFilter, filteredAssets)
+    fitToPlace(selectedPlaceId, filteredAssets)
     hasInitialFitRef.current = true
-  }, [fitKey, mapStatus, regionFilter, filteredAssets, fitToRegion])
+  }, [fitKey, mapStatus, selectedPlaceId, filteredAssets, fitToPlace])
 
   // Fly to + open popup for selected asset
   useEffect(() => {
     const map = mapRef.current
     if (!map || mapStatus !== 'ready' || !selectedAssetId) return
-    const asset = assets.find((a) => a.id === selectedAssetId)
-    if (!asset || !typeFilters[asset.asset_type] || !passesRegionFilter(asset, regionFilter)) return
+    const asset =
+      assets.find((a) => a.id === selectedAssetId) ||
+      viewportTowers.find((a) => a.id === selectedAssetId) ||
+      filteredAssets.find((a) => a.id === selectedAssetId)
+    if (!asset || !typeFilters[asset.asset_type] || !assetMatchesPlace(asset, selectedPlaceId)) return
 
-    map.flyTo([asset.latitude, asset.longitude], 11, { duration: 1.2 })
+    map.flyTo([asset.latitude, asset.longitude], Math.max(map.getZoom(), 12), { duration: 1.2 })
     const marker = markerByIdRef.current.get(selectedAssetId)
     if (marker) {
       setTimeout(() => marker.openPopup(), 1300)
     }
-  }, [selectedAssetId, assets, mapStatus, typeFilters, regionFilter])
+  }, [selectedAssetId, assets, viewportTowers, filteredAssets, mapStatus, typeFilters, selectedPlaceId])
+
+  // Popup action buttons → open asset drawer
+  useEffect(() => {
+    const onPopupClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      const btn = target.closest('[data-asset-action]') as HTMLElement | null
+      if (!btn) return
+      const id = btn.getAttribute('data-asset-id')
+      if (id) onSelectAsset?.(id)
+    }
+    document.addEventListener('click', onPopupClick)
+    return () => document.removeEventListener('click', onPopupClick)
+  }, [onSelectAsset])
 
   return (
     <div className="absolute inset-0 w-full h-full">
       <div ref={mapContainer} className="absolute inset-0 w-full h-full z-0" />
 
-      {/* Layer switcher */}
-      <div className="absolute top-3 left-3 z-[1000] flex flex-col gap-2">
-        <div className="flex gap-1 bg-gray-900 rounded-lg p-1 shadow-lg border border-gray-700">
-          <button
-            type="button"
-            onClick={() => setMapLayer('satellite')}
-            className={`px-3 py-1.5 text-xs rounded-md transition ${mapLayer === 'satellite' ? 'bg-tams-primary text-white' : 'text-gray-300 hover:bg-gray-700'
-              }`}
-          >
-            Satellite
-          </button>
-          <button
-            type="button"
-            onClick={() => setMapLayer('satellite-labels')}
-            className={`px-3 py-1.5 text-xs rounded-md transition ${mapLayer === 'satellite-labels'
-                ? 'bg-tams-primary text-white'
-                : 'text-gray-300 hover:bg-gray-700'
-              }`}
-          >
-            + Labels
-          </button>
-        </div>
-
-        {/* Region focus */}
-        <div className="flex flex-wrap gap-1 bg-gray-900 rounded-lg p-1 shadow-lg border border-gray-700">
-          {(
-            [
-              ['india', `India (${indiaCount})`],
-              ['world', `World (${worldSubCount})`],
-              ['all', 'All'],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setRegionFilter(key)}
-              className={`px-2.5 py-1.5 text-xs rounded-md transition ${regionFilter === key ? 'bg-tams-primary text-white' : 'text-gray-300 hover:bg-gray-700'
-                }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* Asset type legend & filters */}
-        <div className="bg-gray-900 rounded-lg p-3 shadow-lg border border-gray-700 text-xs min-w-[180px] max-h-[60vh] overflow-y-auto">
-          <p className="text-gray-400 font-semibold mb-2 uppercase tracking-wide">Asset Types</p>
-          {(Object.keys(ASSET_CONFIG) as AssetType[]).map((type) => {
-            const cfg = ASSET_CONFIG[type]
-            const count = assets.filter(
-              (a) => a.asset_type === type && passesRegionFilter(a, regionFilter)
-            ).length
-            return (
-              <button
-                key={type}
-                type="button"
-                onClick={() => toggleType(type)}
-                className={`flex items-center gap-2 w-full py-1.5 px-1 rounded transition ${typeFilters[type] ? 'opacity-100' : 'opacity-40'
-                  } hover:bg-gray-800`}
-              >
-                <span
-                  className="w-3 h-3 rounded-sm flex-shrink-0"
-                  style={{ backgroundColor: cfg.color }}
-                />
-                <span className="text-white font-medium">{cfg.label}</span>
-                <span className="text-gray-500 ml-auto">({count})</span>
-              </button>
-            )
-          })}
-
-          {/* Risk Zones Overlay Toggles */}
-          <div className="mt-3 border-t border-gray-700 pt-3 space-y-1.5">
-            <p className="text-gray-400 font-semibold mb-1 uppercase tracking-wide">Risk Overlays</p>
-            <button
-              type="button"
-              onClick={() => setShowWildfireRisk(!showWildfireRisk)}
-              className={`flex items-center gap-2 w-full py-1.5 px-1 rounded transition-all duration-150 ${showWildfireRisk ? 'text-orange-400 font-medium bg-orange-500/5' : 'text-gray-400 hover:bg-gray-800'
-                }`}
-            >
-              <span className={`w-3.5 h-3.5 rounded-sm flex items-center justify-center border transition-all ${showWildfireRisk ? 'bg-orange-500 border-orange-600' : 'border-gray-600 bg-transparent'}`}>
-                {showWildfireRisk && '✓'}
-              </span>
-              <span>Wildfire Threat Zone</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowFloodRisk(!showFloodRisk)}
-              className={`flex items-center gap-2 w-full py-1.5 px-1 rounded transition-all duration-150 ${showFloodRisk ? 'text-cyan-400 font-medium bg-cyan-500/5' : 'text-gray-400 hover:bg-gray-800'
-                }`}
-            >
-              <span className={`w-3.5 h-3.5 rounded-sm flex items-center justify-center border transition-all ${showFloodRisk ? 'bg-cyan-500 border-cyan-600' : 'border-gray-600 bg-transparent'}`}>
-                {showFloodRisk && '✓'}
-              </span>
-              <span>Flood Hazard Zone</span>
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowLabels((v) => !v)}
-            className="mt-2 w-full py-1.5 text-gray-300 hover:text-white border-t border-gray-700 pt-2 text-left"
-          >
-            {showLabels ? '✓ Name labels on (zoom 7+)' : '○ Name labels off'}
-          </button>
-          <p className="text-gray-500 mt-2 text-[10px] leading-relaxed">
-            {indiaCount} substations across India · {worldSubCount} worldwide. Click cluster to expand.
-          </p>
-        </div>
-      </div>
-
       {/* Bottom Map Status Bar */}
-      <div className="absolute bottom-4 left-4 right-4 z-[1000] bg-[#0e172a]/95 border border-slate-800 rounded-xl p-3 shadow-2xl flex flex-wrap items-center justify-between gap-4 text-[10px] text-slate-400 font-mono">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-            <span className="text-slate-500 uppercase tracking-wider font-bold">Grid Coordinates:</span>
-            <span className="text-slate-200">
-              {cursorPoint ? `${cursorPoint.lat.toFixed(4)}, ${cursorPoint.lng.toFixed(4)}` : '0.0000, 0.0000'}
-            </span>
+      {!suppressInternalStatusBar && (
+        <div className="absolute bottom-4 left-4 right-4 z-[1000] bg-[#0e172a]/95 border border-slate-800 rounded-xl p-3 shadow-2xl flex flex-wrap items-center justify-between gap-4 text-[10px] text-slate-400 font-mono">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              <span className="text-slate-500 uppercase tracking-wider font-bold">Grid Coordinates:</span>
+              <span className="text-slate-200">
+                {cursorPoint ? `${cursorPoint.lat.toFixed(4)}, ${cursorPoint.lng.toFixed(4)}` : '0.0000, 0.0000'}
+              </span>
+            </div>
+            <div className="h-4 w-px bg-slate-800" />
+            <div>
+              <span className="text-slate-500 uppercase tracking-wider font-bold">Zoom:</span>
+              <span className="text-slate-200 ml-1">Lvl {mapRef.current ? mapRef.current.getZoom() : 6}</span>
+            </div>
+            {showTowers && (
+              <>
+                <div className="h-4 w-px bg-slate-800" />
+                <div>
+                  <span className="text-slate-500 uppercase tracking-wider font-bold">Towers:</span>
+                  <span className={`ml-1 font-bold ${towersLoading ? 'text-amber-400' : 'text-emerald-400'}`}>
+                    {towersLoading ? 'Loading…' : `${viewportTowers.length.toLocaleString()} in view`}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
-          <div className="h-4 w-px bg-slate-800" />
-          <div>
-            <span className="text-slate-500 uppercase tracking-wider font-bold">Zoom:</span>
-            <span className="text-slate-200 ml-1">Lvl {mapRef.current ? mapRef.current.getZoom() : 6}</span>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-3">
-          <div>
-            <span className="text-slate-500 uppercase tracking-wider font-bold">Selected:</span>
-            <span className="text-blue-400 font-bold ml-1">
-              {selectedAssetId ? (assets.find(a => a.id === selectedAssetId)?.name || selectedAssetId) : 'None'}
-            </span>
-          </div>
-          <div className="h-4 w-px bg-slate-800" />
-          <div>
-            <span className="text-slate-500 uppercase tracking-wider font-bold">Satellite Pass:</span>
-            <span className="text-slate-200 ml-1">4.5 Hrs Ago (Sentinel-2)</span>
-          </div>
-          <div className="h-4 w-px bg-slate-800" />
-          <div>
-            <span className="text-slate-500 uppercase tracking-wider font-bold">Freshness:</span>
-            <span className="text-emerald-400 font-bold ml-1">REAL-TIME</span>
-          </div>
-          <div className="h-4 w-px bg-slate-800" />
-          <div className="flex items-center gap-1">
-            <span className="text-slate-500 uppercase tracking-wider font-bold">Status:</span>
-            <span className="text-indigo-400 font-bold ml-1 uppercase">Active Feed</span>
+          <div className="flex items-center gap-3">
+            <div>
+              <span className="text-slate-500 uppercase tracking-wider font-bold">Selected:</span>
+              <span className="text-blue-400 font-bold ml-1">
+                {selectedAssetId ? (assets.find(a => a.id === selectedAssetId)?.name || selectedAssetId) : 'None'}
+              </span>
+            </div>
+            <div className="h-4 w-px bg-slate-800" />
+            <div>
+              <span className="text-slate-500 uppercase tracking-wider font-bold">Satellite Pass:</span>
+              <span className="text-slate-200 ml-1">4.5 Hrs Ago (Sentinel-2)</span>
+            </div>
+            <div className="h-4 w-px bg-slate-800" />
+            <div>
+              <span className="text-slate-500 uppercase tracking-wider font-bold">Freshness:</span>
+              <span className="text-emerald-400 font-bold ml-1">REAL-TIME</span>
+            </div>
+            <div className="h-4 w-px bg-slate-800" />
+            <div className="flex items-center gap-1">
+              <span className="text-slate-500 uppercase tracking-wider font-bold">Status:</span>
+              <span className="text-indigo-400 font-bold ml-1 uppercase">Active Feed</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {mapStatus === 'loading' && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-[999]">

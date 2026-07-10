@@ -14,26 +14,21 @@ Write-Host "Upgrading pip, setuptools, and wheel..." -ForegroundColor Cyan
 Write-Host "Installing lightweight local development dependencies..." -ForegroundColor Cyan
 & backend/venv/Scripts/pip install -r backend/requirements-local.txt
 
-<<<<<<< Updated upstream
-# 2. Setup Frontend Dependencies
-if (-not (Test-Path "frontend/node_modules")) {
-    Write-Host "Installing frontend dependencies (node_modules)..." -ForegroundColor Cyan
-    Set-Location frontend
-    npm.cmd install
-    Set-Location ..
-}
-
-# 3. Setup Root Workspace Dependencies
-if (-not (Test-Path "node_modules")) {
-    Write-Host "Installing workspace dependencies..." -ForegroundColor Cyan
-    npm.cmd install
-}
-=======
 # 2. Install workspace dependencies (frontend workspace + root devDependencies like concurrently)
 Write-Host "Installing workspace dependencies..." -ForegroundColor Cyan
-npm install
->>>>>>> Stashed changes
+npm.cmd install
+
+# Ensure env files exist (from templates) before start
+if (-not (Test-Path "frontend/.env")) {
+    Write-Host "Creating frontend/.env from .env.example..." -ForegroundColor Yellow
+    Copy-Item "frontend/.env.example" "frontend/.env"
+}
+if (-not (Test-Path "backend/.env")) {
+    Write-Host "Creating backend/.env from .env.example..." -ForegroundColor Yellow
+    Copy-Item "backend/.env.example" "backend/.env"
+}
 
 # 4. Start Services Concurrently
-Write-Host "Starting TAMS Frontend (Port 3000) & Backend (Port 8000)..." -ForegroundColor Green
+Write-Host "Starting TAMS Frontend (Port 3000) & Backend (Port 8000 from backend/.env)..." -ForegroundColor Green
+Write-Host "  Frontend proxies /api → BACKEND_URL in frontend/.env" -ForegroundColor DarkGray
 npm.cmd run dev

@@ -30,19 +30,31 @@ async def list_assets(
     status: str | None = None,
     criticality: str | None = None,
     search: str | None = None,
+    state: str | None = None,
+    bbox: str | None = None,
+    include_towers: bool = False,
     page: int = 1,
     page_size: int = 100,
 ) -> tuple[list[dict], int]:
+    bbox_tuple: tuple[float, float, float, float] | None = None
+    if bbox:
+        try:
+            bbox_tuple = tuple(float(v) for v in bbox.split(","))  # type: ignore[assignment]
+        except ValueError:
+            bbox_tuple = None
+
     if not is_db_ready() or session is None:
-        items = MOCK_ASSETS
-        if asset_type:
-            items = [a for a in items if a["asset_type"] == asset_type]
-        if search:
-            q = search.lower()
-            items = [a for a in items if q in a["name"].lower()]
-        total = len(items)
-        start = (page - 1) * page_size
-        return items[start : start + page_size], total
+        from app.services.kml_loader import list_kml_assets
+
+        return list_kml_assets(
+            asset_type=asset_type,
+            state=state,
+            bbox=bbox_tuple,
+            search=search,
+            include_towers=include_towers,
+            page=page,
+            page_size=page_size,
+        )
 
     stmt = (
         select(Asset)
@@ -84,7 +96,13 @@ async def list_assets(
 
 async def get_asset(session: AsyncSession | None, asset_id: str) -> dict | None:
     if not is_db_ready() or session is None:
-        return next((a for a in MOCK_ASSETS if a["id"] == asset_id), None)
+        from app.services.kml_loader import get_corridor_assets, _load_towers
+
+        for pool in (get_corridor_assets(), _load_towers(), MOCK_ASSETS):
+            found = next((a for a in pool if a["id"] == asset_id), None)
+            if found:
+                return found
+        return None
 
     try:
         uid = UUID(asset_id)

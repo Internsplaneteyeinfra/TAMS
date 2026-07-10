@@ -1,14 +1,19 @@
 const CONFIGURED_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
 
-// Hosted backend (Railway). Used automatically when the app is served from a
-// non-local host and no absolute API base was provided at build time.
-const HOSTED_BACKEND_BASE = 'https://web-production-3cc0c.up.railway.app/api/v1'
+// Hosted backend fallback from env (used when opened from a non-local host
+// and NEXT_PUBLIC_API_BASE_URL is still a relative path like /api/v1).
+const HOSTED_BACKEND_BASE =
+  process.env.NEXT_PUBLIC_HOSTED_API_BASE_URL || ''
 
 function resolveApiBase(): string {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname
-    const isLocal = host === 'localhost' || host === '127.0.0.1'
-    if (!isLocal && CONFIGURED_BASE.startsWith('/')) {
+    const isLocal =
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host.startsWith('192.168.') ||
+      host.startsWith('10.')
+    if (!isLocal && CONFIGURED_BASE.startsWith('/') && HOSTED_BACKEND_BASE) {
       return HOSTED_BACKEND_BASE
     }
   }
@@ -92,6 +97,47 @@ export interface MonitoringRunResult {
 export interface WorkflowDefinition {
   name: string
   stages: Array<{ id: string; name: string }>
+}
+
+export interface RegionAssetStats {
+  towers: number
+  lines: number
+  substations: number
+  total: number
+  line_km?: number
+  source?: string
+}
+
+export async function fetchGisStats(placeId: string): Promise<RegionAssetStats> {
+  const params = new URLSearchParams({ place_id: placeId })
+  return fetchApi<RegionAssetStats>(`/gis/stats?${params}`)
+}
+
+export async function fetchGisPlaceStats(): Promise<Record<string, { total: number }>> {
+  return fetchApi<Record<string, { total: number }>>('/gis/stats/places')
+}
+
+export async function fetchGisTowers(
+  bbox: string,
+  state?: string,
+  limit = 5000
+): Promise<Asset[]> {
+  const params = new URLSearchParams({ bbox, limit: String(limit) })
+  if (state) params.set('state', state)
+  const res = await fetch(`${getApiBase()}/gis/towers?${params}`)
+  if (!res.ok) throw new Error('Failed to load towers')
+  const json = await res.json()
+  const features = json.data?.features ?? []
+  return features.map((f: { id: string; properties: Record<string, unknown>; geometry: { coordinates: number[] } }) => ({
+    id: String(f.id ?? f.properties.asset_id),
+    name: String(f.properties.name ?? 'Tower'),
+    asset_type: 'tower' as const,
+    latitude: f.geometry.coordinates[1],
+    longitude: f.geometry.coordinates[0],
+    health_score: String(f.properties.health_score ?? 'healthy'),
+    status: 'active',
+    metadata: (f.properties.metadata as Record<string, unknown>) ?? {},
+  }))
 }
 
 export async function runMonitoringCycle(assetIds?: string[]): Promise<MonitoringRunResult> {

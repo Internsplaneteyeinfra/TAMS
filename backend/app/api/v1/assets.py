@@ -56,8 +56,11 @@ async def list_assets(
     status: Optional[str] = Query(None),
     criticality: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    state: Optional[str] = Query(None, description="Filter by Indian state e.g. Gujarat"),
+    bbox: Optional[str] = Query(None, description="minLon,minLat,maxLon,maxLat"),
+    include_towers: bool = Query(False),
     page: int = Query(1, ge=1),
-    page_size: int = Query(100, ge=1, le=1000),
+    page_size: int = Query(100, ge=1, le=20000),
     session: AsyncSession = Depends(get_session),
 ):
     items, total = await asset_service.list_assets(
@@ -67,6 +70,9 @@ async def list_assets(
         status=status,
         criticality=criticality,
         search=search,
+        state=state,
+        bbox=bbox,
+        include_towers=include_towers,
         page=page,
         page_size=page_size,
     )

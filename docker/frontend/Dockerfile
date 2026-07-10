@@ -1,55 +1,42 @@
 # Frontend Dockerfile - Multi-stage build
-FROM node:18-alpine as builder
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
 COPY frontend/package*.json ./
-
-# Install dependencies
 RUN npm ci
 
-# Copy source code
-COPY frontend/src ./src
-COPY frontend/public ./public
-COPY frontend/tsconfig.json .
-COPY frontend/next.config.ts .
-COPY frontend/tailwind.config.js .
+COPY frontend/ ./
 
-# Build Next.js application
+# Build-time public API URL (override with --build-arg in CI)
+ARG NEXT_PUBLIC_API_BASE_URL=/api/v1
+ARG BACKEND_URL=http://backend:8000
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+ENV BACKEND_URL=$BACKEND_URL
+
 RUN npm run build
 
-# Production stage
 FROM node:18-alpine
 
 WORKDIR /app
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+RUN apk add --no-cache dumb-init wget
 
-# Copy from builder
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
-COPY frontend/package*.json ./
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/next.config.js ./next.config.js
 
-# Create non-root user
 RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
-
 USER nextjs
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
-
-# Expose port
+ENV NODE_ENV=production
+ENV PORT=3000
 EXPOSE 3000
 
-# Set environment to production
-ENV NODE_ENV=production
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/ || exit 1
 
-# Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
-
-# Run application
 CMD ["npm", "start"]

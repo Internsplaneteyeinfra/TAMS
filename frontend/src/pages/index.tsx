@@ -2,22 +2,26 @@
  * Home page — TAMS GIS Command Center Redesign
  */
 
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useQuery } from '@tanstack/react-query'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  TrendingUp,
-  TrendingDown,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
 
 import LeftSidebar from '@/components/LeftSidebar'
 import RightSidebar from '@/components/RightSidebar'
-import ModuleNav from '@/components/layout/ModuleNav'
-import { fetchApi, type Alert, type Asset } from '@/lib/api'
+import BottomStatusBar from '@/components/layout/BottomStatusBar'
+import DashboardSkeleton from '@/components/layout/DashboardSkeleton'
+import TopNavbar from '@/components/topbar/TopNavbar'
+import CommandPalette, { useCommandPaletteShortcut } from '@/components/ui/CommandPalette'
+import { DEFAULT_PLACE_ID, getStateFilterForPlace } from '@/config/places'
+import { fetchApi, fetchGisPlaceStats, fetchGisStats, type Alert, type Asset } from '@/lib/api'
+import { computeRegionStats, filterAlertsByPlace } from '@/lib/placeFilter'
 import { selectAsset, type RootState } from '@/lib/store'
+import type { MapStatusSnapshot } from '@/types/mapStatus'
 
 const MapViewport = dynamic(() => import('@/components/MapViewport'), { ssr: false })
 
@@ -27,6 +31,13 @@ export default function Home() {
   const [isClient, setIsClient] = useState(false)
   const [isOperationsPanelOpen, setIsOperationsPanelOpen] = useState(true)
   const [mapResizeSignal, setMapResizeSignal] = useState(0)
+  const [mapStatus, setMapStatus] = useState<MapStatusSnapshot>({
+    coordinates: null,
+    zoom: null,
+    viewMode: '2d',
+  })
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [selectedPlaceId, setSelectedPlaceId] = useState(DEFAULT_PLACE_ID)
   const dispatch = useDispatch()
   const selectedAssetId = useSelector((state: RootState) => state.assets.selected)
 
@@ -41,9 +52,27 @@ export default function Home() {
     return () => window.clearTimeout(timer)
   }, [isOperationsPanelOpen])
 
+  const handleLeftSidebarCollapsedChange = useCallback(() => {
+    window.setTimeout(() => setMapResizeSignal((n) => n + 1), 300)
+  }, [])
+
+  const handleCoreSidebarHiddenChange = useCallback(() => {
+    window.setTimeout(() => setMapResizeSignal((n) => n + 1), 300)
+  }, [])
+
+  const openCommandPalette = useCallback(() => setCommandPaletteOpen(true), [])
+  const closeCommandPalette = useCallback(() => setCommandPaletteOpen(false), [])
+  useCommandPaletteShortcut(() => setCommandPaletteOpen((open) => !open))
+
+  const stateFilter = getStateFilterForPlace(selectedPlaceId)
+
   const { data: assets = [], isLoading: assetsLoading } = useQuery({
-    queryKey: ['assets'],
-    queryFn: () => fetchApi<Asset[]>('/assets'),
+    queryKey: ['assets', stateFilter ?? 'india'],
+    queryFn: () => {
+      const params = new URLSearchParams({ page_size: '15000' })
+      if (stateFilter) params.set('state', stateFilter)
+      return fetchApi<Asset[]>(`/assets?${params}`)
+    },
     enabled: isClient,
   })
 
@@ -59,6 +88,10 @@ export default function Home() {
     enabled: isClient,
   })
 
+  const handleMapStatusChange = useCallback((status: MapStatusSnapshot) => {
+    setMapStatus(status)
+  }, [])
+
   const handleSelectAsset = useCallback(
     (id: string) => {
       dispatch(selectAsset(id))
@@ -70,126 +103,75 @@ export default function Home() {
     .filter((a) => a.status === 'open')
     .map((a) => a.asset_id)
 
+  const { data: placeStatsMap = {} } = useQuery({
+    queryKey: ['gis-place-stats'],
+    queryFn: () => fetchGisPlaceStats(),
+    enabled: isClient,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const { data: regionKmlStats } = useQuery({
+    queryKey: ['gis-stats', selectedPlaceId],
+    queryFn: () => fetchGisStats(selectedPlaceId),
+    enabled: isClient,
+    staleTime: 60 * 1000,
+  })
+
+  const regionStats = useMemo(
+    () => computeRegionStats(assets, alerts, selectedPlaceId, regionKmlStats ?? null),
+    [assets, alerts, selectedPlaceId, regionKmlStats]
+  )
+
+  const placeAlerts = useMemo(
+    () => filterAlertsByPlace(alerts, assets, selectedPlaceId),
+    [alerts, assets, selectedPlaceId]
+  )
+
+  const regionActiveAlerts = placeAlerts.filter((a) => a.status === 'open').length
+  const regionCriticalAlerts = placeAlerts.filter(
+    (a) => a.status === 'open' && (a.priority === 'critical' || a.priority === 'high')
+  ).length
+
   if (!isClient) {
-    return <div className="flex items-center justify-center h-screen bg-[#060B17] text-white">Loading...</div>
+    return <DashboardSkeleton />
   }
 
-  // Calculate metrics
-  const activeAlertsCount = alerts.filter((a) => a.status === 'open').length
+  const isInitialLoading = assetsLoading && assets.length === 0
+
+  if (isInitialLoading) {
+    return <DashboardSkeleton />
+  }
+
   const criticalAlertsCount = alerts.filter(
     (a) => a.status === 'open' && (a.priority === 'critical' || a.priority === 'high')
   ).length
 
+  const selectedAsset = assets.find((a) => a.id === selectedAssetId)
+
   return (
     <div className="flex flex-col h-screen w-screen bg-[#060B17] text-slate-100 antialiased font-sans overflow-hidden">
 
-      {/* 1. TOP GLOBAL KPI STRIP */}
-      <div className="h-16 bg-[#0e172a] border-b border-white/10 flex items-center justify-between px-4 select-none shrink-0">
-<<<<<<< Updated upstream
-        
-        {/* Logo and module navigation */}
-        <div className="flex flex-col gap-1.5 min-w-[140px]">
-=======
+      <TopNavbar
+        assets={assets}
+        alerts={alerts}
+        activeAlertsCount={regionActiveAlerts}
+        criticalAlertsCount={regionCriticalAlerts}
+        openWorkOrders={maintenanceDash?.open_work_orders}
+        onSelectAsset={handleSelectAsset}
+        onOpenCommandPalette={openCommandPalette}
+        isLoading={assetsLoading}
+        coveragePct={regionStats.coveragePct}
+        placeLabel={regionStats.placeLabel}
+        regionAssetsCount={regionStats.totalAssets}
+      />
 
-        {/* Logo and system status */}
-        <div className="flex items-center gap-3">
->>>>>>> Stashed changes
-          <div className="flex flex-col">
-            <h1 className="text-sm font-black tracking-widest text-white leading-none">TAMS GRID COMMAND</h1>
-            <span className="text-[8px] text-slate-500 font-extrabold uppercase mt-0.5 tracking-wider">
-              Utility Operations Center
-            </span>
-          </div>
-          <ModuleNav variant="strip" />
-        </div>
-
-        {/* 7 KPI Cards */}
-        <div className="flex-1 max-w-[80%] grid grid-cols-7 gap-2.5 px-6">
-
-          {/* Card 1: Assets Monitored */}
-          <div className="bg-slate-950/40 border border-white/5 rounded-lg px-2.5 py-1.5 flex flex-col justify-center">
-            <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider">Monitored Assets</span>
-            <div className="flex items-baseline justify-between mt-0.5">
-              <span className="text-sm font-mono font-black text-white">{assets.length}</span>
-              <span className="text-[8px] text-emerald-400 font-bold flex items-center gap-0.5">
-                <TrendingUp className="w-2.5 h-2.5" /> +2
-              </span>
-            </div>
-          </div>
-
-          {/* Card 2: Active Alerts */}
-          <div className="bg-slate-950/40 border border-white/5 rounded-lg px-2.5 py-1.5 flex flex-col justify-center">
-            <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider">Active Alerts</span>
-            <div className="flex items-baseline justify-between mt-0.5">
-              <span className="text-sm font-mono font-black text-amber-400">{activeAlertsCount}</span>
-              <span className="text-[8px] text-red-400 font-bold flex items-center gap-0.5">
-                <TrendingUp className="w-2.5 h-2.5" /> +3
-              </span>
-            </div>
-          </div>
-
-          {/* Card 3: Critical Alerts */}
-          <div className="bg-slate-950/40 border border-white/5 rounded-lg px-2.5 py-1.5 flex flex-col justify-center">
-            <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider">Critical Alerts</span>
-            <div className="flex items-baseline justify-between mt-0.5">
-              <span className="text-sm font-mono font-black text-red-500">{criticalAlertsCount}</span>
-              <span className="text-[8px] text-emerald-400 font-bold flex items-center gap-0.5">
-                <TrendingDown className="w-2.5 h-2.5" /> -1
-              </span>
-            </div>
-          </div>
-
-          {/* Card 4: Coverage % */}
-          <div className="bg-slate-950/40 border border-white/5 rounded-lg px-2.5 py-1.5 flex flex-col justify-center">
-            <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider">Coverage %</span>
-            <div className="flex items-baseline justify-between mt-0.5">
-              <span className="text-sm font-mono font-black text-white">98.4%</span>
-              <span className="text-[8px] text-emerald-400 font-bold flex items-center gap-0.5">
-                <TrendingUp className="w-2.5 h-2.5" /> +0.2%
-              </span>
-            </div>
-          </div>
-
-          {/* Card 5: AI Detections Today */}
-          <div className="bg-slate-950/40 border border-white/5 rounded-lg px-2.5 py-1.5 flex flex-col justify-center">
-            <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider">AI Detections</span>
-            <div className="flex items-baseline justify-between mt-0.5">
-              <span className="text-sm font-mono font-black text-indigo-400">14</span>
-              <span className="text-[8px] text-indigo-400 font-bold flex items-center gap-0.5">
-                <TrendingUp className="w-2.5 h-2.5" /> +4
-              </span>
-            </div>
-          </div>
-
-          {/* Card 6: Monitoring Runs Today */}
-          <div className="bg-slate-950/40 border border-white/5 rounded-lg px-2.5 py-1.5 flex flex-col justify-center">
-            <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider">Runs (24H)</span>
-            <div className="flex items-baseline justify-between mt-0.5">
-              <span className="text-sm font-mono font-black text-white">6</span>
-              <span className="text-[8px] text-emerald-400 font-bold flex items-center gap-0.5">
-                <TrendingUp className="w-2.5 h-2.5" /> +1
-              </span>
-            </div>
-          </div>
-
-          {/* Card 7: Open Work Orders */}
-          <div className="bg-slate-950/40 border border-white/5 rounded-lg px-2.5 py-1.5 flex flex-col justify-center">
-            <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider">Work Orders</span>
-            <div className="flex items-baseline justify-between mt-0.5">
-              <span className="text-sm font-mono font-black text-white">{maintenanceDash?.open_work_orders ?? '—'}</span>
-              <span className="text-[8px] text-slate-400 font-bold">Hold</span>
-            </div>
-          </div>
-
-        </div>
-
-        {/* Dispatch System Status LED */}
-        <div className="flex items-center gap-2 bg-[#060B17] border border-white/5 px-3 py-1.5 rounded-lg">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-          <span className="text-[9px] font-bold text-slate-300 tracking-wider">GRID OK</span>
-        </div>
-
-      </div>
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={closeCommandPalette}
+        assets={assets}
+        onSelectAsset={handleSelectAsset}
+        onSelectPlace={setSelectedPlaceId}
+      />
 
       {/* 2. LOWER THREE-PANEL CORE SYSTEM */}
       <div className="flex-1 flex min-h-0 w-full overflow-hidden">
@@ -201,22 +183,33 @@ export default function Home() {
           selectedAssetId={selectedAssetId}
           onSelectAsset={handleSelectAsset}
           isLoading={assetsLoading}
+          onCollapsedChange={handleLeftSidebarCollapsedChange}
+          onHiddenChange={handleCoreSidebarHiddenChange}
         />
 
         {/* Center GIS Viewport + Operations Panel */}
         <div className="flex-1 relative min-h-0 min-w-0 overflow-hidden">
-          <div className="absolute inset-0 bg-[#060B17]">
+          <div
+            className="absolute top-0 left-0 bottom-0 bg-[#060B17] transition-[right] duration-300 ease-in-out"
+            style={{ right: isOperationsPanelOpen ? OPERATIONS_PANEL_WIDTH : 0 }}
+          >
             <MapViewport
               assets={assets}
+              alerts={alerts}
               selectedAssetId={selectedAssetId}
               alertAssetIds={alertAssetIds}
               onSelectAsset={handleSelectAsset}
               resizeSignal={mapResizeSignal}
+              onMapStatusChange={handleMapStatusChange}
+              selectedPlaceId={selectedPlaceId}
+              onSelectPlace={setSelectedPlaceId}
+              regionKmlStats={regionKmlStats ?? null}
+              placeAssetCounts={placeStatsMap}
             />
           </div>
 
           <div
-            className={`absolute top-0 bottom-0 right-0 z-20 w-80 transition-transform duration-300 ease-in-out ${isOperationsPanelOpen ? 'translate-x-0' : 'translate-x-full'
+            className={`absolute top-0 bottom-0 right-0 z-30 w-80 transition-transform duration-300 ease-in-out ${isOperationsPanelOpen ? 'translate-x-0' : 'translate-x-full'
               }`}
           >
             <RightSidebar
@@ -224,27 +217,30 @@ export default function Home() {
               alerts={alerts}
               selectedAssetId={selectedAssetId}
               onSelectAsset={handleSelectAsset}
+              onMinimize={() => setIsOperationsPanelOpen(false)}
             />
           </div>
 
-          <button
-            type="button"
-            title={isOperationsPanelOpen ? 'Hide Operations Panel' : 'Show Operations Panel'}
-            aria-label={isOperationsPanelOpen ? 'Hide Operations Panel' : 'Show Operations Panel'}
-            onClick={() => setIsOperationsPanelOpen((open) => !open)}
-            className={`absolute top-1/2 z-30 w-6 h-9 flex items-center justify-center bg-slate-950 border border-slate-700 rounded-md text-slate-400 hover:text-slate-100 hover:border-slate-500 shadow-lg transition-[right] duration-300 ease-in-out -translate-y-1/2 ${isOperationsPanelOpen ? '-translate-x-1/2' : 'translate-x-0'
-              }`}
-            style={{ right: isOperationsPanelOpen ? OPERATIONS_PANEL_WIDTH : 0 }}
-          >
-            {isOperationsPanelOpen ? (
-              <ChevronRight className="w-4 h-4" />
-            ) : (
+          {!isOperationsPanelOpen && (
+            <button
+              type="button"
+              title="Show Operations Panel"
+              aria-label="Show Operations Panel"
+              onClick={() => setIsOperationsPanelOpen(true)}
+              className="absolute top-1/2 z-30 w-7 h-9 flex items-center justify-center bg-slate-950 border border-slate-500 rounded-l-md text-slate-200 hover:text-white hover:border-slate-300 shadow-lg -translate-y-1/2 right-0"
+            >
               <ChevronLeft className="w-4 h-4" />
-            )}
-          </button>
+            </button>
+          )}
         </div>
 
       </div>
+
+      <BottomStatusBar
+        mapStatus={mapStatus}
+        selectedAssetName={selectedAsset?.name ?? null}
+        gridStatus={criticalAlertsCount > 0 ? 'warning' : 'ok'}
+      />
     </div>
   )
 }

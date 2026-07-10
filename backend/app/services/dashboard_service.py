@@ -10,8 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def operations_dashboard(session: AsyncSession | None) -> dict:
-    assets, total_assets = await list_assets(session, page=1, page_size=1)
-    _, total_count = await list_assets(session, page=1, page_size=10000)
+    from app.db.init_db import is_db_ready
+    from app.services.kml_loader import get_region_stats
+
+    if not is_db_ready() or session is None:
+        stats = get_region_stats()
+        total_count = stats["total"]
+    else:
+        _, total_count = await list_assets(session, page=1, page_size=1)
+    assets, _ = await list_assets(session, page=1, page_size=1)
     alarms = await alarm_summary(session)
     health = await portfolio_health(session)
 
