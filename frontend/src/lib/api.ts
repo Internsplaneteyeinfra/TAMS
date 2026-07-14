@@ -83,15 +83,52 @@ export interface WorkflowStage {
   stage: string
   status: string
   summary: string
+  started_at?: string
+  completed_at?: string
+  output?: Record<string, unknown>
+}
+
+export interface MonitoringDetection {
+  detection_type?: string
+  asset_id?: string
+  confidence?: number
+  severity?: string
+  latitude?: number | null
+  longitude?: number | null
+  details?: Record<string, unknown>
+}
+
+export interface MonitoringChange {
+  change_type?: string
+  asset_id?: string
+  severity?: string
+  confidence?: number
+  description?: string
+}
+
+export interface MonitoredAssetSummary {
+  id: string
+  name: string
+  asset_type?: string
+  latitude?: number
+  longitude?: number
+  health_score?: string
+  voltage_kv?: number | string | null
 }
 
 export interface MonitoringRunResult {
   run_id: string
   status: string
+  started_at?: string
+  completed_at?: string | null
   assets_monitored: number
   scenes_acquired: number
   alerts_generated: string[]
   stages: WorkflowStage[]
+  detections_count?: number
+  detections?: MonitoringDetection[]
+  changes?: MonitoringChange[]
+  monitored_assets?: MonitoredAssetSummary[]
 }
 
 export interface WorkflowDefinition {
@@ -120,11 +157,12 @@ export async function fetchGisPlaceStats(): Promise<Record<string, { total: numb
 export async function fetchGisTowers(
   bbox: string,
   state?: string,
-  limit = 5000
+  limit = 5000,
+  signal?: AbortSignal
 ): Promise<Asset[]> {
   const params = new URLSearchParams({ bbox, limit: String(limit) })
   if (state) params.set('state', state)
-  const res = await fetch(`${getApiBase()}/gis/towers?${params}`)
+  const res = await fetch(`${getApiBase()}/gis/towers?${params}`, { signal })
   if (!res.ok) throw new Error('Failed to load towers')
   const json = await res.json()
   const features = json.data?.features ?? []
@@ -150,6 +188,44 @@ export async function runMonitoringCycle(assetIds?: string[]): Promise<Monitorin
       generate_alerts: true,
     }),
   })
+}
+
+export async function fetchMonitoringRuns(limit = 50): Promise<MonitoringRunResult[]> {
+  const res = await fetchApi<{ runs: MonitoringRunResult[]; count: number }>(
+    `/monitoring/runs?limit=${limit}`
+  )
+  return res?.runs ?? []
+}
+
+/** Count detections on a run (API may omit detections_count). */
+export function monitoringDetectionCount(run: MonitoringRunResult): number {
+  if (typeof run.detections_count === 'number') return run.detections_count
+  return run.detections?.length ?? 0
+}
+
+/** Summarize satellite pipeline activity for the KPI strip. */
+export function summarizeMonitoringKpis(
+  runs: MonitoringRunResult[],
+  latest?: MonitoringRunResult | null
+): { detections24h: number; runs24h: number; scenes24h: number } {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000
+  const byId = new Map<string, MonitoringRunResult>()
+  for (const run of runs) {
+    if (run?.run_id) byId.set(run.run_id, run)
+  }
+  if (latest?.run_id) byId.set(latest.run_id, latest)
+
+  let detections24h = 0
+  let runs24h = 0
+  let scenes24h = 0
+  for (const run of byId.values()) {
+    const started = run.started_at ? Date.parse(run.started_at) : Date.now()
+    if (!Number.isFinite(started) || started < cutoff) continue
+    runs24h += 1
+    detections24h += monitoringDetectionCount(run)
+    scenes24h += run.scenes_acquired ?? 0
+  }
+  return { detections24h, runs24h, scenes24h }
 }
 
 export async function getWorkflow(): Promise<WorkflowDefinition> {

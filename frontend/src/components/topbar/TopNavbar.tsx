@@ -21,6 +21,12 @@ interface TopNavbarProps {
   coveragePct?: number
   placeLabel?: string
   regionAssetsCount?: number
+  aiDetections24h?: number
+  runs24h?: number
+  kmlHint?: string
+  onOpenAlerts?: () => void
+  onOpenMission?: () => void
+  onOpenWorkOrders?: () => void
 }
 
 export default function TopNavbar({
@@ -35,6 +41,12 @@ export default function TopNavbar({
   coveragePct,
   placeLabel,
   regionAssetsCount,
+  aiDetections24h,
+  runs24h,
+  kmlHint,
+  onOpenAlerts,
+  onOpenMission,
+  onOpenWorkOrders,
 }: TopNavbarProps) {
   const gridStatus = criticalAlertsCount > 0 ? 'warning' : 'ok'
 
@@ -100,6 +112,12 @@ export default function TopNavbar({
             openWorkOrders={openWorkOrders}
             coveragePct={coveragePct}
             placeLabel={placeLabel}
+            aiDetections24h={aiDetections24h}
+            runs24h={runs24h}
+            kmlHint={kmlHint}
+            onOpenAlerts={onOpenAlerts}
+            onOpenMission={onOpenMission}
+            onOpenWorkOrders={onOpenWorkOrders}
           />
         )}
       </div>

@@ -1,24 +1,18 @@
 import React, { useMemo } from 'react'
 import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts'
-import {
   ShieldAlert,
-  Thermometer,
-  Wind,
-  Droplets,
-  Flame,
   Search,
   Menu,
 } from 'lucide-react'
 import type { Alert, Asset } from '@/lib/api'
 import CollapsibleSidebar, { SidebarCollapseHeader } from '@/components/sidebar/CollapsibleSidebar'
 import SidebarNav from '@/components/sidebar/SidebarNav'
+import TransmissionNetworkFilters, {
+  applyNetworkFilters,
+  EMPTY_NETWORK_FILTERS,
+  type FilterPanelId,
+  type NetworkFilterValues,
+} from '@/components/sidebar/TransmissionNetworkFilters'
 import { SidebarListSkeleton } from '@/components/ui/Skeleton'
 
 interface LeftSidebarProps {
@@ -67,6 +61,13 @@ function getWeatherData(asset: Asset) {
   return { temp, wind, humidity, fireRisk, lightningRisk }
 }
 
+/** Plain-language load level: color + emoji so status reads at a glance. */
+function loadLevel(v: number): { color: string; label: string; emoji: string } {
+  if (v >= 85) return { color: '#ef4444', label: 'Peak', emoji: '🔴' }
+  if (v >= 70) return { color: '#f59e0b', label: 'High', emoji: '🟡' }
+  return { color: '#10b981', label: 'Normal', emoji: '🟢' }
+}
+
 export default function LeftSidebar({
   assets,
   alerts,
@@ -79,7 +80,10 @@ export default function LeftSidebar({
   const [searchQuery, setSearchQuery] = React.useState('')
   const [isCollapsed, setIsCollapsed] = React.useState(false)
   const [isHidden, setIsHidden] = React.useState(false)
-  const [assetTypeFilter, setAssetTypeFilter] = React.useState<'tower' | 'line' | 'substation' | null>(null)
+  const [networkFilters, setNetworkFilters] = React.useState<NetworkFilterValues>({
+    ...EMPTY_NETWORK_FILTERS,
+  })
+  const [openFilterPanel, setOpenFilterPanel] = React.useState<FilterPanelId | null>(null)
 
   const handleHide = () => {
     setIsHidden(true)
@@ -100,23 +104,23 @@ export default function LeftSidebar({
   }
 
   const handleAssetTypeFilter = (type: 'tower' | 'line' | 'substation' | null) => {
-    setAssetTypeFilter(type)
+    setNetworkFilters((prev) => ({ ...prev, assetType: type }))
+    setOpenFilterPanel(type ? 'assetType' : null)
     onSelectAsset('')
+  }
+
+  const handleNetworkFiltersChange = (next: NetworkFilterValues) => {
+    setNetworkFilters(next)
   }
 
   const selectedAsset = useMemo(() => {
     return assets.find((a) => a.id === selectedAssetId)
   }, [assets, selectedAssetId])
 
-  const filteredAssetsList = useMemo(() => {
-    return assets.filter((a) => {
-      const matchesSearch =
-        a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        a.id.toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesType = assetTypeFilter ? a.asset_type === assetTypeFilter : true
-      return matchesSearch && matchesType
-    })
-  }, [assets, searchQuery, assetTypeFilter])
+  const filteredAssetsList = useMemo(
+    () => applyNetworkFilters(assets, networkFilters, alerts, searchQuery),
+    [assets, networkFilters, alerts, searchQuery]
+  )
 
   // SCADA load analytics
   const telemetry = useMemo(() => {
@@ -215,39 +219,20 @@ export default function LeftSidebar({
             <div className="p-3 space-y-2.5">
               <div className="flex justify-between items-center">
                 <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Transmission Network</h2>
-                <div className="flex items-center gap-1.5">
-                  {assetTypeFilter && (
-                    <button
-                      type="button"
-                      onClick={() => setAssetTypeFilter(null)}
-                      className="text-[9px] text-blue-400 hover:text-blue-300 font-semibold"
-                    >
-                      Clear filter
-                    </button>
-                  )}
-                  <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded font-mono">
-                    {filteredAssetsList.length} Units
-                  </span>
-                </div>
+                <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded font-mono">
+                  {filteredAssetsList.length.toLocaleString()} Units
+                </span>
               </div>
 
-              {/* Smart Filters */}
-              <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-2 space-y-1.5">
-                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Filters</p>
-                <div className="grid grid-cols-2 gap-1">
-                  {['State', 'Voltage', 'Status', 'Alert', 'Asset Type', 'Operator', 'Date', 'Weather'].map(
-                    (f) => (
-                      <button
-                        key={f}
-                        type="button"
-                        className="px-2 py-1 rounded text-[9px] font-semibold text-slate-400 bg-slate-900 border border-slate-800 hover:border-slate-600 hover:text-slate-200 transition text-left"
-                      >
-                        {f}
-                      </button>
-                    )
-                  )}
-                </div>
-              </div>
+              <TransmissionNetworkFilters
+                assets={assets}
+                alerts={alerts}
+                filters={networkFilters}
+                onChange={handleNetworkFiltersChange}
+                openPanel={openFilterPanel}
+                onOpenPanel={setOpenFilterPanel}
+                matchCount={filteredAssetsList.length}
+              />
 
               {/* Search Input */}
               <div className="relative">
@@ -266,22 +251,39 @@ export default function LeftSidebar({
                 {isLoading ? (
                   <SidebarListSkeleton rows={4} />
                 ) : filteredAssetsList.length === 0 ? (
-                  <div className="py-8 text-center text-slate-500 text-xs">No assets match search</div>
+                  <div className="py-8 text-center space-y-2">
+                    <p className="text-slate-500 text-xs">No assets match these filters</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNetworkFilters({ ...EMPTY_NETWORK_FILTERS })
+                        setSearchQuery('')
+                        setOpenFilterPanel(null)
+                      }}
+                      className="text-[10px] font-bold text-cyan-400 hover:text-cyan-300"
+                    >
+                      Reset filters
+                    </button>
+                  </div>
                 ) : (
-                  filteredAssetsList.map((asset) => (
+                  filteredAssetsList.slice(0, 200).map((asset) => (
                     <button
                       key={asset.id}
                       onClick={() => onSelectAsset(asset.id)}
                       className="w-full p-2.5 bg-slate-900/50 hover:bg-slate-900 border border-slate-850 hover:border-slate-800 rounded-lg flex items-center justify-between text-left transition-all"
                     >
-                      <div className="space-y-1">
-                        <p className="text-xs font-bold text-slate-200 truncate max-w-[130px]">{asset.name}</p>
-                        <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-                          {asset.asset_type} · {asset.metadata?.voltage_kv ? `${asset.metadata.voltage_kv} KV` : '765 KV'}
+                      <div className="space-y-1 min-w-0">
+                        <p className="text-xs font-bold text-slate-200 truncate max-w-[140px]">{asset.name}</p>
+                        <p className="text-[10px] text-slate-500 uppercase tracking-wide truncate">
+                          {asset.asset_type}
+                          {asset.metadata?.voltage_kv ? ` · ${asset.metadata.voltage_kv} KV` : ''}
+                          {typeof asset.metadata?.country_or_state === 'string'
+                            ? ` · ${asset.metadata.country_or_state}`
+                            : ''}
                         </p>
                       </div>
                       <span
-                        className={`text-[9px] font-bold px-2 py-0.5 rounded border ${asset.health_score === 'healthy'
+                        className={`text-[9px] font-bold px-2 py-0.5 rounded border shrink-0 ${asset.health_score === 'healthy'
                           ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
                           : asset.health_score === 'attention_required'
                             ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
@@ -292,6 +294,11 @@ export default function LeftSidebar({
                       </span>
                     </button>
                   ))
+                )}
+                {filteredAssetsList.length > 200 && (
+                  <p className="text-[9px] text-center text-slate-600 py-1">
+                    Showing 200 of {filteredAssetsList.length.toLocaleString()} — refine filters
+                  </p>
                 )}
               </div>
             </div>
@@ -432,95 +439,118 @@ export default function LeftSidebar({
           {/* SECTION 3: Weather Intelligence */}
           {selectedAsset && weather && (
             <div className="p-3 space-y-2.5">
-              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Weather Intelligence</h2>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2.5 bg-slate-900 border border-slate-850 rounded-lg flex items-center gap-2">
-                  <Thermometer className="w-4 h-4 text-indigo-400" />
-                  <div>
-                    <p className="text-[9px] text-slate-500 font-semibold uppercase">Temp</p>
-                    <p className="font-mono font-bold text-slate-200">{weather.temp}°C</p>
-                  </div>
-                </div>
-                <div className="p-2.5 bg-slate-900 border border-slate-850 rounded-lg flex items-center gap-2">
-                  <Wind className="w-4 h-4 text-sky-400" />
-                  <div>
-                    <p className="text-[9px] text-slate-500 font-semibold uppercase">Wind Speed</p>
-                    <p className="font-mono font-bold text-slate-200">{weather.wind} km/h</p>
-                  </div>
-                </div>
-                <div className="p-2.5 bg-slate-900 border border-slate-850 rounded-lg flex items-center gap-2">
-                  <Droplets className="w-4 h-4 text-blue-400" />
-                  <div>
-                    <p className="text-[9px] text-slate-500 font-semibold uppercase">Humidity</p>
-                    <p className="font-mono font-bold text-slate-200">{weather.humidity}%</p>
-                  </div>
-                </div>
-                <div className="p-2.5 bg-slate-900 border border-slate-850 rounded-lg flex items-center gap-2">
-                  <Flame className={`w-4 h-4 ${weather.fireRisk === 'High' ? 'text-red-500' : 'text-amber-500'}`} />
-                  <div>
-                    <p className="text-[9px] text-slate-500 font-semibold uppercase">Fire Risk</p>
-                    <p className="font-bold text-slate-200">{weather.fireRisk}</p>
-                  </div>
-                </div>
+              <h2 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                <span aria-hidden>🌦️</span> Weather
+              </h2>
+              <div className="grid grid-cols-2 gap-2">
+                <WeatherTile emoji="🌡️" label="Temperature" value={`${weather.temp}°C`} />
+                <WeatherTile emoji="💨" label="Wind Speed" value={`${weather.wind} km/h`} />
+                <WeatherTile emoji="💧" label="Humidity" value={`${weather.humidity}%`} />
+                <WeatherTile
+                  emoji={weather.fireRisk === 'High' ? '🔥' : '🌿'}
+                  label="Fire Risk"
+                  value={weather.fireRisk}
+                  valueClass={
+                    weather.fireRisk === 'High'
+                      ? 'text-red-400'
+                      : weather.fireRisk === 'Medium'
+                        ? 'text-amber-400'
+                        : 'text-emerald-400'
+                  }
+                />
               </div>
             </div>
           )}
 
-          {/* SECTION 4: SCADA 7-Day Load Trend */}
-          {selectedAsset && telemetry.length > 0 && (
-            <div className="p-3 space-y-2.5">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">SCADA Telemetry</h2>
-                <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider">7D Load Trend</span>
-              </div>
+          {/* SECTION 4: SCADA Weekly Load — bar chart (easy to read at a glance) */}
+          {selectedAsset && telemetry.length > 0 && (() => {
+            const current = telemetry[telemetry.length - 1].Load
+            const peak = Math.max(...telemetry.map((t) => t.Load))
+            const forecast = Math.round((current + peak) / 2)
+            const cur = loadLevel(current)
+            return (
+              <div className="p-3 space-y-3">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <span aria-hidden>⚡</span> Weekly Load
+                  </h2>
+                  <span className="text-[11px] font-bold" style={{ color: cur.color }}>
+                    {cur.emoji} {cur.label}
+                  </span>
+                </div>
 
-              {/* Telemetry Line Chart */}
-              <div className="h-28 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={telemetry} margin={{ top: 5, right: 5, left: -25, bottom: 5 }}>
-                    <defs>
-                      <linearGradient id="scadaGlow" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#2563EB" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="day" tick={{ fill: '#475569', fontSize: 9 }} />
-                    <YAxis domain={[40, 100]} tick={{ fill: '#475569', fontSize: 9 }} />
-                    <Tooltip
-                      contentStyle={{ background: '#0e172a', border: '1px solid #1e293b', borderRadius: '6px', fontSize: 10 }}
-                      itemStyle={{ color: '#fff' }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="Load"
-                      stroke="#2563EB"
-                      strokeWidth={2}
-                      fillOpacity={1}
-                      fill="url(#scadaGlow)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+                {/* Vertical bars — height = load %, color = level */}
+                <div
+                  className="flex items-end justify-between gap-1.5 h-28 bg-slate-950/40 border border-slate-850 rounded-lg p-2.5"
+                  role="img"
+                  aria-label={`Weekly load, current ${current} percent (${cur.label})`}
+                >
+                  {telemetry.map((t) => {
+                    const lvl = loadLevel(t.Load)
+                    const heightPct = ((t.Load - 40) / 60) * 100 // domain 40–100%
+                    return (
+                      <div key={t.day} className="flex-1 flex flex-col items-center justify-end h-full gap-1">
+                        <span className="text-[9px] font-mono font-bold text-slate-300">{t.Load}</span>
+                        <div
+                          className="w-full rounded-t-sm transition-all"
+                          style={{ height: `${Math.max(6, heightPct)}%`, backgroundColor: lvl.color }}
+                          title={`${t.day}: ${t.Load}% (${lvl.label})`}
+                        />
+                        <span className="text-[9px] font-semibold text-slate-500">{t.day[0]}</span>
+                      </div>
+                    )
+                  })}
+                </div>
 
-              <div className="grid grid-cols-3 gap-1.5 text-center text-[9px] border-t border-slate-900 pt-2.5">
-                <div>
-                  <span className="text-slate-500 uppercase tracking-wider font-bold">Current</span>
-                  <p className="font-mono font-extrabold text-slate-200 text-xs mt-0.5">{telemetry[telemetry.length - 1].Load}%</p>
+                {/* Plain-language legend */}
+                <div className="flex items-center justify-center gap-3 text-[9px] font-semibold text-slate-400">
+                  <span>🟢 Normal</span>
+                  <span>🟡 High</span>
+                  <span>🔴 Peak</span>
                 </div>
-                <div>
-                  <span className="text-slate-500 uppercase tracking-wider font-bold">Peak (7D)</span>
-                  <p className="font-mono font-extrabold text-red-400 text-xs mt-0.5">84.2%</p>
-                </div>
-                <div>
-                  <span className="text-slate-500 uppercase tracking-wider font-bold">Forecast</span>
-                  <p className="font-mono font-extrabold text-indigo-400 text-xs mt-0.5">71.0%</p>
+
+                <div className="grid grid-cols-3 gap-1.5 text-center border-t border-slate-800/70 pt-2.5">
+                  <LoadStat label="Now" value={`${current}%`} className="text-slate-100" />
+                  <LoadStat label="Peak (7d)" value={`${peak}%`} className="text-red-400" />
+                  <LoadStat label="Forecast" value={`${forecast}%`} className="text-sky-400" />
                 </div>
               </div>
-            </div>
-          )}
+            )
+          })()}
 
         </div>
       </div>
     </CollapsibleSidebar>
+  )
+}
+
+function WeatherTile({
+  emoji,
+  label,
+  value,
+  valueClass = 'text-slate-100',
+}: {
+  emoji: string
+  label: string
+  value: string
+  valueClass?: string
+}) {
+  return (
+    <div className="p-2.5 bg-slate-900 border border-slate-850 rounded-lg flex items-center gap-2.5">
+      <span className="text-lg leading-none" aria-hidden>{emoji}</span>
+      <div className="min-w-0">
+        <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wide truncate">{label}</p>
+        <p className={`font-mono font-bold text-sm ${valueClass}`}>{value}</p>
+      </div>
+    </div>
+  )
+}
+
+function LoadStat({ label, value, className }: { label: string; value: string; className: string }) {
+  return (
+    <div>
+      <span className="text-[9px] text-slate-500 uppercase tracking-wider font-bold">{label}</span>
+      <p className={`font-mono font-extrabold text-sm mt-0.5 ${className}`}>{value}</p>
+    </div>
   )
 }

@@ -16,6 +16,7 @@ import {
   type Alert,
   type Asset,
   type WorkOrder,
+  type MonitoringRunResult,
 } from '@/lib/api'
 import CollapsiblePanelCard from '@/components/sidebar/CollapsiblePanelCard'
 import PanelMinimizeButton from '@/components/ui/PanelMinimizeButton'
@@ -26,6 +27,8 @@ interface RightSidebarProps {
   selectedAssetId?: string | null
   onSelectAsset: (id: string) => void
   onMinimize?: () => void
+  /** Opens the map-section mission report (parent owns placement). */
+  onMissionReport?: (payload: { result: MonitoringRunResult | null; error?: string | null }) => void
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -64,6 +67,7 @@ export default function RightSidebar({
   selectedAssetId,
   onSelectAsset,
   onMinimize,
+  onMissionReport,
 }: RightSidebarProps) {
   const queryClient = useQueryClient()
   const [pipelineProgress, setPipelineProgress] = React.useState(0)
@@ -79,38 +83,61 @@ export default function RightSidebar({
     [workOrders]
   )
 
+  const targetAssetIds = useMemo(() => {
+    if (selectedAssetId) return [selectedAssetId]
+    // Prefer a mixed sample so STAC + AI stages finish quickly
+    const subs = assets.filter((a) => a.asset_type === 'substation').slice(0, 8).map((a) => a.id)
+    const lines = assets.filter((a) => a.asset_type === 'line').slice(0, 12).map((a) => a.id)
+    const towers = assets.filter((a) => a.asset_type === 'tower').slice(0, 5).map((a) => a.id)
+    const ids = [...subs, ...lines, ...towers]
+    return ids.length > 0 ? ids : undefined
+  }, [assets, selectedAssetId])
+
   const mutation = useMutation({
-    mutationFn: () => runMonitoringCycle(selectedAssetId ? [selectedAssetId] : undefined),
+    mutationFn: () => runMonitoringCycle(targetAssetIds),
     onMutate: () => {
       setPipelineProgress(0)
       setActiveStage(1)
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      setPipelineProgress(100)
+      setActiveStage(null)
+      onMissionReport?.({
+        result: {
+          ...data,
+          detections_count: data.detections?.length ?? data.detections_count ?? 0,
+        },
+        error: null,
+      })
       queryClient.invalidateQueries({ queryKey: ['alerts'] })
       queryClient.invalidateQueries({ queryKey: ['analytics'] })
     },
+    onError: (err: Error) => {
+      setPipelineProgress(0)
+      setActiveStage(null)
+      onMissionReport?.({
+        result: null,
+        error: err.message || 'Monitoring cycle failed',
+      })
+    },
   })
 
-  // Simulated progress bar animation
+  // Progress tracks real wait — pause near 92% until API returns
   React.useEffect(() => {
-    if (mutation.isPending) {
-      const timer = setInterval(() => {
-        setPipelineProgress((prev) => {
-          if (prev >= 100) {
-            clearInterval(timer)
-            setActiveStage(null)
-            return 100
-          }
-          const next = prev + 8
-          if (next > 85) setActiveStage(5)
-          else if (next > 65) setActiveStage(4)
-          else if (next > 45) setActiveStage(3)
-          else if (next > 20) setActiveStage(2)
-          return next
-        })
-      }, 150)
-      return () => clearInterval(timer)
-    }
+    if (!mutation.isPending) return
+    const timer = setInterval(() => {
+      setPipelineProgress((prev) => {
+        if (prev >= 92) return prev
+        const next = prev + 4
+        if (next > 78) setActiveStage(5)
+        else if (next > 58) setActiveStage(4)
+        else if (next > 38) setActiveStage(3)
+        else if (next > 18) setActiveStage(2)
+        else setActiveStage(1)
+        return next
+      })
+    }, 280)
+    return () => clearInterval(timer)
   }, [mutation.isPending])
 
   const handleAcknowledge = async (alertId: string) => {
@@ -145,7 +172,7 @@ export default function RightSidebar({
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-thin p-3 space-y-3 min-h-0">
         <CollapsiblePanelCard
-          title="Satellite & AI Pipeline"
+          title="🛰️ Satellite & AI Pipeline"
           subtitle={<span className="text-[10px] text-slate-500 font-mono">4.8 GB/s</span>}
           defaultOpen
         >
@@ -179,12 +206,19 @@ export default function RightSidebar({
           <div className="mb-3">
             <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Latest Detection</p>
             <div className="flex flex-wrap gap-1">
-              {['Wildfire', 'High Temp', 'Vegetation', 'Flood', 'Landslide'].map((tag) => (
+              {[
+                { label: 'Wildfire', emoji: '🔥' },
+                { label: 'High Temp', emoji: '🌡️' },
+                { label: 'Vegetation', emoji: '🌿' },
+                { label: 'Flood', emoji: '💧' },
+                { label: 'Landslide', emoji: '⛰️' },
+              ].map((tag) => (
                 <span
-                  key={tag}
-                  className="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-slate-900 border border-slate-700 text-slate-400"
+                  key={tag.label}
+                  className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-900 border border-slate-700 text-slate-300 flex items-center gap-1"
                 >
-                  {tag}
+                  <span aria-hidden>{tag.emoji}</span>
+                  {tag.label}
                 </span>
               ))}
             </div>
@@ -255,7 +289,7 @@ export default function RightSidebar({
         </CollapsiblePanelCard>
 
         <CollapsiblePanelCard
-          title="Recent Events"
+          title="🔔 Recent Events"
           defaultOpen
           headerAction={
             <Link href="/alarms" className="text-[10px] text-blue-400 hover:text-blue-300 font-semibold">
@@ -315,7 +349,7 @@ export default function RightSidebar({
         </CollapsiblePanelCard>
 
         <CollapsiblePanelCard
-          title="Alert Center"
+          title="⚠️ Alert Center"
           defaultOpen={false}
           headerAction={
             <Link href="/alarms" className="text-[10px] text-blue-400 hover:text-blue-300 font-semibold">
@@ -383,7 +417,7 @@ export default function RightSidebar({
         </CollapsiblePanelCard>
 
         <CollapsiblePanelCard
-          title="Maintenance dispatches"
+          title="🔧 Maintenance"
           subtitle={
             <span className="text-[10px] text-slate-500 font-mono">{openWorkOrders.length} Active</span>
           }

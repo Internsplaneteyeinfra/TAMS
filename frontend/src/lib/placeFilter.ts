@@ -116,9 +116,15 @@ export function computeRegionStats(
 
   const allCounted = kmlStats?.total ?? filtered.length
   const healthy = filtered.filter((a) => a.health_score === 'healthy').length
-  const healthyPct = allCounted ? Math.round((healthy / Math.max(allCounted, 1)) * 100) : 100
+  const catalogCount = filtered.length
+  // Coverage = availability of loaded catalog assets (KML total is tower-heavy and
+  // would crush this metric if used as the denominator).
   const monitored = filtered.filter((a) => a.status !== 'offline').length
-  const coveragePct = allCounted ? Math.round((monitored / allCounted) * 1000) / 10 : 100
+  const coverageBase = catalogCount > 0 ? catalogCount : Math.max(allCounted, 1)
+  const coveragePct = Math.round((monitored / coverageBase) * 1000) / 10
+  const healthyPct = catalogCount
+    ? Math.round((healthy / Math.max(catalogCount, 1)) * 100)
+    : 100
 
   return {
     placeLabel: place?.label ?? path[path.length - 1]?.label ?? 'India',

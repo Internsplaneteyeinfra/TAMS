@@ -174,9 +174,182 @@ body {
   }
 }
 
-.tams-line-flow {
-  stroke-dasharray: 8 8;
-  animation: lineFlow 1.2s linear infinite;
+.tams-mission-focus-border {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tams-mission-focus-line {
+  stroke-dasharray: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Hover: current accelerates and brightens to convey live power flow direction */
+.tams-line-flow-active {
+  animation: lineFlow 0.55s linear infinite;
+  filter: drop-shadow(0 0 5px currentColor);
+}
+
+/* Permanent direction chip on focused corridor */
+.tams-direction-permanent.leaflet-tooltip {
+  background: #0a0a0a;
+  border: 1px solid #22d3ee;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  box-shadow: none;
+  font-size: 11px;
+}
+
+.tams-direction-permanent.leaflet-tooltip::before {
+  border-top-color: #0a0a0a;
+}
+
+.tams-direction-popup.leaflet-popup-content-wrapper {
+  background: #0b1220;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  box-shadow: none;
+  color: #e2e8f0;
+}
+
+.tams-direction-popup .leaflet-popup-tip {
+  background: #0b1220;
+  border: none;
+  box-shadow: none;
+}
+
+.tams-direction-popup .leaflet-popup-content {
+  margin: 0;
+}
+
+@keyframes corridorFocusIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.tams-corridor-focus-in {
+  animation: corridorFocusIn 200ms ease-out;
+}
+
+/* Corridor power-flow readout tooltip */
+.tams-flow-tooltip.leaflet-tooltip {
+  background: #0a1020ee;
+  border: 1px solid #1e293b;
+  border-radius: 7px;
+  padding: 4px 8px;
+  font-size: 10px;
+  box-shadow: none;
+}
+
+.tams-flow-tooltip.leaflet-tooltip::before {
+  border-top-color: #1e293b;
+}
+
+/* Monitoring result modal */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalPop {
+  from { opacity: 0; transform: translateY(18px) scale(0.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes bounceSoft {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes orbitA {
+  from { transform: rotate(0deg) translateX(140px) rotate(0deg); }
+  to { transform: rotate(360deg) translateX(140px) rotate(-360deg); }
+}
+
+@keyframes orbitB {
+  from { transform: rotate(90deg) translateX(200px) rotate(-90deg); }
+  to { transform: rotate(450deg) translateX(200px) rotate(-450deg); }
+}
+
+@keyframes orbitC {
+  from { transform: rotate(180deg) translateX(260px) rotate(-180deg); }
+  to { transform: rotate(540deg) translateX(260px) rotate(-540deg); }
+}
+
+@keyframes orbitD {
+  from { transform: rotate(270deg) translateX(110px) rotate(-270deg); }
+  to { transform: rotate(630deg) translateX(110px) rotate(-630deg); }
+}
+
+@keyframes shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out both;
+}
+
+.animate-modal-pop {
+  animation: modalPop 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.4s ease-out both;
+}
+
+.animate-bounce-soft {
+  animation: bounceSoft 1.6s ease-in-out infinite;
+}
+
+.tams-shimmer {
+  background-size: 200% 100%;
+  animation: shimmer 1.8s linear infinite;
+}
+
+.tams-orbit {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  opacity: 0.35;
+  filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.35));
+  pointer-events: none;
+}
+
+.tams-orbit-a { animation: orbitA 18s linear infinite; }
+.tams-orbit-b { animation: orbitB 26s linear infinite; }
+.tams-orbit-c { animation: orbitC 34s linear infinite; }
+.tams-orbit-d { animation: orbitD 14s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-modal-pop,
+  .animate-fade-up,
+  .animate-bounce-soft,
+  .tams-shimmer,
+  .tams-orbit-a,
+  .tams-orbit-b,
+  .tams-orbit-c,
+  .tams-orbit-d {
+    animation: none !important;
+  }
+
+  .tams-orbit {
+    display: none;
+  }
 }
 
 .tams-alert-blink {

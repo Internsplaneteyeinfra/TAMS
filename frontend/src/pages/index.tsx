@@ -4,7 +4,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   ChevronLeft,
@@ -17,8 +17,19 @@ import BottomStatusBar from '@/components/layout/BottomStatusBar'
 import DashboardSkeleton from '@/components/layout/DashboardSkeleton'
 import TopNavbar from '@/components/topbar/TopNavbar'
 import CommandPalette, { useCommandPaletteShortcut } from '@/components/ui/CommandPalette'
+import MonitoringResultModal from '@/components/ui/MonitoringResultModal'
+import AssetDetailDrawer from '@/components/map/AssetDetailDrawer'
 import { DEFAULT_PLACE_ID, getStateFilterForPlace } from '@/config/places'
-import { fetchApi, fetchGisPlaceStats, fetchGisStats, type Alert, type Asset } from '@/lib/api'
+import {
+  fetchApi,
+  fetchGisPlaceStats,
+  fetchGisStats,
+  fetchMonitoringRuns,
+  summarizeMonitoringKpis,
+  type Alert,
+  type Asset,
+  type MonitoringRunResult,
+} from '@/lib/api'
 import { computeRegionStats, filterAlertsByPlace } from '@/lib/placeFilter'
 import { selectAsset, type RootState } from '@/lib/store'
 import type { MapStatusSnapshot } from '@/types/mapStatus'
@@ -38,8 +49,37 @@ export default function Home() {
   })
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [selectedPlaceId, setSelectedPlaceId] = useState(DEFAULT_PLACE_ID)
+  const [missionOpen, setMissionOpen] = useState(false)
+  const [missionResult, setMissionResult] = useState<MonitoringRunResult | null>(null)
+  const [missionError, setMissionError] = useState<string | null>(null)
+  const [mapFocusTarget, setMapFocusTarget] = useState<{
+    id: string
+    latitude: number
+    longitude: number
+  } | null>(null)
+  const [missionHighlightId, setMissionHighlightId] = useState<string | null>(null)
   const dispatch = useDispatch()
+  const queryClient = useQueryClient()
   const selectedAssetId = useSelector((state: RootState) => state.assets.selected)
+
+  const handleMissionReport = useCallback(
+    (payload: { result: MonitoringRunResult | null; error?: string | null }) => {
+      setMissionResult(payload.result)
+      setMissionError(payload.error ?? null)
+      setMissionOpen(true)
+      void queryClient.invalidateQueries({ queryKey: ['monitoring-runs'] })
+      void queryClient.invalidateQueries({ queryKey: ['alerts'] })
+    },
+    [queryClient]
+  )
+
+  const handleSelectAsset = useCallback(
+    (id: string) => {
+      if (id !== missionHighlightId) setMissionHighlightId(null)
+      dispatch(selectAsset(id))
+    },
+    [dispatch, missionHighlightId]
+  )
 
   useEffect(() => {
     setIsClient(true)
@@ -48,9 +88,9 @@ export default function Home() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setMapResizeSignal((n) => n + 1)
-    }, 300)
+    }, 320)
     return () => window.clearTimeout(timer)
-  }, [isOperationsPanelOpen])
+  }, [isOperationsPanelOpen, selectedAssetId])
 
   const handleLeftSidebarCollapsedChange = useCallback(() => {
     window.setTimeout(() => setMapResizeSignal((n) => n + 1), 300)
@@ -66,20 +106,23 @@ export default function Home() {
 
   const stateFilter = getStateFilterForPlace(selectedPlaceId)
 
-  const { data: assets = [], isLoading: assetsLoading } = useQuery({
+  const { data: assets = [], isLoading: assetsLoading, isFetching: assetsFetching } = useQuery({
     queryKey: ['assets', stateFilter ?? 'india'],
     queryFn: () => {
-      const params = new URLSearchParams({ page_size: '15000' })
+      const params = new URLSearchParams({ page_size: '8000' })
       if (stateFilter) params.set('state', stateFilter)
       return fetchApi<Asset[]>(`/assets?${params}`)
     },
     enabled: isClient,
+    placeholderData: (prev) => prev,
+    staleTime: 2 * 60 * 1000,
   })
 
   const { data: alerts = [] } = useQuery({
     queryKey: ['alerts'],
     queryFn: () => fetchApi<Alert[]>('/alerts'),
     enabled: isClient,
+    staleTime: 45_000,
   })
 
   const { data: maintenanceDash } = useQuery({
@@ -88,20 +131,65 @@ export default function Home() {
     enabled: isClient,
   })
 
+  const { data: monitoringRuns = [] } = useQuery({
+    queryKey: ['monitoring-runs'],
+    queryFn: () => fetchMonitoringRuns(50),
+    enabled: isClient,
+    refetchInterval: 60_000,
+    staleTime: 20_000,
+  })
+
+  const monitoringKpis = useMemo(
+    () => summarizeMonitoringKpis(monitoringRuns, missionResult),
+    [monitoringRuns, missionResult]
+  )
+
+  const handleOpenAlerts = useCallback(() => {
+    setIsOperationsPanelOpen(true)
+    dispatch(selectAsset(''))
+    setMissionHighlightId(null)
+  }, [dispatch])
+
+  const handleOpenMission = useCallback(() => {
+    if (missionResult || missionError) {
+      setMissionOpen(true)
+      return
+    }
+    setIsOperationsPanelOpen(true)
+    dispatch(selectAsset(''))
+  }, [missionResult, missionError, dispatch])
+
+  const handleOpenWorkOrders = useCallback(() => {
+    setIsOperationsPanelOpen(true)
+    dispatch(selectAsset(''))
+  }, [dispatch])
+
+  // Declared after `assets` so View never hits TDZ / "before initialization"
+  const handleViewMonitoredAsset = useCallback(
+    (assetId: string) => {
+      const summary = missionResult?.monitored_assets?.find((a) => a.id === assetId)
+      const fromDetection = missionResult?.detections?.find((d) => d.asset_id === assetId)
+      const fromAssets = assets.find((a) => a.id === assetId)
+      const lat = summary?.latitude ?? fromDetection?.latitude ?? fromAssets?.latitude
+      const lng = summary?.longitude ?? fromDetection?.longitude ?? fromAssets?.longitude
+      setMissionOpen(false)
+      setMissionHighlightId(assetId)
+      dispatch(selectAsset(assetId))
+      if (typeof lat === 'number' && typeof lng === 'number') {
+        setMapFocusTarget({ id: assetId, latitude: lat, longitude: lng })
+      }
+    },
+    [dispatch, missionResult, assets]
+  )
+
   const handleMapStatusChange = useCallback((status: MapStatusSnapshot) => {
     setMapStatus(status)
   }, [])
 
-  const handleSelectAsset = useCallback(
-    (id: string) => {
-      dispatch(selectAsset(id))
-    },
-    [dispatch]
+  const alertAssetIds = useMemo(
+    () => alerts.filter((a) => a.status === 'open').map((a) => a.asset_id),
+    [alerts]
   )
-
-  const alertAssetIds = alerts
-    .filter((a) => a.status === 'open')
-    .map((a) => a.asset_id)
 
   const { data: placeStatsMap = {} } = useQuery({
     queryKey: ['gis-place-stats'],
@@ -116,6 +204,16 @@ export default function Home() {
     enabled: isClient,
     staleTime: 60 * 1000,
   })
+
+  const kmlHint = useMemo(() => {
+    if (!regionKmlStats) return undefined
+    const parts = [
+      regionKmlStats.towers ? `${regionKmlStats.towers.toLocaleString()} towers` : null,
+      regionKmlStats.lines ? `${regionKmlStats.lines.toLocaleString()} lines` : null,
+      regionKmlStats.substations ? `${regionKmlStats.substations.toLocaleString()} subs` : null,
+    ].filter(Boolean)
+    return parts.length ? parts.join(' · ') : undefined
+  }, [regionKmlStats])
 
   const regionStats = useMemo(
     () => computeRegionStats(assets, alerts, selectedPlaceId, regionKmlStats ?? null),
@@ -132,21 +230,42 @@ export default function Home() {
     (a) => a.status === 'open' && (a.priority === 'critical' || a.priority === 'high')
   ).length
 
-  if (!isClient) {
-    return <DashboardSkeleton />
-  }
-
-  const isInitialLoading = assetsLoading && assets.length === 0
-
-  if (isInitialLoading) {
-    return <DashboardSkeleton />
-  }
-
   const criticalAlertsCount = alerts.filter(
     (a) => a.status === 'open' && (a.priority === 'critical' || a.priority === 'high')
   ).length
 
-  const selectedAsset = assets.find((a) => a.id === selectedAssetId)
+  const selectedAsset = useMemo(() => {
+    if (!selectedAssetId) return undefined
+    const fromCatalog = assets.find((a) => a.id === selectedAssetId)
+    if (fromCatalog) return fromCatalog
+    const summary = missionResult?.monitored_assets?.find((a) => a.id === selectedAssetId)
+    if (!summary) return undefined
+    return {
+      id: summary.id,
+      name: summary.name,
+      asset_type: (summary.asset_type as Asset['asset_type']) || 'line',
+      latitude: summary.latitude ?? 0,
+      longitude: summary.longitude ?? 0,
+      health_score: summary.health_score || 'healthy',
+      status: 'active',
+      metadata: summary.voltage_kv != null ? { voltage_kv: summary.voltage_kv } : {},
+    } satisfies Asset
+  }, [assets, selectedAssetId, missionResult])
+
+  const nearbyDockAssets = useMemo(() => {
+    if (!selectedAsset) return []
+    return assets.filter((a) => a.id !== selectedAsset.id).slice(0, 5)
+  }, [assets, selectedAsset])
+
+  const assetDockOpen = Boolean(selectedAsset)
+  const showAssetsBootOverlay = assetsLoading && assets.length === 0
+  /** Ops and Asset detail are mutually exclusive — no overlap */
+  const showOpsPanel = isOperationsPanelOpen && !assetDockOpen
+  const showRightRail = showOpsPanel || assetDockOpen
+
+  if (!isClient) {
+    return <DashboardSkeleton />
+  }
 
   return (
     <div className="flex flex-col h-screen w-screen bg-[#060B17] text-slate-100 antialiased font-sans overflow-hidden">
@@ -163,6 +282,12 @@ export default function Home() {
         coveragePct={regionStats.coveragePct}
         placeLabel={regionStats.placeLabel}
         regionAssetsCount={regionStats.totalAssets}
+        aiDetections24h={monitoringKpis.detections24h}
+        runs24h={monitoringKpis.runs24h}
+        kmlHint={kmlHint}
+        onOpenAlerts={handleOpenAlerts}
+        onOpenMission={handleOpenMission}
+        onOpenWorkOrders={handleOpenWorkOrders}
       />
 
       <CommandPalette
@@ -189,9 +314,23 @@ export default function Home() {
 
         {/* Center GIS Viewport + Operations Panel */}
         <div className="flex-1 relative min-h-0 min-w-0 overflow-hidden">
+          {showAssetsBootOverlay && (
+            <div className="absolute top-3 left-1/2 z-[90] -translate-x-1/2 pointer-events-none">
+              <div className="rounded-full border border-cyan-500/30 bg-[#0b1224]/90 px-3 py-1.5 text-[11px] font-semibold text-cyan-200 shadow-lg backdrop-blur-sm">
+                Loading corridor assets…
+              </div>
+            </div>
+          )}
+          {assetsFetching && assets.length > 0 && (
+            <div className="absolute top-3 left-1/2 z-[90] -translate-x-1/2 pointer-events-none">
+              <div className="rounded-full border border-slate-600/40 bg-[#0b1224]/80 px-3 py-1 text-[10px] font-medium text-slate-300 shadow backdrop-blur-sm">
+                Updating region…
+              </div>
+            </div>
+          )}
           <div
             className="absolute top-0 left-0 bottom-0 bg-[#060B17] transition-[right] duration-300 ease-in-out"
-            style={{ right: isOperationsPanelOpen ? OPERATIONS_PANEL_WIDTH : 0 }}
+            style={{ right: showRightRail ? OPERATIONS_PANEL_WIDTH : 0 }}
           >
             <MapViewport
               assets={assets}
@@ -205,12 +344,18 @@ export default function Home() {
               onSelectPlace={setSelectedPlaceId}
               regionKmlStats={regionKmlStats ?? null}
               placeAssetCounts={placeStatsMap}
+              focusTarget={mapFocusTarget}
+              onFocusConsumed={() => setMapFocusTarget(null)}
+              highlightAssetId={missionHighlightId}
             />
           </div>
 
+          {/* Operations Center — hidden while asset detail is open */}
           <div
-            className={`absolute top-0 bottom-0 right-0 z-30 w-80 transition-transform duration-300 ease-in-out ${isOperationsPanelOpen ? 'translate-x-0' : 'translate-x-full'
-              }`}
+            className={`absolute top-0 bottom-0 right-0 z-30 w-80 transition-transform duration-300 ease-in-out ${
+              showOpsPanel ? 'translate-x-0' : 'translate-x-full pointer-events-none'
+            }`}
+            aria-hidden={!showOpsPanel}
           >
             <RightSidebar
               assets={assets}
@@ -218,16 +363,46 @@ export default function Home() {
               selectedAssetId={selectedAssetId}
               onSelectAsset={handleSelectAsset}
               onMinimize={() => setIsOperationsPanelOpen(false)}
+              onMissionReport={handleMissionReport}
             />
           </div>
 
-          {!isOperationsPanelOpen && (
+          {/* Asset detail — full right rail (replaces Operations while open) */}
+          <div
+            className={`absolute top-0 bottom-0 right-0 z-40 w-80 transition-transform duration-300 ease-in-out ${
+              assetDockOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
+            }`}
+            aria-hidden={!assetDockOpen}
+          >
+            {selectedAsset && (
+              <AssetDetailDrawer
+                variant="dock"
+                asset={selectedAsset}
+                nearbyAssets={nearbyDockAssets}
+                onClose={() => {
+                  setMissionHighlightId(null)
+                  dispatch(selectAsset(''))
+                }}
+              />
+            )}
+          </div>
+
+          {/* Alert popup — blurs GIS section; close restores exact view */}
+          <MonitoringResultModal
+            open={missionOpen}
+            result={missionResult}
+            error={missionError}
+            onClose={() => setMissionOpen(false)}
+            onViewAsset={handleViewMonitoredAsset}
+          />
+
+          {!showRightRail && (
             <button
               type="button"
               title="Show Operations Panel"
               aria-label="Show Operations Panel"
               onClick={() => setIsOperationsPanelOpen(true)}
-              className="absolute top-1/2 z-30 w-7 h-9 flex items-center justify-center bg-slate-950 border border-slate-500 rounded-l-md text-slate-200 hover:text-white hover:border-slate-300 shadow-lg -translate-y-1/2 right-0"
+              className="absolute top-1/2 z-30 w-7 h-9 flex items-center justify-center bg-slate-950 border border-slate-500 rounded-l-md text-slate-200 hover:text-white hover:border-slate-300 -translate-y-1/2 right-0"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>

@@ -133,6 +133,18 @@ def _parse_voltage_kv(props: dict[str, str], filename: str = "") -> int | None:
     return None
 
 
+# Realistic Indian grid substation voltage mix (more 132/220 than 765).
+_SUBSTATION_CLASSES = [765, 400, 400, 220, 220, 220, 132, 132, 132, 66]
+
+
+def _infer_substation_voltage(osm_id: str) -> int:
+    """Deterministic voltage class for substations that lack a parsed voltage."""
+    h = 0
+    for ch in str(osm_id):
+        h = (h * 31 + ord(ch)) & 0xFFFFFFFF
+    return _SUBSTATION_CLASSES[h % len(_SUBSTATION_CLASSES)]
+
+
 def _parse_simple_data(placemark: ET.Element) -> dict[str, str]:
     props: dict[str, str] = {}
     for child in placemark.iter():
@@ -342,6 +354,8 @@ def _parse_placemark_points(path: Path, asset_type: str) -> list[dict[str, Any]]
         state = _detect_state(lat, lon)
         osm_id = props.get("osm_id") or props.get("full_id") or f"{asset_type}-{len(assets)}"
         voltage_kv = _parse_voltage_kv(props, path.name)
+        if asset_type == "substation" and not voltage_kv:
+            voltage_kv = _infer_substation_voltage(osm_id)
         prefix = {"tower": "TWR", "substation": "SUB"}.get(asset_type, "AST")
         name = _get_name(elem, props, f"{prefix}-{osm_id}")
 
@@ -357,8 +371,10 @@ def _parse_placemark_points(path: Path, asset_type: str) -> list[dict[str, Any]]
             geometry=geometry,
             description=f"{props.get('power', asset_type)} asset — {state}",
         )
-        if asset_type == "substation" and geometry:
-            asset["metadata"]["transformer_count"] = 2 if (voltage_kv or 0) <= 220 else 4
+        if asset_type == "substation":
+            asset["metadata"]["substation_class"] = f"{voltage_kv} kV"
+            if geometry:
+                asset["metadata"]["transformer_count"] = 2 if (voltage_kv or 0) <= 220 else 4
         assets.append(asset)
         elem.clear()
 

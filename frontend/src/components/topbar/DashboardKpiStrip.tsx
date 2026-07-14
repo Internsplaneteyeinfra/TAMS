@@ -18,6 +18,15 @@ interface DashboardKpiStripProps {
   openWorkOrders?: number
   coveragePct?: number
   placeLabel?: string
+  /** Satellite AI findings in the last 24h (from monitoring runs + latest mission). */
+  aiDetections24h?: number
+  /** Satellite pipeline executions in the last 24h. */
+  runs24h?: number
+  /** Optional: KML corridor / tower breakdown for tooltip. */
+  kmlHint?: string
+  onOpenAlerts?: () => void
+  onOpenMission?: () => void
+  onOpenWorkOrders?: () => void
 }
 
 type Glow = 'emerald' | 'amber' | 'red' | 'cyan' | 'indigo' | 'slate' | 'blue'
@@ -31,6 +40,13 @@ function MiniSpark({ color = '#34d399' }: { color?: string }) {
   )
 }
 
+function formatCount(n: number): string {
+  if (!Number.isFinite(n)) return '—'
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 10_000) return n.toLocaleString()
+  return String(n)
+}
+
 function KpiCard({
   title,
   value,
@@ -40,6 +56,8 @@ function KpiCard({
   glow,
   valueClass,
   sparkColor,
+  onClick,
+  titleAttr,
 }: {
   title: string
   value: React.ReactNode
@@ -49,6 +67,8 @@ function KpiCard({
   glow: Glow
   valueClass: string
   sparkColor: string
+  onClick?: () => void
+  titleAttr?: string
 }) {
   const glowMap: Record<Glow, string> = {
     emerald: 'hover:shadow-emerald-500/20 hover:border-emerald-500/30',
@@ -70,9 +90,27 @@ function KpiCard({
     blue: 'text-blue-400 bg-blue-500/10',
   }
 
+  const interactive = Boolean(onClick)
+
   return (
     <div
-      className={`group relative bg-slate-950/50 border border-white/5 rounded-xl px-2.5 py-2 flex flex-col justify-center transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg backdrop-blur-sm ${glowMap[glow]}`}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={
+        interactive
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onClick?.()
+              }
+            }
+          : undefined
+      }
+      title={titleAttr}
+      className={`group relative bg-slate-950/50 border border-white/5 rounded-xl px-2.5 py-2 flex flex-col justify-center transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg backdrop-blur-sm text-left w-full ${glowMap[glow]} ${
+        interactive ? 'cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/50' : ''
+      }`}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
@@ -86,8 +124,9 @@ function KpiCard({
       <div className="flex items-baseline justify-between mt-1">
         <span className={`text-sm font-mono font-black ${valueClass}`}>{value}</span>
         <span
-          className={`text-[8px] font-bold flex items-center gap-0.5 ${trendUp ? 'text-emerald-400' : 'text-red-400'
-            }`}
+          className={`text-[8px] font-bold flex items-center gap-0.5 ${
+            trendUp ? 'text-emerald-400' : 'text-red-400'
+          }`}
         >
           {trendUp ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
           {trend}
@@ -102,81 +141,101 @@ export default function DashboardKpiStrip({
   activeAlertsCount,
   criticalAlertsCount,
   openWorkOrders,
-  coveragePct = 98.4,
+  coveragePct = 0,
   placeLabel,
+  aiDetections24h = 0,
+  runs24h = 0,
+  kmlHint,
+  onOpenAlerts,
+  onOpenMission,
+  onOpenWorkOrders,
 }: DashboardKpiStripProps) {
   return (
     <div className="space-y-1">
       {placeLabel && (
         <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
           Region: <span className="text-blue-400">{placeLabel}</span>
+          {kmlHint ? <span className="text-slate-600 normal-case tracking-normal ml-2">· {kmlHint}</span> : null}
         </p>
       )}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
         <KpiCard
           title="Monitored Assets"
-          value={assetsCount}
-          trend="+2"
+          value={formatCount(assetsCount)}
+          trend="KML"
           icon={Boxes}
           glow="emerald"
           valueClass="text-white"
           sparkColor="#34d399"
+          titleAttr="Total towers + lines + substations from KML for this region"
         />
         <KpiCard
           title="Active Alerts"
-          value={activeAlertsCount}
-          trend="+3"
-          trendUp={false}
+          value={formatCount(activeAlertsCount)}
+          trend={activeAlertsCount > 0 ? 'Live' : 'Clear'}
+          trendUp={activeAlertsCount === 0}
           icon={AlertTriangle}
           glow="amber"
           valueClass="text-amber-400"
           sparkColor="#fbbf24"
+          onClick={onOpenAlerts}
+          titleAttr="Open alerts in this region"
         />
         <KpiCard
           title="Critical Alerts"
-          value={criticalAlertsCount}
-          trend="-1"
+          value={formatCount(criticalAlertsCount)}
+          trend={criticalAlertsCount > 0 ? 'Action' : 'OK'}
+          trendUp={criticalAlertsCount === 0}
           icon={ShieldCheck}
           glow="red"
           valueClass="text-red-500"
           sparkColor="#f87171"
+          onClick={onOpenAlerts}
+          titleAttr="Critical / high priority alerts"
         />
         <KpiCard
           title="Coverage %"
           value={`${coveragePct}%`}
-          trend="+0.2%"
+          trend="Live"
           icon={Radar}
           glow="cyan"
           valueClass="text-cyan-300"
           sparkColor="#22d3ee"
+          titleAttr="Share of loaded corridor assets that are online"
         />
         <KpiCard
           title="AI Detections"
-          value={14}
-          trend="+4"
+          value={formatCount(aiDetections24h)}
+          trend="24h"
           icon={BrainCircuit}
           glow="indigo"
           valueClass="text-indigo-400"
           sparkColor="#a78bfa"
+          onClick={onOpenMission}
+          titleAttr="Satellite + AI findings from monitoring runs in the last 24 hours"
         />
         <KpiCard
           title="Runs (24H)"
-          value={6}
-          trend="+1"
+          value={formatCount(runs24h)}
+          trend="Sat"
           icon={Activity}
           glow="blue"
           valueClass="text-white"
           sparkColor="#60a5fa"
+          onClick={onOpenMission}
+          titleAttr="Satellite monitoring pipeline executions in the last 24 hours"
         />
         <KpiCard
           title="Work Orders"
-          value={openWorkOrders ?? '—'}
-          trend="Hold"
-          trendUp
+          value={openWorkOrders != null ? formatCount(openWorkOrders) : '—'}
+          trend={openWorkOrders && openWorkOrders > 0 ? 'Open' : 'Hold'}
+          trendUp={!openWorkOrders}
           icon={ClipboardList}
           glow="slate"
           valueClass="text-white"
           sparkColor="#94a3b8"
+          onClick={onOpenWorkOrders}
+          titleAttr="Open maintenance work orders"
         />
       </div>
     </div>

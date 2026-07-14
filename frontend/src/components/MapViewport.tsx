@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 
 import AIAssistantFab from '@/components/map/AIAssistantFab'
-import AssetDetailDrawer from '@/components/map/AssetDetailDrawer'
+import CorridorFocusOverlay from '@/components/map/CorridorFocusOverlay'
 import MapIntelPanel from '@/components/map/MapIntelPanel'
 import MapTopChrome from '@/components/map/MapTopChrome'
 import { type HeatMapMode } from '@/components/map/HeatMapModeToggle'
@@ -14,6 +14,7 @@ import TimeRangeSlider, { type TimeRange } from '@/components/map/TimeRangeSlide
 import WeatherLayerBar, { type WeatherOverlay } from '@/components/map/WeatherLayerBar'
 import type { MapToolbarLayers } from '@/components/map/FloatingMapToolbar'
 import { DEFAULT_PLACE_ID, flattenPlaces } from '@/config/places'
+import { buildCorridorDirectionBrief } from '@/lib/corridorDirection'
 import type { Alert, Asset, RegionAssetStats } from '@/lib/api'
 import { computeRegionStats, filterAssetsByPlace } from '@/lib/placeFilter'
 import type { MapStatusSnapshot } from '@/types/mapStatus'
@@ -36,6 +37,9 @@ interface MapViewportProps {
   onSelectPlace?: (placeId: string) => void
   regionKmlStats?: RegionAssetStats | null
   placeAssetCounts?: Record<string, { total: number }>
+  focusTarget?: { id: string; latitude: number; longitude: number } | null
+  onFocusConsumed?: () => void
+  highlightAssetId?: string | null
 }
 
 export default function MapViewport({
@@ -50,6 +54,9 @@ export default function MapViewport({
   onSelectPlace: externalOnSelectPlace,
   regionKmlStats = null,
   placeAssetCounts: externalPlaceCounts,
+  focusTarget = null,
+  onFocusConsumed,
+  highlightAssetId = null,
 }: MapViewportProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('2d')
   const [internalPlaceId, setInternalPlaceId] = useState(DEFAULT_PLACE_ID)
@@ -57,7 +64,6 @@ export default function MapViewport({
   const onSelectPlace = externalOnSelectPlace ?? setInternalPlaceId
 
   const [mapZoom, setMapZoom] = useState<MapZoomHandlers | null>(null)
-  const [drawerAssetId, setDrawerAssetId] = useState<string | null>(null)
   const [heatMapMode, setHeatMapMode] = useState<HeatMapMode>('normal')
   const [timeRange, setTimeRange] = useState<TimeRange>('live')
   const [basemapMode, setBasemapMode] = useState<MapBasemap>('satellite')
@@ -67,11 +73,31 @@ export default function MapViewport({
     substation: true,
     line: true,
   })
+  const [voltageFilters, setVoltageFilters] = useState<Record<string, boolean>>({
+    '765': true,
+    '400': true,
+    '220': true,
+    '132': true,
+    '66': true,
+    other: true,
+  })
+  const [substationVoltageFilters, setSubstationVoltageFilters] = useState<Record<string, boolean>>({
+    '765': true,
+    '400': true,
+    '220': true,
+    '132': true,
+    '66': true,
+    other: true,
+  })
   const [labelsOn, setLabelsOn] = useState(true)
   const [intelPanelCollapsed, setIntelPanelCollapsed] = useState(false)
   const [controlRailCollapsed, setControlRailCollapsed] = useState(false)
   const [showWildfireRisk, setShowWildfireRisk] = useState(false)
   const [showFloodRisk, setShowFloodRisk] = useState(false)
+  const [corridorBrief, setCorridorBrief] = useState<ReturnType<typeof buildCorridorDirectionBrief>>(null)
+  const [corridorShowToken, setCorridorShowToken] = useState(0)
+  const corridorShownForRef = React.useRef<string | null>(null)
+  const lastFocusTargetRef = React.useRef<string | null>(null)
   const [layers, setLayers] = useState<MapToolbarLayers>({
     heatmap: false,
     riskOverlay: true,
@@ -84,13 +110,43 @@ export default function MapViewport({
     labels: true,
   })
 
+  // Surface corridor location above search/chrome for 2s when a line is focused
+  useEffect(() => {
+    const focusId = focusTarget?.id || highlightAssetId || selectedAssetId
+    if (!focusId) {
+      corridorShownForRef.current = null
+      lastFocusTargetRef.current = null
+      setCorridorBrief(null)
+      return
+    }
+    const asset = assets.find((a) => a.id === focusId)
+    if (!asset || asset.asset_type !== 'line') {
+      if (!focusTarget?.id) setCorridorBrief(null)
+      return
+    }
+    const brief = buildCorridorDirectionBrief(asset)
+    if (!brief) return
+
+    setCorridorBrief(brief)
+
+    const isNewFocusTarget =
+      Boolean(focusTarget?.id) && focusTarget!.id !== lastFocusTargetRef.current
+    if (focusTarget?.id) lastFocusTargetRef.current = focusTarget.id
+    else lastFocusTargetRef.current = null
+
+    if (isNewFocusTarget || corridorShownForRef.current !== focusId) {
+      corridorShownForRef.current = focusId
+      setCorridorShowToken((n) => n + 1)
+    }
+  }, [highlightAssetId, selectedAssetId, assets, focusTarget?.id])
+
+  const handleCloseCorridorOverlay = useCallback(() => {
+    // Visibility is owned by the overlay; keep brief so map focus stays active.
+  }, [])
+
   useEffect(() => {
     if (viewMode !== '2d') setMapZoom(null)
   }, [viewMode])
-
-  useEffect(() => {
-    if (selectedAssetId) setDrawerAssetId(selectedAssetId)
-  }, [selectedAssetId])
 
   useEffect(() => {
     if (!onMapStatusChange || viewMode !== '3d') return
@@ -142,18 +198,6 @@ export default function MapViewport({
     return counts
   }, [assets, externalPlaceCounts])
 
-  const drawerAsset = useMemo(
-    () => (drawerAssetId ? assets.find((a) => a.id === drawerAssetId) ?? null : null),
-    [assets, drawerAssetId]
-  )
-
-  const nearbyAssets = useMemo(() => {
-    if (!drawerAsset) return []
-    return filterAssetsByPlace(assets, selectedPlaceId)
-      .filter((a) => a.id !== drawerAsset.id)
-      .slice(0, 5)
-  }, [assets, drawerAsset, selectedPlaceId])
-
   const toggleLayer = (key: keyof MapToolbarLayers) => {
     setLayers((prev) => {
       if (key === 'satellite') {
@@ -172,9 +216,16 @@ export default function MapViewport({
     setTypeFilters((prev) => ({ ...prev, [type]: !prev[type] }))
   }, [])
 
+  const toggleVoltage = useCallback((kv: string) => {
+    setVoltageFilters((prev) => ({ ...prev, [kv]: !prev[kv] }))
+  }, [])
+
+  const toggleSubstationVoltage = useCallback((kv: string) => {
+    setSubstationVoltageFilters((prev) => ({ ...prev, [kv]: !prev[kv] }))
+  }, [])
+
   const handleSelectAsset = useCallback(
     (id: string) => {
-      setDrawerAssetId(id)
       onSelectAsset?.(id)
     },
     [onSelectAsset]
@@ -195,18 +246,27 @@ export default function MapViewport({
     })
   }
 
-  const activeLayers = {
-    heatmap: layers.heatmap,
-    riskOverlay: layers.riskOverlay,
-    satellite: layers.satellite,
-    terrain: layers.terrain,
-    corridors: layers.corridors,
-  }
+  const activeLayers = useMemo(
+    () => ({
+      heatmap: layers.heatmap,
+      riskOverlay: layers.riskOverlay,
+      satellite: layers.satellite,
+      terrain: layers.terrain,
+      corridors: layers.corridors,
+    }),
+    [layers.heatmap, layers.riskOverlay, layers.satellite, layers.terrain, layers.corridors]
+  )
 
   const offlineTowers = regionStats.towers > 0 ? Math.min(2, regionStats.criticalAlerts) : 0
 
   return (
     <div className="absolute inset-0 w-full h-full bg-[#060B17] overflow-hidden">
+      <CorridorFocusOverlay
+        brief={corridorBrief}
+        showToken={corridorShowToken}
+        onClose={handleCloseCorridorOverlay}
+      />
+
       {onSelectAsset && (
         <MapTopChrome
           assets={filterAssetsByPlace(assets, selectedPlaceId)}
@@ -226,8 +286,18 @@ export default function MapViewport({
         stats={regionStats}
         typeFilters={typeFilters}
         onToggleType={toggleType}
+        voltageFilters={voltageFilters}
+        onToggleVoltage={toggleVoltage}
+        substationVoltageFilters={substationVoltageFilters}
+        onToggleSubstationVoltage={toggleSubstationVoltage}
         heatMapMode={heatMapMode}
         onHeatMapMode={setHeatMapMode}
+        corridorsOn={layers.corridors}
+        onToggleCorridors={() => toggleLayer('corridors')}
+        labelsOn={labelsOn}
+        onToggleLabels={() => setLabelsOn((v) => !v)}
+        selectedPlaceId={selectedPlaceId}
+        onSelectPlace={onSelectPlace}
         resolvedToday={12}
         offlineTowers={offlineTowers}
         collapsed={intelPanelCollapsed}
@@ -277,12 +347,11 @@ export default function MapViewport({
       />
 
       <div
-        className="pointer-events-none absolute inset-0 z-[500] opacity-[0.03]"
+        className="pointer-events-none absolute inset-0 z-[500] opacity-[0.025]"
         aria-hidden
         style={{
           background:
-            'conic-gradient(from 0deg at 70% 35%, transparent 0deg, rgba(59,130,246,0.8) 40deg, transparent 80deg)',
-          animation: 'radarSweep 18s linear infinite',
+            'radial-gradient(ellipse at 70% 30%, rgba(59,130,246,0.35), transparent 55%)',
         }}
       />
 
@@ -300,9 +369,14 @@ export default function MapViewport({
           selectedPlaceId={selectedPlaceId}
           heatMapMode={heatMapMode}
           typeFilters={typeFilters}
+          voltageFilters={voltageFilters}
+          substationVoltageFilters={substationVoltageFilters}
           showLabels={labelsOn}
           showWildfireRisk={showWildfireRisk}
           showFloodRisk={showFloodRisk}
+          focusTarget={focusTarget}
+          onFocusConsumed={onFocusConsumed}
+          highlightAssetId={highlightAssetId}
         />
       ) : (
         <GISMap3D
@@ -313,15 +387,6 @@ export default function MapViewport({
           _activeLayers={activeLayers}
         />
       )}
-
-      <AssetDetailDrawer
-        asset={drawerAsset}
-        onClose={() => {
-          setDrawerAssetId(null)
-          onSelectAsset?.('')
-        }}
-        nearbyAssets={nearbyAssets}
-      />
     </div>
   )
 }

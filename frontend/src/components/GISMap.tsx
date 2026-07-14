@@ -12,7 +12,6 @@ import {
   DEFAULT_PLACE_ID,
   getPlaceById,
   getStateFilterForPlace,
-  INDIA_MAP_BOUNDS,
   placeShowsTowers,
 } from '@/config/places'
 import type { MapStatusSnapshot } from '@/types/mapStatus'
@@ -91,24 +90,88 @@ function lineWeightForVoltage(kv: number | null | undefined, selected: boolean):
   return selected ? base + 2 : base
 }
 
-function makeAssetIcon(asset: Asset, isSelected: boolean, hasAlert: boolean) {
+/** Bucket a kV value into the panel's voltage-class filter keys. */
+function voltageClassKey(kv: number | null | undefined): string {
+  if (kv == null || Number.isNaN(kv)) return 'other'
+  if (kv >= 765) return '765'
+  if (kv >= 400) return '400'
+  if (kv >= 220) return '220'
+  if (kv >= 132) return '132'
+  if (kv >= 66) return '66'
+  return 'other'
+}
+
+const COMPASS_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
+
+function bearingBetween(a: L.LatLng, b: L.LatLng): number {
+  const p1 = (a.lat * Math.PI) / 180
+  const p2 = (b.lat * Math.PI) / 180
+  const dl = ((b.lng - a.lng) * Math.PI) / 180
+  const y = Math.sin(dl) * Math.cos(p2)
+  const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl)
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
+}
+
+/** Human-readable power-flow direction from corridor endpoints. */
+function flowDirectionLabel(latlngs: L.LatLngExpression[]): string {
+  if (latlngs.length < 2) return ''
+  const start = L.latLng(latlngs[0])
+  const end = L.latLng(latlngs[latlngs.length - 1])
+  const bearing = bearingBetween(start, end)
+  const to = COMPASS_8[Math.round(bearing / 45) % 8]
+  const from = COMPASS_8[Math.round(((bearing + 180) % 360) / 45) % 8]
+  return `${from} → ${to}`
+}
+
+function lineMidLatLng(latlngs: L.LatLngExpression[]): L.LatLng {
+  const mid = latlngs[Math.floor(latlngs.length / 2)]
+  return L.latLng(mid)
+}
+
+function directionEndpointIcon(label: string, caption: string): L.DivIcon {
+  return L.divIcon({
+    className: '',
+    iconSize: [28, 36],
+    iconAnchor: [14, 36],
+    html: `<div style="display:flex;flex-direction:column;align-items:center;font-family:system-ui,sans-serif">
+      <div style="
+        width:24px;height:24px;border-radius:6px;background:#0A0A0A;border:2px solid #22D3EE;
+        color:#22D3EE;font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;
+      ">${label}</div>
+      <div style="
+        margin-top:2px;padding:1px 5px;border-radius:3px;background:#0A0A0A;border:1px solid #22D3EE;
+        color:#e2e8f0;font-size:8px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;
+      ">${caption}</div>
+    </div>`,
+  })
+}
+
+const MISSION_FOCUS_COLOR = '#22D3EE' // bright cyan — center stroke
+const MISSION_FOCUS_BORDER = '#0A0A0A' // very dark black casing — easy to spot on map
+
+function makeAssetIcon(asset: Asset, isSelected: boolean, hasAlert: boolean, isMissionFocus = false) {
   const cfg = ASSET_CONFIG[asset.asset_type]
-  const ring = hasAlert ? '#f77f00' : healthColor(asset)
-  const scale = isSelected ? 1.15 : 1
+  const fillColor = isMissionFocus ? MISSION_FOCUS_COLOR : cfg.color
+  const ring = isMissionFocus ? MISSION_FOCUS_COLOR : hasAlert ? '#f77f00' : healthColor(asset)
+  const scale = isMissionFocus || isSelected ? 1.2 : 1
   const w = Math.round(cfg.size * scale)
   const h = Math.round(cfg.size * scale)
-  const selectRing = isSelected ? 'outline:2px solid #fff;outline-offset:2px;' : ''
+  const selectRing = isMissionFocus
+    ? `outline:3px solid ${MISSION_FOCUS_BORDER};outline-offset:2px;border-radius:8px;`
+    : isSelected
+      ? 'outline:2px solid #fff;outline-offset:2px;'
+      : ''
 
   let symbol = ''
   if (asset.asset_type === 'tower') {
     symbol = `<svg width="${w}" height="${h}" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-      <polygon points="16,4 28,28 4,28" fill="${cfg.color}" stroke="#fff" stroke-width="2"/>
+      <polygon points="16,4 28,28 4,28" fill="${fillColor}" stroke="${isMissionFocus ? MISSION_FOCUS_BORDER : '#fff'}" stroke-width="${isMissionFocus ? 3.5 : 2}"/>
       <line x1="10" y1="20" x2="22" y2="20" stroke="#fff" stroke-width="1.5"/>
       <line x1="12" y1="24" x2="20" y2="24" stroke="#fff" stroke-width="1.5"/>
     </svg>`
   } else if (asset.asset_type === 'substation') {
     symbol = `<svg width="${w}" height="${h}" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
-      <rect x="3" y="3" width="30" height="30" rx="4" fill="${cfg.color}" stroke="#fff" stroke-width="2"/>
+      <rect x="3" y="3" width="30" height="30" rx="4" fill="${fillColor}" stroke="${isMissionFocus ? MISSION_FOCUS_BORDER : '#fff'}" stroke-width="${isMissionFocus ? 3.5 : 2}"/>
       <rect x="8" y="8" width="8" height="8" fill="none" stroke="#fff" stroke-width="1.5"/>
       <rect x="20" y="8" width="8" height="8" fill="none" stroke="#fff" stroke-width="1.5"/>
       <rect x="8" y="20" width="8" height="8" fill="none" stroke="#fff" stroke-width="1.5"/>
@@ -117,43 +180,46 @@ function makeAssetIcon(asset: Asset, isSelected: boolean, hasAlert: boolean) {
     </svg>`
   } else {
     symbol = `<svg width="${w}" height="${h}" viewBox="0 0 32 20" xmlns="http://www.w3.org/2000/svg">
-      <line x1="2" y1="10" x2="30" y2="10" stroke="${cfg.color}" stroke-width="4" stroke-linecap="round"/>
-      <circle cx="16" cy="10" r="5" fill="${cfg.color}" stroke="#fff" stroke-width="2"/>
+      <line x1="2" y1="10" x2="30" y2="10" stroke="${isMissionFocus ? MISSION_FOCUS_BORDER : fillColor}" stroke-width="${isMissionFocus ? 9 : 4}" stroke-linecap="round"/>
+      <line x1="2" y1="10" x2="30" y2="10" stroke="${fillColor}" stroke-width="${isMissionFocus ? 4 : 4}" stroke-linecap="round"/>
+      <circle cx="16" cy="10" r="5" fill="${fillColor}" stroke="${isMissionFocus ? MISSION_FOCUS_BORDER : '#fff'}" stroke-width="2.5"/>
     </svg>`
   }
 
   const labelH = 18
   const totalH = h + labelH + 4
+  const labelBorder = isMissionFocus ? MISSION_FOCUS_BORDER : 'rgba(255,255,255,0.2)'
+  const labelBg = isMissionFocus ? '#0A0A0A' : 'rgba(17,24,39,0.92)'
 
   return L.divIcon({
     className: '',
     iconSize: [Math.max(w, 90), totalH],
     iconAnchor: [Math.max(w, 90) / 2, h / 2],
     html: `<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;${selectRing}">
-      <div style="border:3px solid ${ring};border-radius:6px;padding:2px;background:rgba(0,0,0,0.35);position:relative;">
+      <div style="border:3px solid ${ring};border-radius:6px;padding:2px;background:rgba(0,0,0,0.45);position:relative;">
         ${symbol}
       </div>
       <div style="
         margin-top:3px;
-        background:rgba(17,24,39,0.92);
+        background:${labelBg};
         color:#fff;
         font-size:10px;
         font-weight:700;
         padding:2px 6px;
         border-radius:4px;
         white-space:nowrap;
-        border:1px solid rgba(255,255,255,0.2);
+        border:1px solid ${labelBorder};
         max-width:110px;
         overflow:hidden;
         text-overflow:ellipsis;
-      ">${asset.name}</div>
+      ">${isMissionFocus ? '◎ ' : ''}${asset.name}</div>
       <div style="
         font-size:9px;
-        color:${cfg.color};
-        font-weight:600;
+        color:${isMissionFocus ? MISSION_FOCUS_COLOR : cfg.color};
+        font-weight:700;
         text-transform:uppercase;
         letter-spacing:0.5px;
-      ">${cfg.badge}</div>
+      ">${isMissionFocus ? 'FOCUSED' : cfg.badge}</div>
     </div>`,
   })
 }
@@ -319,9 +385,14 @@ export default function GISMap({
   selectedPlaceId = DEFAULT_PLACE_ID,
   heatMapMode = 'normal',
   typeFilters: externalTypeFilters,
+  voltageFilters,
+  substationVoltageFilters,
   showLabels: externalShowLabels,
   showWildfireRisk = false,
   showFloodRisk = false,
+  focusTarget = null,
+  onFocusConsumed,
+  highlightAssetId = null,
 }: {
   assets: Asset[]
   selectedAssetId?: string | null
@@ -341,9 +412,15 @@ export default function GISMap({
   selectedPlaceId?: string
   heatMapMode?: string
   typeFilters?: Record<AssetType, boolean>
+  voltageFilters?: Record<string, boolean>
+  substationVoltageFilters?: Record<string, boolean>
   showLabels?: boolean
   showWildfireRisk?: boolean
   showFloodRisk?: boolean
+  focusTarget?: { id: string; latitude: number; longitude: number } | null
+  onFocusConsumed?: () => void
+  /** Unique color highlight after mission-report View */
+  highlightAssetId?: string | null
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -355,6 +432,11 @@ export default function GISMap({
   const clickMarkerRef = useRef<L.Marker | null>(null)
   const hasInitialFitRef = useRef(false)
   const lastFitKeyRef = useRef('')
+  const introDoneRef = useRef(false)
+  const lastSelectedFlyRef = useRef<string | null>(null)
+  const towerAbortRef = useRef<AbortController | null>(null)
+  const cursorRafRef = useRef<number>(0)
+  const statusThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [mapLayer, setMapLayer] = useState<MapLayer>('satellite-labels')
   const [mapStatus, setMapStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const showLabels = externalShowLabels ?? true
@@ -373,18 +455,38 @@ export default function GISMap({
 
   const wildfireOn = showWildfireRisk || Boolean(activeLayers?.riskOverlay || heatMapMode === 'ai-risk')
   const floodOn = showFloodRisk || Boolean(activeLayers?.riskOverlay || heatMapMode === 'flood')
+  const corridorsOn = activeLayers?.corridors !== false
+  const heatmapOn = Boolean(activeLayers?.heatmap || heatMapMode === 'heatmap')
+  const alertIdSet = useMemo(() => new Set(alertAssetIds), [alertAssetIds])
+  const alertIdsKey = useMemo(() => [...alertIdSet].sort().join(','), [alertIdSet])
+  const voltageFilterKey = useMemo(
+    () =>
+      voltageFilters
+        ? Object.entries(voltageFilters)
+            .map(([k, v]) => `${k}:${v ? 1 : 0}`)
+            .join('|')
+        : '',
+    [voltageFilters]
+  )
 
   const showTowers = placeShowsTowers(selectedPlaceId) && typeFilters.tower
 
   const filteredAssets = useMemo(() => {
     const base = filterAssetsByPlace(assets, selectedPlaceId).filter((a) => {
       if (a.asset_type === 'tower') return false
-      return typeFilters[a.asset_type]
+      if (!typeFilters[a.asset_type]) return false
+      // Substation voltage sub-class filter
+      if (a.asset_type === 'substation' && substationVoltageFilters) {
+        const kvRaw = a.metadata?.voltage_kv
+        const kv = typeof kvRaw === 'number' ? kvRaw : typeof kvRaw === 'string' ? Number(kvRaw) : null
+        if (substationVoltageFilters[voltageClassKey(kv)] === false) return false
+      }
+      return true
     })
     if (!showTowers) return base
     const towers = viewportTowers.filter((t) => assetMatchesPlace(t, selectedPlaceId))
     return [...base, ...towers]
-  }, [assets, typeFilters, selectedPlaceId, viewportTowers, showTowers])
+  }, [assets, typeFilters, substationVoltageFilters, selectedPlaceId, viewportTowers, showTowers])
   // Fit only on place / type filters — not when viewport towers refresh
   const corridorIds = useMemo(
     () =>
@@ -394,7 +496,9 @@ export default function GISMap({
         .join(','),
     [assets, selectedPlaceId, typeFilters]
   )
-  const fitKey = `${selectedPlaceId}:${corridorIds}`
+  // Fit only when the region changes — not when filter/voltage toggles change corridors
+  const fitKey = selectedPlaceId
+  void corridorIds
 
   const loadViewportTowers = useCallback(() => {
     const map = mapRef.current
@@ -403,16 +507,28 @@ export default function GISMap({
       return
     }
     const zoom = map.getZoom()
-    // Dense towers only when zoomed in enough; sample more at higher zoom
-    const limit = zoom >= 11 ? 8000 : zoom >= 9 ? 5000 : zoom >= 7 ? 3000 : 1500
+    // Keep tower counts interactive — denser only when tightly zoomed
+    const limit = zoom >= 13 ? 2200 : zoom >= 11 ? 1600 : zoom >= 9 ? 1000 : 600
     const bounds = map.getBounds()
     const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`
     const state = getStateFilterForPlace(selectedPlaceId)
+
+    towerAbortRef.current?.abort()
+    const controller = new AbortController()
+    towerAbortRef.current = controller
+
     setTowersLoading(true)
-    fetchGisTowers(bbox, state === 'Gujarat' ? 'Gujarat' : undefined, limit)
-      .then((towers) => setViewportTowers(towers))
-      .catch(() => setViewportTowers([]))
-      .finally(() => setTowersLoading(false))
+    fetchGisTowers(bbox, state === 'Gujarat' ? 'Gujarat' : undefined, limit, controller.signal)
+      .then((towers) => {
+        if (!controller.signal.aborted) setViewportTowers(towers)
+      })
+      .catch((err) => {
+        if (err?.name === 'AbortError') return
+        if (!controller.signal.aborted) setViewportTowers([])
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setTowersLoading(false)
+      })
   }, [selectedPlaceId, showTowers])
 
   useEffect(() => {
@@ -421,22 +537,22 @@ export default function GISMap({
 
   useEffect(() => {
     if (!showTowers) {
+      towerAbortRef.current?.abort()
       setViewportTowers([])
       return
     }
     if (towerFetchRef.current) clearTimeout(towerFetchRef.current)
-    towerFetchRef.current = setTimeout(loadViewportTowers, 350)
+    towerFetchRef.current = setTimeout(loadViewportTowers, 320)
     return () => {
       if (towerFetchRef.current) clearTimeout(towerFetchRef.current)
     }
   }, [loadViewportTowers, showTowers, zoomVersion, selectedPlaceId])
 
-  // Sync basemap layer with activeLayers
+  // Sync basemap layer with activeLayers (primitives only)
   useEffect(() => {
-    if (activeLayers) {
-      setMapLayer(activeLayers.satellite && showLabels ? 'satellite-labels' : 'satellite')
-    }
-  }, [activeLayers, showLabels])
+    if (!activeLayers) return
+    setMapLayer(activeLayers.satellite && showLabels ? 'satellite-labels' : 'satellite')
+  }, [activeLayers?.satellite, showLabels, activeLayers])
 
   const fitToPlace = useCallback(
     (placeId: string, assetList: Asset[]) => {
@@ -446,9 +562,9 @@ export default function GISMap({
       const place = getPlaceById(placeId)
       if (place?.bounds) {
         const [[south, west], [north, east]] = place.bounds
-        map.fitBounds(
+        map.flyToBounds(
           L.latLngBounds([south, west], [north, east]),
-          { padding: [50, 50], maxZoom: placeId === 'india' ? 6 : placeId === 'gujarat' ? 8 : 11 }
+          { padding: [50, 50], maxZoom: placeId === 'india' ? 6 : placeId === 'gujarat' ? 8 : 11, duration: 1.4 }
         )
         return
       }
@@ -456,7 +572,7 @@ export default function GISMap({
       if (assetList.length === 0) return
       const bounds = collectBounds(assetList)
       if (!bounds) return
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 6 })
+      map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 6, duration: 1.4 })
     },
     []
   )
@@ -479,7 +595,10 @@ export default function GISMap({
       const map = mapRef.current
       if (!map) return
 
-      map.flyTo([lat, lng], 14, { duration: 1.2 })
+      // Click pins settle without stealing the view; GPS/manual still fly in
+      if (source !== 'map_click') {
+        map.flyTo([lat, lng], Math.max(map.getZoom(), 14), { duration: 1.0 })
+      }
 
       const isGps = source === 'gps'
       const markerRef = isGps ? userLocationMarkerRef : clickMarkerRef
@@ -500,7 +619,11 @@ export default function GISMap({
           Lng: ${formatCoord(lng)}
         </div>`
       )
-      setTimeout(() => markerRef.current?.openPopup(), 1300)
+      if (source !== 'map_click') {
+        setTimeout(() => markerRef.current?.openPopup(), 1100)
+      } else {
+        markerRef.current?.openPopup()
+      }
     },
     [placeMarker]
   )
@@ -511,15 +634,12 @@ export default function GISMap({
 
     try {
       const map = L.map(container, {
-        center: [22.5, 72.5],
-        zoom: 7,
+        center: [18, 40],
+        zoom: 2.4,
         zoomControl: false,
-        maxBounds: L.latLngBounds(
-          [INDIA_MAP_BOUNDS[0][0], INDIA_MAP_BOUNDS[0][1]],
-          [INDIA_MAP_BOUNDS[1][0], INDIA_MAP_BOUNDS[1][1]]
-        ),
-        maxBoundsViscosity: 0.85,
-        minZoom: 5,
+        minZoom: 2,
+        maxZoom: 19,
+        worldCopyJump: true,
       })
 
       L.control.attribution({ position: 'bottomright', prefix: false }).addTo(map)
@@ -535,25 +655,34 @@ export default function GISMap({
       mapRef.current = map
       setMapStatus('ready')
 
-      // Refresh labels/footprints on zoom — do NOT reset map bounds
+      // Refresh labels on zoom; tower fetch is debounced via zoomVersion effect only
       map.on('zoomend', () => {
         setZoomVersion((v) => v + 1)
-        loadViewportTowersRef.current()
       })
 
       map.on('moveend', () => {
         if (towerFetchRef.current) clearTimeout(towerFetchRef.current)
-        towerFetchRef.current = setTimeout(() => loadViewportTowersRef.current(), 300)
+        towerFetchRef.current = setTimeout(() => loadViewportTowersRef.current(), 280)
       })
 
       map.on('mousemove', (e) => {
-        setCursorPoint({ lat: e.latlng.lat, lng: e.latlng.lng })
+        const next = { lat: e.latlng.lat, lng: e.latlng.lng }
+        if (cursorRafRef.current) return
+        cursorRafRef.current = requestAnimationFrame(() => {
+          cursorRafRef.current = 0
+          setCursorPoint(next)
+        })
       })
 
       map.on('click', (e) => {
-        const lat = e.latlng.lat
-        const lng = e.latlng.lng
-        flyToCoordinates(lat, lng, 'map_click')
+        // Ignore clicks on markers/lines — those have their own handlers
+        const original = e.originalEvent?.target as HTMLElement | undefined
+        if (original?.closest?.('.leaflet-marker-icon, .leaflet-interactive')) {
+          // Still allow empty-map clicks; feature clicks bubble — skip fly hijack
+          const path = original.closest('path.leaflet-interactive, .leaflet-marker-icon')
+          if (path) return
+        }
+        flyToCoordinates(e.latlng.lat, e.latlng.lng, 'map_click')
       })
 
       const isMapAlive = () => mapRef.current === map && Boolean(map.getPane('mapPane'))
@@ -570,6 +699,9 @@ export default function GISMap({
 
       return () => {
         clearTimeout(invalidateTimer)
+        if (cursorRafRef.current) cancelAnimationFrame(cursorRafRef.current)
+        if (statusThrottleRef.current) clearTimeout(statusThrottleRef.current)
+        towerAbortRef.current?.abort()
         window.removeEventListener('resize', onResize)
         clusterRef.current?.clearLayers()
         markerByIdRef.current.clear()
@@ -598,11 +730,17 @@ export default function GISMap({
 
   useEffect(() => {
     if (!onMapStatusChange || mapStatus !== 'ready') return
-    onMapStatusChange({
-      coordinates: cursorPoint,
-      zoom: mapRef.current?.getZoom() ?? null,
-      viewMode: '2d',
-    })
+    if (statusThrottleRef.current) clearTimeout(statusThrottleRef.current)
+    statusThrottleRef.current = setTimeout(() => {
+      onMapStatusChange({
+        coordinates: cursorPoint,
+        zoom: mapRef.current?.getZoom() ?? null,
+        viewMode: '2d',
+      })
+    }, 120)
+    return () => {
+      if (statusThrottleRef.current) clearTimeout(statusThrottleRef.current)
+    }
   }, [cursorPoint, zoomVersion, mapStatus, onMapStatusChange])
 
   useEffect(() => {
@@ -624,10 +762,10 @@ export default function GISMap({
       map.removeLayer(clusterRef.current)
     }
     clusterRef.current = L.markerClusterGroup({
-      maxClusterRadius: 55,
+      maxClusterRadius: 60,
       spiderfyOnMaxZoom: true,
       showCoverageOnHover: false,
-      disableClusteringAtZoom: 12,
+      disableClusteringAtZoom: 14,
       iconCreateFunction: (cluster) => {
         const count = cluster.getChildCount()
         const size = count > 100 ? 48 : count > 50 ? 44 : count > 15 ? 38 : 32
@@ -659,44 +797,138 @@ export default function GISMap({
 
     filteredAssets.forEach((asset) => {
       const isSelected = asset.id === selectedAssetId
-      const hasAlert = alertAssetIds.includes(asset.id)
+      const isMissionFocus = Boolean(highlightAssetId && asset.id === highlightAssetId)
+      const hasAlert = alertIdSet.has(asset.id)
       const cfg = ASSET_CONFIG[asset.asset_type]
-      const ring = healthColor(asset)
+      const ring = isMissionFocus ? MISSION_FOCUS_COLOR : healthColor(asset)
 
       if (asset.asset_type === 'line' && asset.geometry?.type === 'LineString') {
-        if (activeLayers && !activeLayers.corridors) return
-        const latlngs = toLatLngs(asset.geometry.coordinates as number[][])
+        if (!corridorsOn) return
         const kvRaw = asset.metadata?.voltage_kv
         const kv = typeof kvRaw === 'number' ? kvRaw : typeof kvRaw === 'string' ? Number(kvRaw) : null
+        // Voltage-class filter from the intel panel checkboxes
+        if (voltageFilters && voltageFilters[voltageClassKey(kv)] === false) return
+        const latlngs = toLatLngs(asset.geometry.coordinates as number[][])
         const lineHealth = asset.health_score || 'healthy'
-        const lineColor =
-          hasAlert || lineHealth === 'critical'
+        // Selected OR mission View — cyan corridor + A/B ends + direction popup
+        const isCorridorFocus = isMissionFocus || isSelected
+        const lineColor = isCorridorFocus
+          ? MISSION_FOCUS_COLOR
+          : hasAlert || lineHealth === 'critical'
             ? '#ef4444'
             : lineHealth === 'attention_required'
               ? '#F59E0B'
               : voltageLineColor(kv)
+        const baseWeight = lineWeightForVoltage(kv, isCorridorFocus) + (isCorridorFocus ? 3 : 0)
+        const baseOpacity = isCorridorFocus ? 1 : kv != null && kv >= 220 ? 0.95 : 0.75
+
+        if (isCorridorFocus) {
+          // Very dark black border casing so the corridor is unmistakable
+          const border = L.polyline(latlngs, {
+            color: MISSION_FOCUS_BORDER,
+            weight: baseWeight + 7,
+            opacity: 1,
+            lineCap: 'round',
+            lineJoin: 'round',
+            interactive: false,
+            className: 'tams-mission-focus-border',
+          }).addTo(map)
+          overlaysRef.current.push(border)
+        }
 
         const polyline = L.polyline(latlngs, {
           color: lineColor,
-          weight: lineWeightForVoltage(kv, isSelected),
-          opacity: kv != null && kv >= 220 ? 0.95 : 0.75,
-          dashArray: kv != null && kv >= 400 ? undefined : '8 6',
-          className: 'tams-line-flow',
+          weight: baseWeight,
+          opacity: baseOpacity,
+          dashArray: isCorridorFocus ? undefined : kv != null && kv >= 400 ? undefined : '8 6',
+          className: isCorridorFocus ? 'tams-mission-focus-line' : 'tams-line-flow',
+          interactive: true,
+          lineCap: 'round',
+          lineJoin: 'round',
         }).addTo(map)
-        polyline.bindPopup(buildPopupHtml(asset))
-        polyline.on('click', () => onSelectAsset?.(asset.id))
+        polyline.on('click', (e) => {
+          L.DomEvent.stopPropagation(e)
+          onSelectAsset?.(asset.id)
+        })
+
+        // Signature interaction: reveal directional power flow on hover
+        const flow = flowDirectionLabel(latlngs)
+        const kvLabel = kv != null ? `${kv} kV` : 'Unclassified'
+        const startLl = L.latLng(latlngs[0])
+        const endLl = L.latLng(latlngs[latlngs.length - 1])
+        const midLl = lineMidLatLng(latlngs)
+
+        if (isCorridorFocus && latlngs.length >= 2) {
+          // Permanent direction chip above the corridor
+          polyline.bindTooltip(
+            `<div style="font-family:ui-monospace,monospace;text-align:center">
+              <div style="font-weight:800;color:#22d3ee;font-size:11px;letter-spacing:0.04em">🧭 ${flow}</div>
+              <div style="color:#e2e8f0;font-weight:700;font-size:10px;margin-top:2px">${kvLabel} · ${asset.name}</div>
+            </div>`,
+            {
+              permanent: true,
+              direction: 'top',
+              opacity: 1,
+              className: 'tams-direction-permanent',
+              offset: [0, -8],
+            }
+          )
+
+          const startPin = L.marker(startLl, {
+            icon: directionEndpointIcon('A', 'Start'),
+            zIndexOffset: 1200,
+            interactive: false,
+          }).addTo(map)
+          const endPin = L.marker(endLl, {
+            icon: directionEndpointIcon('B', 'End'),
+            zIndexOffset: 1200,
+            interactive: false,
+          }).addTo(map)
+
+          const directionAnchor = L.marker(midLl, {
+            icon: L.divIcon({ className: '', iconSize: [1, 1], iconAnchor: [0, 0], html: '' }),
+            zIndexOffset: 1300,
+            interactive: false,
+          }).addTo(map)
+
+          // Direction detail opens as a React overlay above search/chrome (MapViewport).
+          // Keep map markers A/B + permanent direction chip only.
+          markerByIdRef.current.set(asset.id, directionAnchor)
+          overlaysRef.current.push(startPin, endPin, directionAnchor)
+        } else {
+          polyline.bindPopup(buildPopupHtml(asset))
+          polyline.bindTooltip(
+            `<div style="display:flex;align-items:center;gap:6px;font-family:ui-monospace,monospace">
+              <span style="width:6px;height:6px;border-radius:50%;background:${lineColor}"></span>
+              <span style="color:${lineColor};font-weight:800">${kvLabel}</span>
+              <span style="color:#93c5fd;font-weight:700;letter-spacing:0.04em">⚡ ${flow}</span>
+            </div>`,
+            { sticky: true, direction: 'top', opacity: 1, className: 'tams-flow-tooltip' }
+          )
+        }
+
+        polyline.on('mouseover', () => {
+          polyline.setStyle({ weight: baseWeight + 2, opacity: 1 })
+          polyline.getElement()?.classList.add('tams-line-flow-active')
+          polyline.bringToFront()
+        })
+        polyline.on('mouseout', () => {
+          if (isCorridorFocus) return
+          polyline.setStyle({ weight: baseWeight, opacity: baseOpacity })
+          polyline.getElement()?.classList.remove('tams-line-flow-active')
+        })
         overlaysRef.current.push(polyline)
         return
       }
 
       if (asset.asset_type === 'substation' && asset.geometry?.type === 'Polygon' && zoom >= 8) {
         const rings = asset.geometry.coordinates as number[][][]
-        const latlngs = rings.map((ring) => toLatLngs(ring))
+        const latlngs = rings.map((r) => toLatLngs(r))
         const polygon = L.polygon(latlngs, {
-          color: ring,
-          weight: isSelected ? 3 : 2,
-          fillColor: cfg.color,
-          fillOpacity: 0.35,
+          color: isMissionFocus ? MISSION_FOCUS_BORDER : ring,
+          weight: isMissionFocus || isSelected ? 4 : 2,
+          fillColor: isMissionFocus ? MISSION_FOCUS_COLOR : cfg.color,
+          fillOpacity: isMissionFocus ? 0.45 : 0.35,
         }).addTo(map)
         polygon.bindPopup(buildPopupHtml(asset))
         polygon.on('click', () => onSelectAsset?.(asset.id))
@@ -705,20 +937,30 @@ export default function GISMap({
 
       // Compact tower dots at overview zoom — full icons when zoomed in
       let marker: L.Marker & { assetRef?: Asset }
-      if (asset.asset_type === 'tower' && compactTowers) {
+      if (asset.asset_type === 'tower' && compactTowers && !isMissionFocus) {
         marker = L.marker([asset.latitude, asset.longitude], {
           icon: L.divIcon({
             className: '',
             iconSize: [10, 10],
             iconAnchor: [5, 5],
-            html: `<div style="width:10px;height:10px;border-radius:50%;background:${cfg.color};border:1.5px solid #fff;box-shadow:0 0 4px rgba(0,0,0,0.5)"></div>`,
+            html: `<div style="width:10px;height:10px;border-radius:50%;background:${cfg.color};border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.45)"></div>`,
           }),
           zIndexOffset: 150,
         }) as L.Marker & { assetRef?: Asset }
+      } else if (asset.asset_type === 'tower' && compactTowers && isMissionFocus) {
+        marker = L.marker([asset.latitude, asset.longitude], {
+          icon: L.divIcon({
+            className: '',
+            iconSize: [18, 18],
+            iconAnchor: [9, 9],
+            html: `<div style="width:16px;height:16px;border-radius:50%;background:${MISSION_FOCUS_COLOR};border:3px solid ${MISSION_FOCUS_BORDER}"></div>`,
+          }),
+          zIndexOffset: 800,
+        }) as L.Marker & { assetRef?: Asset }
       } else {
         marker = L.marker([asset.latitude, asset.longitude], {
-          icon: makeAssetIcon(asset, isSelected, hasAlert),
-          zIndexOffset: asset.asset_type === 'substation' ? 300 : 200,
+          icon: makeAssetIcon(asset, isSelected, hasAlert, isMissionFocus),
+          zIndexOffset: isMissionFocus ? 900 : asset.asset_type === 'substation' ? 300 : 200,
         }) as L.Marker & { assetRef?: Asset }
       }
       marker.assetRef = asset
@@ -778,7 +1020,7 @@ export default function GISMap({
       }
 
       // Heatmap Anomaly Density overlay
-      if ((activeLayers?.heatmap || heatMapMode === 'heatmap') && hasAlert) {
+      if (heatmapOn && hasAlert) {
         const circle = L.circle([asset.latitude, asset.longitude], {
           color: '#ef4444',
           fillColor: '#ef4444',
@@ -802,21 +1044,57 @@ export default function GISMap({
   }, [
     filteredAssets,
     selectedAssetId,
-    alertAssetIds,
+    alertIdsKey,
+    alertIdSet,
     onSelectAsset,
     mapStatus,
     showLabels,
     zoomVersion,
     wildfireOn,
     floodOn,
-    activeLayers,
-    heatMapMode,
+    corridorsOn,
+    heatmapOn,
+    voltageFilterKey,
+    voltageFilters,
+    highlightAssetId,
   ])
 
-  // Fit map only when region or asset filters change — never on user zoom
+  // Cinematic intro: frame the world, fly to India, then settle on the region.
+  // Runs once; afterwards the user can pan/zoom anywhere freely.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || mapStatus !== 'ready' || filteredAssets.length === 0) return
+    if (!map || mapStatus !== 'ready' || introDoneRef.current) return
+    introDoneRef.current = true
+
+    const settle = () => {
+      fitToPlace(selectedPlaceId, filteredAssets)
+      lastFitKeyRef.current = fitKey
+      hasInitialFitRef.current = true
+    }
+
+    const reduceMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+
+    if (reduceMotion) {
+      settle()
+      return
+    }
+
+    map.setView([18, 40], 2.4, { animate: false })
+    const toIndia = setTimeout(() => map.flyTo([22.5, 79], 4.2, { duration: 1.5 }), 400)
+    const toRegion = setTimeout(settle, 2200)
+    return () => {
+      clearTimeout(toIndia)
+      clearTimeout(toRegion)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapStatus])
+
+  // Fit map only when the region changes — never on user zoom or filter toggles
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || mapStatus !== 'ready' || !introDoneRef.current || filteredAssets.length === 0) return
     if (lastFitKeyRef.current === fitKey) return
 
     lastFitKeyRef.current = fitKey
@@ -824,22 +1102,99 @@ export default function GISMap({
     hasInitialFitRef.current = true
   }, [fitKey, mapStatus, selectedPlaceId, filteredAssets, fitToPlace])
 
-  // Fly to + open popup for selected asset
+  // Explicit focus from mission report View — fit corridor bounds for lines, else fly to point
   useEffect(() => {
     const map = mapRef.current
-    if (!map || mapStatus !== 'ready' || !selectedAssetId) return
+    if (!map || mapStatus !== 'ready' || !focusTarget) return
+    lastSelectedFlyRef.current = focusTarget.id
+
+    const asset =
+      assets.find((a) => a.id === focusTarget.id) ||
+      filteredAssets.find((a) => a.id === focusTarget.id)
+
+    const lineCoords =
+      asset?.asset_type === 'line' && asset.geometry?.type === 'LineString'
+        ? (asset.geometry.coordinates as number[][])
+        : null
+
+    if (lineCoords && lineCoords.length >= 2) {
+      try {
+        const latlngs = toLatLngs(lineCoords)
+        map.fitBounds(L.latLngBounds(latlngs as L.LatLngExpression[]).pad(0.45), {
+          maxZoom: 16,
+          animate: true,
+          duration: 0.85,
+        })
+      } catch {
+        map.flyTo([focusTarget.latitude, focusTarget.longitude], Math.max(map.getZoom(), 13), {
+          duration: 0.9,
+        })
+      }
+    } else {
+      map.flyTo([focusTarget.latitude, focusTarget.longitude], Math.max(map.getZoom(), 13), {
+        duration: 0.9,
+      })
+    }
+
+    const t = setTimeout(() => {
+      markerByIdRef.current.get(focusTarget.id)?.openPopup()
+      onFocusConsumed?.()
+    }, 950)
+    return () => clearTimeout(t)
+  }, [focusTarget, mapStatus, onFocusConsumed, assets, filteredAssets])
+
+  // Fly to + open popup for selected asset — only when selection id changes
+  useEffect(() => {
+    if (focusTarget) return
+    if (!selectedAssetId) {
+      lastSelectedFlyRef.current = null
+      return
+    }
+    const map = mapRef.current
+    if (!map || mapStatus !== 'ready') return
+    if (lastSelectedFlyRef.current === selectedAssetId) return
+
     const asset =
       assets.find((a) => a.id === selectedAssetId) ||
       viewportTowers.find((a) => a.id === selectedAssetId) ||
       filteredAssets.find((a) => a.id === selectedAssetId)
-    if (!asset || !typeFilters[asset.asset_type] || !assetMatchesPlace(asset, selectedPlaceId)) return
-
-    map.flyTo([asset.latitude, asset.longitude], Math.max(map.getZoom(), 12), { duration: 1.2 })
-    const marker = markerByIdRef.current.get(selectedAssetId)
-    if (marker) {
-      setTimeout(() => marker.openPopup(), 1300)
+    if (!asset || !typeFilters[asset.asset_type] || !assetMatchesPlace(asset, selectedPlaceId)) {
+      return
     }
-  }, [selectedAssetId, assets, viewportTowers, filteredAssets, mapStatus, typeFilters, selectedPlaceId])
+
+    lastSelectedFlyRef.current = selectedAssetId
+
+    const lineCoords =
+      asset.asset_type === 'line' && asset.geometry?.type === 'LineString'
+        ? (asset.geometry.coordinates as number[][])
+        : null
+
+    if (lineCoords && lineCoords.length >= 2) {
+      try {
+        const latlngs = toLatLngs(lineCoords)
+        map.fitBounds(L.latLngBounds(latlngs as L.LatLngExpression[]).pad(0.45), {
+          maxZoom: 16,
+          animate: true,
+          duration: 0.85,
+        })
+      } catch {
+        map.flyTo([asset.latitude, asset.longitude], Math.max(map.getZoom(), 12), { duration: 0.9 })
+      }
+    } else {
+      map.flyTo([asset.latitude, asset.longitude], Math.max(map.getZoom(), 12), { duration: 0.9 })
+    }
+
+    setTimeout(() => markerByIdRef.current.get(selectedAssetId)?.openPopup(), 950)
+  }, [
+    selectedAssetId,
+    mapStatus,
+    assets,
+    viewportTowers,
+    filteredAssets,
+    typeFilters,
+    selectedPlaceId,
+    focusTarget,
+  ])
 
   // Popup action buttons → open asset drawer
   useEffect(() => {
@@ -857,6 +1212,40 @@ export default function GISMap({
   return (
     <div className="absolute inset-0 w-full h-full">
       <div ref={mapContainer} className="absolute inset-0 w-full h-full z-0" />
+
+      {(() => {
+        const focusId = highlightAssetId || selectedAssetId
+        if (!focusId) return null
+        const focused =
+          assets.find((a) => a.id === focusId) ||
+          viewportTowers.find((a) => a.id === focusId) ||
+          filteredAssets.find((a) => a.id === focusId) ||
+          null
+        const isLine = focused?.asset_type === 'line'
+        // Chip for mission highlights always; for selection only when it's a corridor
+        if (!highlightAssetId && !isLine) return null
+        return (
+          <div className="absolute bottom-4 right-4 z-[1000] max-w-[260px] rounded-lg border border-slate-800 bg-[#0b1220] px-3 py-2.5 pointer-events-none">
+            <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Focused on map</p>
+            <div className="flex items-center gap-2">
+              <span
+                className="w-3 h-3 rounded-sm shrink-0 border-2 border-black"
+                style={{ background: MISSION_FOCUS_COLOR }}
+                aria-hidden
+              />
+              <p className="text-[11px] font-semibold text-slate-100 truncate">
+                {focused?.name || focusId}
+              </p>
+            </div>
+            {isLine ? (
+              <p className="text-[9px] text-slate-400 mt-1">Cyan corridor · A / B ends · direction popup</p>
+            ) : (
+              <p className="text-[9px] text-slate-400 mt-1">Cyan highlight with black border</p>
+            )}
+            <p className="text-[9px] text-slate-500 mt-0.5 font-mono truncate">{focusId}</p>
+          </div>
+        )
+      })()}
 
       {/* Bottom Map Status Bar */}
       {!suppressInternalStatusBar && (
