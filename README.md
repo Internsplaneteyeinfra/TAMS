@@ -45,7 +45,7 @@ After both are live, set on Render:
 - `BACKEND_URL=https://YOUR-SERVICE.up.railway.app`
 - `NEXT_PUBLIC_HOSTED_API_BASE_URL=https://YOUR-SERVICE.up.railway.app/api/v1`
 
-On Railway set `CORS_ORIGINS` to include your Render URL (e.g. `https://tams-frontend.onrender.com`).
+On Railway set `CORS_ORIGINS` to include `https://tams-txmr.onrender.com`.
 
 ## Architecture
 

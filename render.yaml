@@ -7,7 +7,7 @@
 #   NEXT_PUBLIC_HOSTED_API_BASE_URL = https://<your-service>.up.railway.app/api/v1
 #
 # On Railway, add this frontend origin to CORS_ORIGINS, e.g.:
-#   https://tams-frontend.onrender.com
+#   https://tams-txmr.onrender.com
 
 services:
   - type: web

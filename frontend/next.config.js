@@ -2,9 +2,10 @@
  * Next.js config — API proxy and public env wiring.
  *
  * Local: browser → NEXT_PUBLIC_API_BASE_URL (/api/v1) → rewrite → BACKEND_URL
- * Render: set BACKEND_URL to the backend public URL (https://….onrender.com)
- *         and NEXT_PUBLIC_HOSTED_API_BASE_URL to https://….onrender.com/api/v1
- *         so the browser can reach the API even if the Next rewrite fails.
+ * Render site: https://tams-txmr.onrender.com
+ * Set BACKEND_URL to the Railway API (https://….up.railway.app)
+ * and NEXT_PUBLIC_HOSTED_API_BASE_URL to https://….up.railway.app/api/v1
+ * so the browser can reach the API even if the Next rewrite fails.
  */
 const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000'
 
@@ -13,7 +14,7 @@ if (
   (!process.env.BACKEND_URL || process.env.BACKEND_URL.includes('127.0.0.1'))
 ) {
   console.warn(
-    '[tams] BACKEND_URL is unset or local. On Render, set BACKEND_URL to your backend https://….onrender.com or data will not load via /api proxy.'
+    '[tams] BACKEND_URL is unset or local. On Render, set BACKEND_URL to your Railway https://….up.railway.app or data will not load via /api proxy.'
   )
 }
 
