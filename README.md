@@ -8,6 +8,19 @@
 
 **Current release:** Phase 1 MVP — Satellite monitoring + enterprise asset modules (FastAPI + PostgreSQL prototype; Azure/.NET target documented in [docs/enterprise/](./docs/enterprise/README.md)).
 
+## Repositories
+
+| Part | GitHub |
+|------|--------|
+| **Frontend (this repo)** | https://github.com/vishalbhor-45/TAMS |
+| **Backend (API + KML)** | https://github.com/planeteyeai/TAMS-Backend |
+
+Clone the backend next to this repo for local `run.ps1` / Docker:
+
+```bash
+git clone https://github.com/planeteyeai/TAMS-Backend.git ../TAMS-Backend
+```
+
 ## Architecture
 
 ```

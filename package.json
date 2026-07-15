@@ -1,25 +1,21 @@
 {
-  "name": "tams-platform",
+  "name": "tams-frontend",
   "version": "1.0.0",
-  "description": "AI-Powered Transmission Asset Intelligence & Monitoring Platform (TAMS)",
+  "description": "TAMS GIS Command Center — Frontend (Next.js). Backend repo: https://github.com/planeteyeai/TAMS-Backend",
   "private": true,
   "workspaces": [
     "frontend"
   ],
   "scripts": {
-    "install-all": "npm install && cd frontend && npm install && cd ../backend && pip install -r requirements.txt",
-    "dev": "npx concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "install-all": "npm install && cd frontend && npm install",
+    "dev": "cd frontend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",
-    "dev:backend": "cd backend && venv\\Scripts\\python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
-    "build": "npm run build:frontend && npm run build:backend",
+    "build": "cd frontend && npm run build",
     "build:frontend": "cd frontend && npm run build",
-    "build:backend": "echo 'Backend is containerized'",
-    "test": "npm run test:frontend && npm run test:backend",
+    "test": "cd frontend && npm run test",
     "test:frontend": "cd frontend && npm run test",
-    "test:backend": "cd backend && pytest",
-    "lint": "npm run lint:frontend && npm run lint:backend",
+    "lint": "cd frontend && npm run lint",
     "lint:frontend": "cd frontend && npm run lint",
-    "lint:backend": "cd backend && pylint app/",
     "docker:build": "docker-compose build",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down"

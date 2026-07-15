@@ -104,10 +104,12 @@ frontend/public/cesium/
 *.tsbuildinfo
 frontend/tsconfig.tsbuildinfo
 
-# Backend KML helper app (local only — not part of TAMS deploy)
-backend/indian_KML/tower_corridor_api/
+# Local backend checkout (optional) — official backend is a separate GitHub repo:
+# https://github.com/planeteyeai/TAMS-Backend
+/backend/
+backend/
 
 # Local uvicorn / agent logs
-backend/*.out.log
-backend/*.err.log
+*.out.log
+*.err.log
 uvicorn*.log
