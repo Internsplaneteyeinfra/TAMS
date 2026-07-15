@@ -105,16 +105,22 @@ export default function Home() {
 
   const stateFilter = getStateFilterForPlace(selectedPlaceId)
 
-  const { data: assets = [], isLoading: assetsLoading, isFetching: assetsFetching } = useQuery({
+  const { data: assets = [], isLoading: assetsLoading, isFetching: assetsFetching, isError: assetsError, refetch: refetchAssets } = useQuery({
     queryKey: ['assets', stateFilter ?? 'india'],
     queryFn: () => {
-      const params = new URLSearchParams({ page_size: '8000' })
+      const params = new URLSearchParams({ page_size: '12000' })
       if (stateFilter) params.set('state', stateFilter)
       return fetchApi<Asset[]>(`/assets?${params}`)
     },
     enabled: isClient,
     placeholderData: (prev) => prev,
     staleTime: 2 * 60 * 1000,
+    // Keep trying after cold backend start until corridor data arrives
+    refetchInterval: (query) => {
+      const data = query.state.data
+      if (!data || data.length === 0) return 5000
+      return false
+    },
   })
 
   const { data: alerts = [] } = useQuery({
@@ -318,6 +324,17 @@ export default function Home() {
               <div className="rounded-full border border-cyan-500/30 bg-[#0b1224]/90 px-3 py-1.5 text-[11px] font-semibold text-cyan-200 shadow-lg backdrop-blur-sm">
                 Loading corridor assets…
               </div>
+            </div>
+          )}
+          {!assetsLoading && (assetsError || assets.length === 0) && (
+            <div className="absolute top-3 left-1/2 z-[90] -translate-x-1/2">
+              <button
+                type="button"
+                onClick={() => void refetchAssets()}
+                className="rounded-full border border-amber-500/40 bg-[#0b1224]/95 px-3 py-1.5 text-[11px] font-semibold text-amber-200 shadow-lg backdrop-blur-sm hover:border-amber-400/60"
+              >
+                No map assets loaded — click to retry (is backend on :8000?)
+              </button>
             </div>
           )}
           {assetsFetching && assets.length > 0 && (

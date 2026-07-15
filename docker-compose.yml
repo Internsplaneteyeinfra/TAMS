@@ -38,8 +38,8 @@ services:
 
   backend:
     build:
-      context: .
-      dockerfile: docker/backend/Dockerfile
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: tams-backend
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tams_user}:${POSTGRES_PASSWORD:-tams_password}@postgres:5432/${POSTGRES_DB:-tams_db}
@@ -68,8 +68,8 @@ services:
 
   frontend:
     build:
-      context: .
-      dockerfile: docker/frontend/Dockerfile
+      context: ./frontend
+      dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_BASE_URL: /api/v1
         BACKEND_URL: http://backend:8000

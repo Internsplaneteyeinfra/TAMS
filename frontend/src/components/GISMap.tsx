@@ -86,7 +86,8 @@ function voltageLineColor(kv: number | null | undefined): string {
 }
 
 function lineWeightForVoltage(kv: number | null | undefined, selected: boolean): number {
-  const base = kv != null && kv >= 400 ? 4 : kv != null && kv >= 220 ? 3 : 2
+  // Keep low-voltage corridors (11–66 kV) visible at Gujarat overview zoom
+  const base = kv != null && kv >= 400 ? 4.5 : kv != null && kv >= 220 ? 3.5 : kv != null && kv >= 66 ? 2.75 : 2.5
   return selected ? base + 2 : base
 }
 
@@ -1094,6 +1095,22 @@ export default function GISMap({
     fitToPlace(selectedPlaceId, filteredAssets)
     hasInitialFitRef.current = true
   }, [fitKey, mapStatus, selectedPlaceId, filteredAssets, fitToPlace])
+
+  // When assets arrive after a failed/empty first load (backend cold start), settle the camera once
+  const hadCorridorDataRef = useRef(false)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || mapStatus !== 'ready' || !introDoneRef.current) return
+    if (filteredAssets.length === 0) {
+      hadCorridorDataRef.current = false
+      return
+    }
+    if (hadCorridorDataRef.current) return
+    hadCorridorDataRef.current = true
+    fitToPlace(selectedPlaceId, filteredAssets)
+    lastFitKeyRef.current = fitKey
+    hasInitialFitRef.current = true
+  }, [filteredAssets, mapStatus, selectedPlaceId, fitToPlace, fitKey])
 
   // Explicit focus from mission report View — fit corridor bounds for lines, else fly to point
   useEffect(() => {
