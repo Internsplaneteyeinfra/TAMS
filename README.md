@@ -33,19 +33,30 @@ npm run link:backend
 
 Start both: `npm run dev:stack` (or `.\run.ps1`). Frontend alone: `npm run dev` (backend must already be on :8000).
 
-**Hosted**
+**Hosted connection (Postgres → Backend → Frontend)**
+
+```text
+Railway Postgres  →  Railway Backend API  →  Render Frontend
+(internal DATABASE_URL)   (….up.railway.app)   (https://tams-txmr.onrender.com)
+```
 
 | App | Platform | Repo |
 |-----|----------|------|
 | Frontend website | [Render](https://render.com) (`render.yaml`, rootDir `frontend`) | this repo |
-| Backend API | [Railway](https://railway.app) (`Dockerfile` + `railway.json`) | [TAMS-Backend](https://github.com/planeteyeai/TAMS-Backend) |
+| Backend API + DB | [Railway](https://railway.app) | [TAMS-Backend](https://github.com/planeteyeai/TAMS-Backend) |
 
-After both are live, set on Render:
+**Railway backend service → Variables** (not on the Postgres screen):
 
-- `BACKEND_URL=https://YOUR-SERVICE.up.railway.app`
-- `NEXT_PUBLIC_HOSTED_API_BASE_URL=https://YOUR-SERVICE.up.railway.app/api/v1`
+- `DATABASE_URL` = **Variable Reference** to Postgres `DATABASE_URL` (internal host)
+- `CORS_ORIGINS` = `https://tams-txmr.onrender.com,http://localhost:3000`
+- `IMPORT_KML_ON_STARTUP` = `true`
 
-On Railway set `CORS_ORIGINS` to include `https://tams-txmr.onrender.com`.
+**Render frontend → Environment:**
+
+- `BACKEND_URL` = `https://YOUR-BACKEND.up.railway.app` ← API URL, **not** the Postgres URL
+- `NEXT_PUBLIC_HOSTED_API_BASE_URL` = `https://YOUR-BACKEND.up.railway.app/api/v1`
+
+Full steps: [TAMS-Backend/railway.variables.md](https://github.com/planeteyeai/TAMS-Backend/blob/main/railway.variables.md)
 
 ## Architecture
 
