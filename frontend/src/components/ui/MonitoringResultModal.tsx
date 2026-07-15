@@ -234,17 +234,6 @@ export default function MonitoringResultModal({
     onClose()
   }
 
-  const detectionSummary = useMemo(() => {
-    const byType: Record<string, number> = {}
-    for (const d of detections) {
-      const t = d.detection_type || 'unknown'
-      byType[t] = (byType[t] || 0) + 1
-    }
-    return Object.entries(byType)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6)
-  }, [detections])
-
   if (!open || !mounted) return null
 
   const node = (

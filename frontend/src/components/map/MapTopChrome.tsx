@@ -38,7 +38,7 @@ export default function MapTopChrome({
 }: MapTopChromeProps) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
-  const [recent, setRecent] = useState<string[]>([])
+  const [, setRecent] = useState<string[]>([])
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => { setRecent(loadRecent()) }, [])

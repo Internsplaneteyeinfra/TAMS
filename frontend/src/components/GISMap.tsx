@@ -224,13 +224,6 @@ function makeAssetIcon(asset: Asset, isSelected: boolean, hasAlert: boolean, isM
   })
 }
 
-function healthPct(asset: Asset): number {
-  if (asset.health_score === 'healthy') return 96
-  if (asset.health_score === 'attention_required') return 72
-  if (asset.health_score === 'critical') return 38
-  return 85
-}
-
 function buildPopupHtml(asset: Asset): string {
   const meta = asset.metadata || {}
   const voltageRaw = meta.voltage_kv ?? meta.voltage

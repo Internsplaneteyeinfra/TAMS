@@ -1,0 +1,49 @@
+# Render Blueprint — TAMS (backend + frontend)
+# Docs: https://render.com/docs/blueprint-spec
+#
+# After first deploy, set frontend env:
+#   BACKEND_URL = https://<your-backend-service>.onrender.com
+#   NEXT_PUBLIC_HOSTED_API_BASE_URL = https://<your-backend-service>.onrender.com/api/v1
+# And backend env:
+#   CORS_ORIGINS = https://<your-frontend-service>.onrender.com
+
+services:
+  - type: web
+    name: tams-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DEBUG
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET_KEY
+        generateValue: true
+
+  - type: web
+    name: tams-frontend
+    runtime: node
+    rootDir: frontend
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "18.20.4"
+      - key: NEXT_PUBLIC_API_BASE_URL
+        value: /api/v1
+      - key: BACKEND_URL
+        sync: false
+      - key: NEXT_PUBLIC_HOSTED_API_BASE_URL
+        sync: false
