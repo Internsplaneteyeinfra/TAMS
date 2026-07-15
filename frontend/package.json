@@ -1,13 +1,16 @@
 {
   "name": "tams-frontend",
   "version": "1.0.0",
-  "description": "TAMS GIS Command Center - Next.js Frontend",
+  "description": "TAMS GIS Command Center - Next.js Frontend (Render)",
+  "engines": {
+    "node": ">=18.18.0"
+  },
   "scripts": {
     "postinstall": "node scripts/copy-cesium.js",
     "dev": "node scripts/copy-cesium.js && next dev",
     "dev:clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && node scripts/copy-cesium.js && next dev",
     "build": "node scripts/copy-cesium.js && next build",
-    "start": "next start",
+    "start": "next start --hostname 0.0.0.0",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write .",
     "type-check": "tsc --noEmit",

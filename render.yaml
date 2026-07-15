@@ -1,9 +1,13 @@
-# Render Blueprint — TAMS Frontend only
-# Backend is a separate repo: https://github.com/planeteyeai/TAMS-Backend
+# Render Blueprint — TAMS Frontend (website)
+# Repo: https://github.com/vishalbhor-45/TAMS
+# Backend (Railway): https://github.com/planeteyeai/TAMS-Backend
 #
-# Required env on this frontend service:
-#   BACKEND_URL = https://<your-backend-service>.onrender.com
-#   NEXT_PUBLIC_HOSTED_API_BASE_URL = https://<your-backend-service>.onrender.com/api/v1
+# After first deploy, set these env vars in the Render dashboard:
+#   BACKEND_URL = https://<your-service>.up.railway.app
+#   NEXT_PUBLIC_HOSTED_API_BASE_URL = https://<your-service>.up.railway.app/api/v1
+#
+# On Railway, add this frontend origin to CORS_ORIGINS, e.g.:
+#   https://tams-frontend.onrender.com
 
 services:
   - type: web
@@ -11,15 +15,23 @@ services:
     runtime: node
     rootDir: frontend
     plan: free
-    buildCommand: npm ci && npm run build
+    buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /
     envVars:
       - key: NODE_VERSION
         value: "18.20.4"
+      - key: NODE_ENV
+        value: production
       - key: NEXT_PUBLIC_API_BASE_URL
         value: /api/v1
+      - key: NEXT_PUBLIC_APP_NAME
+        value: TAMS Platform
+      - key: NEXT_PUBLIC_IMAGERY_TILE_URL
+        value: https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer
+      # Railway public URL (no trailing slash), e.g. https://tams-backend.up.railway.app
       - key: BACKEND_URL
         sync: false
+      # Same Railway host with /api/v1 — used when the Next rewrite is unavailable
       - key: NEXT_PUBLIC_HOSTED_API_BASE_URL
         sync: false

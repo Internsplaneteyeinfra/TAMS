@@ -33,7 +33,19 @@ npm run link:backend
 
 Start both: `npm run dev:stack` (or `.\run.ps1`). Frontend alone: `npm run dev` (backend must already be on :8000).
 
-**Hosted (Render):** set frontend `BACKEND_URL` and `NEXT_PUBLIC_HOSTED_API_BASE_URL` to your backend `https://….onrender.com`, and add the frontend origin to backend `CORS_ORIGINS`.
+**Hosted**
+
+| App | Platform | Repo |
+|-----|----------|------|
+| Frontend website | [Render](https://render.com) (`render.yaml`, rootDir `frontend`) | this repo |
+| Backend API | [Railway](https://railway.app) (`Dockerfile` + `railway.json`) | [TAMS-Backend](https://github.com/planeteyeai/TAMS-Backend) |
+
+After both are live, set on Render:
+
+- `BACKEND_URL=https://YOUR-SERVICE.up.railway.app`
+- `NEXT_PUBLIC_HOSTED_API_BASE_URL=https://YOUR-SERVICE.up.railway.app/api/v1`
+
+On Railway set `CORS_ORIGINS` to include your Render URL (e.g. `https://tams-frontend.onrender.com`).
 
 ## Architecture
 
