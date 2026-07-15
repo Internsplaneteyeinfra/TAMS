@@ -19,7 +19,21 @@ Clone the backend next to this repo for local `run.ps1` / Docker:
 
 ```bash
 git clone https://github.com/planeteyeai/TAMS-Backend.git ../TAMS-Backend
+# or from this repo:
+npm run link:backend
 ```
+
+**How they connect locally**
+
+| Side | URL | Role |
+|------|-----|------|
+| Frontend | http://localhost:3000 | Next.js UI |
+| Backend | http://127.0.0.1:8000 | FastAPI + Gujarat KML |
+| Bridge | `BACKEND_URL` in `frontend/.env` | Next rewrites `/api/*` → backend |
+
+Start both: `npm run dev:stack` (or `.\run.ps1`). Frontend alone: `npm run dev` (backend must already be on :8000).
+
+**Hosted (Render):** set frontend `BACKEND_URL` and `NEXT_PUBLIC_HOSTED_API_BASE_URL` to your backend `https://….onrender.com`, and add the frontend origin to backend `CORS_ORIGINS`.
 
 ## Architecture
 

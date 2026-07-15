@@ -8,8 +8,10 @@
   ],
   "scripts": {
     "install-all": "npm install && cd frontend && npm install",
+    "link:backend": "powershell -ExecutionPolicy Bypass -File ./scripts/link-backend.ps1",
     "dev": "cd frontend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",
+    "dev:stack": "powershell -ExecutionPolicy Bypass -File ./run.ps1",
     "build": "cd frontend && npm run build",
     "build:frontend": "cd frontend && npm run build",
     "test": "cd frontend && npm run test",
