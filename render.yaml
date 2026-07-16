@@ -27,7 +27,8 @@ services:
     plan: free
     buildCommand: npm install && npm run build
     startCommand: npm start
-    # Avoid / health checks on free-tier cold starts (they often cause 502 loops)
+    # Free-tier tip: if deploy succeeds but site 502s, open Logs → look for
+    # "Ready in" / crash / "Error: listen". Env required: BACKEND_URL (Railway API).
     envVars:
       - key: NODE_VERSION
         value: "18.20.4"
