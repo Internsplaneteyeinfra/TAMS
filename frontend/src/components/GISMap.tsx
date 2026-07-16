@@ -428,7 +428,7 @@ export default function GISMap({
   const lastFitKeyRef = useRef('')
   const introDoneRef = useRef(false)
   const lastSelectedFlyRef = useRef<string | null>(null)
-  const towerAbortRef = useRef<AbortController | null>(null)
+  const towerRequestIdRef = useRef(0)
   const cursorRafRef = useRef<number>(0)
   const statusThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [mapLayer, setMapLayer] = useState<MapLayer>('satellite-labels')
@@ -507,21 +507,22 @@ export default function GISMap({
     const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`
     const state = getStateFilterForPlace(selectedPlaceId)
 
-    towerAbortRef.current?.abort()
-    const controller = new AbortController()
-    towerAbortRef.current = controller
+    towerRequestIdRef.current += 1
+    const requestId = towerRequestIdRef.current
 
     setTowersLoading(true)
-    fetchGisTowers(bbox, state === 'Gujarat' ? 'Gujarat' : undefined, limit, controller.signal)
+    fetchGisTowers(bbox, state === 'Gujarat' ? 'Gujarat' : undefined, limit)
       .then((towers) => {
-        if (!controller.signal.aborted) setViewportTowers(towers)
+        if (requestId !== towerRequestIdRef.current) return
+        setViewportTowers(towers)
       })
-      .catch((err) => {
-        if (err?.name === 'AbortError') return
-        if (!controller.signal.aborted) setViewportTowers([])
+      .catch(() => {
+        if (requestId !== towerRequestIdRef.current) return
+        setViewportTowers([])
       })
       .finally(() => {
-        if (!controller.signal.aborted) setTowersLoading(false)
+        if (requestId !== towerRequestIdRef.current) return
+        setTowersLoading(false)
       })
   }, [selectedPlaceId, showTowers])
 
@@ -531,12 +532,12 @@ export default function GISMap({
 
   useEffect(() => {
     if (!showTowers) {
-      towerAbortRef.current?.abort()
+      towerRequestIdRef.current += 1
       setViewportTowers([])
       return
     }
     if (towerFetchRef.current) clearTimeout(towerFetchRef.current)
-    towerFetchRef.current = setTimeout(loadViewportTowers, 320)
+    towerFetchRef.current = setTimeout(loadViewportTowers, 550)
     return () => {
       if (towerFetchRef.current) clearTimeout(towerFetchRef.current)
     }
@@ -656,7 +657,7 @@ export default function GISMap({
 
       map.on('moveend', () => {
         if (towerFetchRef.current) clearTimeout(towerFetchRef.current)
-        towerFetchRef.current = setTimeout(() => loadViewportTowersRef.current(), 280)
+        towerFetchRef.current = setTimeout(() => loadViewportTowersRef.current(), 550)
       })
 
       map.on('mousemove', (e) => {
@@ -695,7 +696,7 @@ export default function GISMap({
         clearTimeout(invalidateTimer)
         if (cursorRafRef.current) cancelAnimationFrame(cursorRafRef.current)
         if (statusThrottleRef.current) clearTimeout(statusThrottleRef.current)
-        towerAbortRef.current?.abort()
+        towerRequestIdRef.current += 1
         window.removeEventListener('resize', onResize)
         clusterRef.current?.clearLayers()
         markerByIdRef.current.clear()

@@ -2,7 +2,7 @@
  * Next.js config — API proxy and public env wiring.
  *
  * Local: browser → NEXT_PUBLIC_API_BASE_URL (/api/v1) → rewrite → BACKEND_URL
- * Render site: https://tams-txmr.onrender.com
+ * Render site: https://tams-28nc.onrender.com
  * Set BACKEND_URL to the Railway API (https://….up.railway.app)
  * and NEXT_PUBLIC_HOSTED_API_BASE_URL to https://….up.railway.app/api/v1
  * so the browser can reach the API even if the Next rewrite fails.
