@@ -1,13 +1,23 @@
-# Render Blueprint — TAMS Frontend (website)
+# Render Blueprint — TAMS Frontend (Next.js Web Service)
 # Repo: https://github.com/vishalbhor-45/TAMS
 # Backend (Railway): https://github.com/planeteyeai/TAMS-Backend
 #
-# After first deploy, set these env vars in the Render dashboard:
+# IMPORTANT: This must be a Web Service (Node), NOT a Static Site.
+# Static Site looks for "Publish directory dist" and will fail with:
+#   ==> Publish directory dist does not exist!
+# Next.js uses `.next` + `npm start` (no dist folder).
+#
+# Dashboard settings if not using this blueprint:
+#   Type: Web Service
+#   Root Directory: frontend
+#   Build Command: npm install && npm run build
+#   Start Command: npm start
+#   Publish Directory: (leave EMPTY / not used)
+#
+# Env vars:
 #   BACKEND_URL = https://<your-service>.up.railway.app
 #   NEXT_PUBLIC_HOSTED_API_BASE_URL = https://<your-service>.up.railway.app/api/v1
-#
-# On Railway, add this frontend origin to CORS_ORIGINS, e.g.:
-#   https://tams-txmr.onrender.com
+# CORS on Railway must include: https://tams-txmr.onrender.com
 
 services:
   - type: web
@@ -29,9 +39,7 @@ services:
         value: TAMS Platform
       - key: NEXT_PUBLIC_IMAGERY_TILE_URL
         value: https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer
-      # Railway public URL (no trailing slash), e.g. https://tams-backend.up.railway.app
       - key: BACKEND_URL
         sync: false
-      # Same Railway host with /api/v1 — used when the Next rewrite is unavailable
       - key: NEXT_PUBLIC_HOSTED_API_BASE_URL
         sync: false
