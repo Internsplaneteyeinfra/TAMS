@@ -17,7 +17,7 @@
 # Env vars:
 #   BACKEND_URL = https://<your-service>.up.railway.app
 #   NEXT_PUBLIC_HOSTED_API_BASE_URL = https://<your-service>.up.railway.app/api/v1
-# CORS on Railway must include: https://tams-28nc.onrender.com
+# CORS on Railway must include: https://tams-1-tgkn.onrender.com
 
 services:
   - type: web
@@ -27,7 +27,7 @@ services:
     plan: free
     buildCommand: npm install && npm run build
     startCommand: npm start
-    healthCheckPath: /
+    # Avoid / health checks on free-tier cold starts (they often cause 502 loops)
     envVars:
       - key: NODE_VERSION
         value: "18.20.4"

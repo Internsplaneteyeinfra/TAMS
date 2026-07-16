@@ -37,7 +37,7 @@ Start both: `npm run dev:stack` (or `.\run.ps1`). Frontend alone: `npm run dev` 
 
 ```text
 Railway Postgres  →  Railway Backend API  →  Render Frontend
-(internal DATABASE_URL)   (….up.railway.app)   (https://tams-28nc.onrender.com)
+(internal DATABASE_URL)   (….up.railway.app)   (https://tams-1-tgkn.onrender.com)
 ```
 
 | App | Platform | Repo |
@@ -56,7 +56,7 @@ If the log says `Publish directory dist does not exist`, the service type is wro
 **Railway backend service → Variables** (not on the Postgres screen):
 
 - `DATABASE_URL` = **Variable Reference** to Postgres `DATABASE_URL` (internal host)
-- `CORS_ORIGINS` = `https://tams-txmr.onrender.com,https://tams-28nc.onrender.com,http://localhost:3000`
+- `CORS_ORIGINS` = `https://tams-1-tgkn.onrender.com,http://localhost:3000`
 - `IMPORT_KML_ON_STARTUP` = `true`
 
 **Render frontend → Environment:**

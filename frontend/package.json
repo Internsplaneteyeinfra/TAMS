@@ -10,7 +10,7 @@
     "dev": "node scripts/copy-cesium.js && next dev",
     "dev:clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && node scripts/copy-cesium.js && next dev",
     "build": "node scripts/copy-cesium.js && next build",
-    "start": "next start --hostname 0.0.0.0",
+    "start": "next start --hostname 0.0.0.0 --port ${PORT:-3000}",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write .",
     "type-check": "tsc --noEmit",
