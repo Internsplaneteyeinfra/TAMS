@@ -45,6 +45,14 @@ Railway Postgres  →  Railway Backend API  →  Render Frontend
 | Frontend website | [Render](https://render.com) (`render.yaml`, rootDir `frontend`) | this repo |
 | Backend API + DB | [Railway](https://railway.app) | [TAMS-Backend](https://github.com/planeteyeai/TAMS-Backend) |
 
+**Render must be a Web Service (Node), not a Static Site.**  
+If the log says `Publish directory dist does not exist`, the service type is wrong — Next.js has no `dist` folder. Use:
+
+- **Root Directory:** `frontend`
+- **Build Command:** `npm install && npm run build`
+- **Start Command:** `npm start`
+- **Publish Directory:** leave empty / remove
+
 **Railway backend service → Variables** (not on the Postgres screen):
 
 - `DATABASE_URL` = **Variable Reference** to Postgres `DATABASE_URL` (internal host)
