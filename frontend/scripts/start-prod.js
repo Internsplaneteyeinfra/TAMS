@@ -5,15 +5,24 @@ const { spawn } = require('child_process')
 const path = require('path')
 
 const port = String(process.env.PORT || 3000)
-const nextBin = path.join(__dirname, 'node_modules', 'next', 'dist', 'bin', 'next')
+const nextBin = require.resolve('next/dist/bin/next', {
+  paths: [path.join(__dirname, '..')],
+})
 
 const child = spawn(
   process.execPath,
   [nextBin, 'start', '--hostname', '0.0.0.0', '--port', port],
-  { stdio: 'inherit', env: process.env }
+  {
+    stdio: 'inherit',
+    env: process.env,
+    cwd: path.join(__dirname, '..'),
+  }
 )
 
 child.on('exit', (code, signal) => {
-  if (signal) process.kill(process.pid, signal)
+  if (signal) {
+    process.kill(process.pid, signal)
+    return
+  }
   process.exit(code ?? 1)
 })
