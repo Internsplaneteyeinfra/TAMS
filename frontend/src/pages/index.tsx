@@ -108,7 +108,7 @@ export default function Home() {
   const { data: assets = [], isLoading: assetsLoading, isFetching: assetsFetching, isError: assetsError, refetch: refetchAssets } = useQuery({
     queryKey: ['assets', stateFilter ?? 'india'],
     queryFn: () => {
-      const params = new URLSearchParams({ page_size: '12000' })
+      const params = new URLSearchParams({ page_size: '4000' })
       if (stateFilter) params.set('state', stateFilter)
       return fetchApi<Asset[]>(`/assets?${params}`)
     },

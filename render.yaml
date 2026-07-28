@@ -39,7 +39,7 @@ services:
       - key: NEXT_PUBLIC_APP_NAME
         value: TAMS Platform
       - key: NEXT_PUBLIC_IMAGERY_TILE_URL
-        value: https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer
+        value: https://mt1.google.com/vt/lyrs=s
       - key: BACKEND_URL
         sync: false
       - key: NEXT_PUBLIC_HOSTED_API_BASE_URL

@@ -30,8 +30,9 @@ const config = {
   async rewrites() {
     return [
       {
-        source: '/api/:path*',
-        destination: `${BACKEND_URL}/api/:path*`,
+        // Only proxy backend REST under /api/v1 — leave /api/geo/* for Next routes
+        source: '/api/v1/:path*',
+        destination: `${BACKEND_URL}/api/v1/:path*`,
       },
     ]
   },

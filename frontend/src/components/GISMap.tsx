@@ -15,8 +15,20 @@ import {
   placeShowsTowers,
 } from '@/config/places'
 import type { MapStatusSnapshot } from '@/types/mapStatus'
+import {
+  EOX_SENTINEL_URL,
+  GOOGLE_LABELS_URL,
+  GOOGLE_SATELLITE_URL,
+  GOOGLE_SUBDOMAINS,
+  GOOGLE_TERRAIN_URL,
+  HIGH_ZOOM,
+  IMAGERY_REVISION,
+  OSM_STREET_URL,
+  type BasemapKind,
+} from '@/lib/basemapTiles'
+import { withTowerNeOffset } from '@/lib/towerPosition'
 
-type MapLayer = 'satellite' | 'satellite-labels'
+type MapLayer = BasemapKind
 type AssetType = Asset['asset_type']
 
 const ASSET_CONFIG: Record<
@@ -47,27 +59,70 @@ function safeInvalidateMapSize(map: L.Map | null | undefined) {
 }
 
 function buildTileLayer(layer: MapLayer): L.Layer {
-  if (layer === 'satellite') {
-    return L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      {
-        attribution: '© Esri, Maxar, Earthstar Geographics',
-        maxZoom: 19,
-      }
-    )
+  const common = {
+    subdomains: [...GOOGLE_SUBDOMAINS],
+    maxZoom: HIGH_ZOOM.maxZoom,
+    maxNativeZoom: HIGH_ZOOM.maxNativeZoom,
+    updateWhenIdle: false,
+    keepBuffer: 2,
+    crossOrigin: true as const,
   }
+
+  if (layer === 'street') {
+    return L.tileLayer(OSM_STREET_URL, {
+      attribution: '© OpenStreetMap',
+      maxZoom: 19,
+      crossOrigin: true,
+    })
+  }
+
+  if (layer === 'terrain') {
+    return L.layerGroup([
+      L.tileLayer(GOOGLE_TERRAIN_URL, {
+        ...common,
+        attribution: '© Google',
+      }),
+    ])
+  }
+
+  // Satellite: Google primary (high zoom). EOX Sentinel underneath as fill if Google gaps.
+  const satelliteBase = L.layerGroup([
+    L.tileLayer(EOX_SENTINEL_URL, {
+      maxZoom: HIGH_ZOOM.maxZoom,
+      maxNativeZoom: 18,
+      attribution: '© EOX Sentinel-2',
+      crossOrigin: true,
+    }),
+    L.tileLayer(GOOGLE_SATELLITE_URL, {
+      ...common,
+      attribution: '© Google',
+      opacity: 1,
+      zIndex: 1,
+    }),
+  ])
+
+  if (layer === 'satellite') {
+    return satelliteBase
+  }
+
+  // satellite-labels: Google sat + labels on top of Sentinel backup
   return L.layerGroup([
-    L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      { maxZoom: 19 }
-    ),
-    L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-      {
-        attribution: '© Esri, Maxar, Earthstar Geographics',
-        maxZoom: 19,
-      }
-    ),
+    L.tileLayer(EOX_SENTINEL_URL, {
+      maxZoom: HIGH_ZOOM.maxZoom,
+      maxNativeZoom: 18,
+      attribution: '© EOX Sentinel-2',
+      crossOrigin: true,
+    }),
+    L.tileLayer(GOOGLE_SATELLITE_URL, {
+      ...common,
+      attribution: '© Google',
+    }),
+    L.tileLayer(GOOGLE_LABELS_URL, {
+      ...common,
+      opacity: 0.95,
+      attribution: '© Google',
+      zIndex: 2,
+    }),
   ])
 }
 
@@ -512,9 +567,9 @@ export default function GISMap({
 
     setTowersLoading(true)
     fetchGisTowers(bbox, state === 'Gujarat' ? 'Gujarat' : undefined, limit)
-      .then((towers) => {
+      .then((res) => {
         if (requestId !== towerRequestIdRef.current) return
-        setViewportTowers(towers)
+        setViewportTowers(res.assets)
       })
       .catch(() => {
         if (requestId !== towerRequestIdRef.current) return
@@ -543,11 +598,20 @@ export default function GISMap({
     }
   }, [loadViewportTowers, showTowers, zoomVersion, selectedPlaceId])
 
-  // Sync basemap layer with activeLayers (primitives only)
+  // Sync basemap layer with activeLayers / toolbar mode
   useEffect(() => {
     if (!activeLayers) return
-    setMapLayer(activeLayers.satellite && showLabels ? 'satellite-labels' : 'satellite')
-  }, [activeLayers?.satellite, showLabels, activeLayers])
+    if (activeLayers.terrain) {
+      setMapLayer('terrain')
+      return
+    }
+    if (activeLayers.satellite === false && !activeLayers.terrain) {
+      // street / non-satellite mode when satellite toggled off
+      setMapLayer('street')
+      return
+    }
+    setMapLayer(showLabels ? 'satellite-labels' : 'satellite')
+  }, [activeLayers?.satellite, activeLayers?.terrain, showLabels, activeLayers])
 
   const fitToPlace = useCallback(
     (placeId: string, assetList: Asset[]) => {
@@ -633,7 +697,7 @@ export default function GISMap({
         zoom: 2.4,
         zoomControl: false,
         minZoom: 2,
-        maxZoom: 19,
+        maxZoom: HIGH_ZOOM.maxZoom,
         worldCopyJump: true,
       })
 
@@ -746,7 +810,8 @@ export default function GISMap({
     const layer = buildTileLayer(mapLayer)
     layer.addTo(map)
     tileLayerRef.current = layer
-  }, [mapLayer, mapStatus])
+    // IMAGERY_REVISION forces tile rebuild after provider swaps (clears stale Esri HMR layers)
+  }, [mapLayer, mapStatus, IMAGERY_REVISION])
 
   // Draw assets: markers + line corridors + substation footprints
   useEffect(() => {
@@ -931,9 +996,17 @@ export default function GISMap({
       }
 
       // Compact tower dots at overview zoom — full icons when zoomed in
+      // N/E offset aligns OSM points with Google satellite pads
+      const towerLatLng =
+        asset.asset_type === 'tower'
+          ? (() => {
+              const p = withTowerNeOffset(asset)
+              return [p.latitude, p.longitude] as [number, number]
+            })()
+          : ([asset.latitude, asset.longitude] as [number, number])
       let marker: L.Marker & { assetRef?: Asset }
       if (asset.asset_type === 'tower' && compactTowers && !isMissionFocus) {
-        marker = L.marker([asset.latitude, asset.longitude], {
+        marker = L.marker(towerLatLng, {
           icon: L.divIcon({
             className: '',
             iconSize: [10, 10],
@@ -943,7 +1016,7 @@ export default function GISMap({
           zIndexOffset: 150,
         }) as L.Marker & { assetRef?: Asset }
       } else if (asset.asset_type === 'tower' && compactTowers && isMissionFocus) {
-        marker = L.marker([asset.latitude, asset.longitude], {
+        marker = L.marker(towerLatLng, {
           icon: L.divIcon({
             className: '',
             iconSize: [18, 18],
@@ -953,7 +1026,7 @@ export default function GISMap({
           zIndexOffset: 800,
         }) as L.Marker & { assetRef?: Asset }
       } else {
-        marker = L.marker([asset.latitude, asset.longitude], {
+        marker = L.marker(towerLatLng, {
           icon: makeAssetIcon(asset, isSelected, hasAlert, isMissionFocus),
           zIndexOffset: isMissionFocus ? 900 : asset.asset_type === 'substation' ? 300 : 200,
         }) as L.Marker & { assetRef?: Asset }

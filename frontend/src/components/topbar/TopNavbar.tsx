@@ -6,6 +6,7 @@ import DashboardKpiStrip from '@/components/topbar/DashboardKpiStrip'
 import NavbarNotifications from '@/components/topbar/NavbarNotifications'
 import NavbarProfile from '@/components/topbar/NavbarProfile'
 import NavbarSearch from '@/components/topbar/NavbarSearch'
+import SiteSuitabilityButton from '@/components/topbar/SiteSuitabilityButton'
 import { KpiStripSkeleton } from '@/components/ui/Skeleton'
 import type { Alert, Asset } from '@/lib/api'
 
@@ -97,6 +98,8 @@ export default function TopNavbar({
               {gridStatus === 'ok' ? 'GRID OK' : 'GRID ALERT'}
             </span>
           </div>
+
+          <SiteSuitabilityButton />
         </div>
       </div>
 

@@ -164,6 +164,8 @@ export default function MapViewport({
       setLayers((prev) => ({ ...prev, terrain: true, satellite: false }))
     } else if (basemapMode === 'satellite') {
       setLayers((prev) => ({ ...prev, satellite: true, terrain: false }))
+    } else if (basemapMode === 'street') {
+      setLayers((prev) => ({ ...prev, satellite: false, terrain: false }))
     }
   }, [basemapMode])
 

@@ -103,7 +103,7 @@ export default function SidebarNav({ collapsed = false, onAssetTypeFilter }: Sid
               </button>
 
               <div
-                className={`overflow-hidden transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'
+                className={`overflow-hidden transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-80 opacity-100' : 'max-h-0 opacity-0'
                   }`}
               >
                 <ul className="ml-4 mt-px mb-1 space-y-px border-l border-slate-800/80 pl-1.5">

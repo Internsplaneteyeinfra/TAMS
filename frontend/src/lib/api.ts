@@ -5,15 +5,26 @@ const CONFIGURED_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
 const HOSTED_BACKEND_BASE =
   process.env.NEXT_PUBLIC_HOSTED_API_BASE_URL || ''
 
+// Local dev backend (FastAPI). The Next.js dev rewrite proxy resets the
+// connection (ECONNRESET / socket hang up) on large responses like
+// /assets (~10 MB), so on loopback we call the backend directly — CORS in
+// DEBUG allows localhost/127.0.0.1.
+const LOCAL_DIRECT_BASE =
+  process.env.NEXT_PUBLIC_LOCAL_API_BASE_URL || 'http://127.0.0.1:8000/api/v1'
+
 function resolveApiBase(): string {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname
-    const isLocal =
-      host === 'localhost' ||
-      host === '127.0.0.1' ||
-      host.startsWith('192.168.') ||
-      host.startsWith('10.')
-    if (!isLocal && CONFIGURED_BASE.startsWith('/') && HOSTED_BACKEND_BASE) {
+    const isLoopback = host === 'localhost' || host === '127.0.0.1'
+    const isLan = host.startsWith('192.168.') || host.startsWith('10.')
+
+    // Loopback dev: skip the flaky Next proxy, hit the backend directly.
+    if (isLoopback && CONFIGURED_BASE.startsWith('/')) {
+      return LOCAL_DIRECT_BASE
+    }
+
+    // Deployed (non-local, non-LAN) with a relative base: use hosted backend.
+    if (!isLoopback && !isLan && CONFIGURED_BASE.startsWith('/') && HOSTED_BACKEND_BASE) {
       return HOSTED_BACKEND_BASE
     }
   }
@@ -64,6 +75,8 @@ export interface Asset {
   health_score?: string
   status?: string
   description?: string
+  /** Rated / nominal voltage from DB column when present. */
+  voltage_level_kv?: number | null
   metadata?: Record<string, unknown>
   geometry?: AssetGeometry
 }
@@ -154,28 +167,62 @@ export async function fetchGisPlaceStats(): Promise<Record<string, { total: numb
   return fetchApi<Record<string, { total: number }>>('/gis/stats/places')
 }
 
+export interface GisTowersResult {
+  assets: Asset[]
+  truncated: boolean
+  total: number
+  limit: number
+  source?: string
+}
+
 export async function fetchGisTowers(
   bbox: string,
   state?: string,
   limit = 5000,
   signal?: AbortSignal
-): Promise<Asset[]> {
+): Promise<GisTowersResult> {
   const params = new URLSearchParams({ bbox, limit: String(limit) })
   if (state) params.set('state', state)
   const res = await fetch(`${getApiBase()}/gis/towers?${params}`, { signal })
   if (!res.ok) throw new Error('Failed to load towers')
   const json = await res.json()
-  const features = json.data?.features ?? []
-  return features.map((f: { id: string; properties: Record<string, unknown>; geometry: { coordinates: number[] } }) => ({
-    id: String(f.id ?? f.properties.asset_id),
-    name: String(f.properties.name ?? 'Tower'),
-    asset_type: 'tower' as const,
-    latitude: f.geometry.coordinates[1],
-    longitude: f.geometry.coordinates[0],
-    health_score: String(f.properties.health_score ?? 'healthy'),
-    status: 'active',
-    metadata: (f.properties.metadata as Record<string, unknown>) ?? {},
-  }))
+  const payload = json.data ?? json
+  const features = payload?.features ?? []
+  const assets = features.map((f: { id: string; properties: Record<string, unknown>; geometry: { coordinates: number[] } }) => {
+    const meta = (f.properties.metadata as Record<string, unknown>) ?? {}
+    const voltageLevel =
+      typeof f.properties.voltage_level_kv === 'number'
+        ? f.properties.voltage_level_kv
+        : meta.voltage_kv != null
+          ? Number(meta.voltage_kv)
+          : null
+    return {
+      id: String(f.id ?? f.properties.asset_id),
+      name: String(f.properties.name ?? 'Tower'),
+      asset_type: 'tower' as const,
+      latitude: f.geometry.coordinates[1],
+      longitude: f.geometry.coordinates[0],
+      health_score: String(f.properties.health_score ?? 'healthy'),
+      status: 'active',
+      voltage_level_kv: Number.isFinite(voltageLevel as number) ? (voltageLevel as number) : null,
+      metadata: {
+        ...meta,
+        ...(voltageLevel != null && Number.isFinite(voltageLevel) && meta.voltage_kv == null
+          ? { voltage_kv: voltageLevel }
+          : {}),
+      },
+    }
+  })
+  const total = typeof payload?.total === 'number' ? payload.total : assets.length
+  const truncated =
+    typeof payload?.truncated === 'boolean' ? payload.truncated : assets.length >= limit
+  return {
+    assets,
+    truncated,
+    total,
+    limit,
+    source: typeof payload?.source === 'string' ? payload.source : undefined,
+  }
 }
 
 export async function runMonitoringCycle(assetIds?: string[]): Promise<MonitoringRunResult> {
