@@ -7,6 +7,7 @@ import NavbarNotifications from '@/components/topbar/NavbarNotifications'
 import NavbarProfile from '@/components/topbar/NavbarProfile'
 import NavbarSearch from '@/components/topbar/NavbarSearch'
 import SiteSuitabilityButton from '@/components/topbar/SiteSuitabilityButton'
+import TowerImportButton from '@/components/topbar/TowerImportButton'
 import { KpiStripSkeleton } from '@/components/ui/Skeleton'
 import type { Alert, Asset } from '@/lib/api'
 
@@ -28,6 +29,7 @@ interface TopNavbarProps {
   onOpenAlerts?: () => void
   onOpenMission?: () => void
   onOpenWorkOrders?: () => void
+  onCheckImportedTowers?: (placeId?: string) => void
 }
 
 export default function TopNavbar({
@@ -48,6 +50,7 @@ export default function TopNavbar({
   onOpenAlerts,
   onOpenMission,
   onOpenWorkOrders,
+  onCheckImportedTowers,
 }: TopNavbarProps) {
   const gridStatus = criticalAlertsCount > 0 ? 'warning' : 'ok'
 
@@ -100,6 +103,7 @@ export default function TopNavbar({
           </div>
 
           <SiteSuitabilityButton />
+          <TowerImportButton onCheckTowers={onCheckImportedTowers} />
         </div>
       </div>
 

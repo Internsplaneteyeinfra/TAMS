@@ -169,6 +169,18 @@ export default function Home() {
     dispatch(selectAsset(''))
   }, [dispatch])
 
+  const handleCheckImportedTowers = useCallback(
+    (placeId?: string) => {
+      setSelectedPlaceId(placeId || 'rajasthan')
+      setIsOperationsPanelOpen(true)
+      setMissionHighlightId(null)
+      void refetchAssets()
+      void queryClient.invalidateQueries({ queryKey: ['gis-stats'] })
+      void queryClient.invalidateQueries({ queryKey: ['gis-place-stats'] })
+    },
+    [refetchAssets, queryClient]
+  )
+
   // Declared after `assets` so View never hits TDZ / "before initialization"
   const handleViewMonitoredAsset = useCallback(
     (assetId: string) => {
@@ -293,6 +305,7 @@ export default function Home() {
         onOpenAlerts={handleOpenAlerts}
         onOpenMission={handleOpenMission}
         onOpenWorkOrders={handleOpenWorkOrders}
+        onCheckImportedTowers={handleCheckImportedTowers}
       />
 
       <CommandPalette

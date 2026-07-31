@@ -566,7 +566,7 @@ export default function GISMap({
     const requestId = towerRequestIdRef.current
 
     setTowersLoading(true)
-    fetchGisTowers(bbox, state === 'Gujarat' ? 'Gujarat' : undefined, limit)
+    fetchGisTowers(bbox, state, limit)
       .then((res) => {
         if (requestId !== towerRequestIdRef.current) return
         setViewportTowers(res.assets)

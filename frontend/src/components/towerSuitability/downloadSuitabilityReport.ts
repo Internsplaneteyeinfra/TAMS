@@ -522,7 +522,7 @@ export function buildSuitabilityReportHtml(input: ReportDownloadInput): string {
 function safeFilename(label: string): string {
   const base = label
     .trim()
-    .replace(/[^\w\-]+/g, '-')
+    .replace(/[^\w-]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 60)

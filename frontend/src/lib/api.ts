@@ -316,3 +316,43 @@ export async function getMaintenanceDashboard(): Promise<MaintenanceDashboard> {
 export async function createAsset(body: Record<string, unknown>): Promise<Asset> {
   return postApi<Asset>('/assets', body)
 }
+
+export interface TowerGroundImportResult {
+  source_name: string
+  import_batch_id: string
+  parsed: number
+  inserted: number
+  skipped: number
+}
+
+export async function importTowerGroundKml(file: File): Promise<TowerGroundImportResult> {
+  const body = new FormData()
+  body.append('file', file)
+  const res = await fetch(`${getApiBase()}/assets/import/tower-ground-kml`, {
+    method: 'POST',
+    body,
+  })
+  return parseApiResponse<TowerGroundImportResult>(res, '/assets/import/tower-ground-kml')
+}
+
+export interface StateKmlImportResult {
+  state: string
+  source_total: number
+  lines: number
+  substations: number
+  towers: number
+  inserted: number
+  skipped: number
+}
+
+export async function importStateKmlPack(
+  state?: string,
+  includeTowers = true
+): Promise<StateKmlImportResult> {
+  const params = new URLSearchParams({ include_towers: String(includeTowers) })
+  if (state) params.set('state', state)
+  const res = await fetch(`${getApiBase()}/assets/import/state-kml?${params}`, {
+    method: 'POST',
+  })
+  return parseApiResponse<StateKmlImportResult>(res, '/assets/import/state-kml')
+}
