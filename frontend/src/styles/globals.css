@@ -381,6 +381,48 @@ body {
   border-top-color: rgba(8, 18, 36, 0.94) !important;
 }
 
+.ts-tower-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.ts-tower-pin {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: #fbbf24;
+  border: 2px solid #fff;
+  color: #111827;
+  font-weight: 900;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55), 0 6px 14px rgba(0, 0, 0, 0.45);
+}
+
+.ts-tower-pin--dot {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 3px 8px rgba(0, 0, 0, 0.4);
+}
+
+.ts-tower-label.leaflet-tooltip {
+  background: #fbbf24 !important;
+  border: 2px solid #fff !important;
+  color: #111827 !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+  padding: 2px 7px !important;
+  border-radius: 999px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.ts-tower-label.leaflet-tooltip::before {
+  border-top-color: #fbbf24 !important;
+}
+
 .leaflet-bar {
   border: none !important;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;

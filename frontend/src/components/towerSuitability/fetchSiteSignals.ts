@@ -53,11 +53,24 @@ async function fetchElevations(
 }
 
 async function fetchWind(lat: number, lon: number): Promise<number | null> {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=wind_speed_10m_max&wind_speed_unit=ms&timezone=auto&forecast_days=7`
-  const json = (await fetchJson(url, 7000)) as {
+  const end = new Date()
+  const start = new Date(end.getTime() - 90 * 24 * 60 * 60 * 1000)
+  const startStr = start.toISOString().slice(0, 10)
+  const endStr = end.toISOString().slice(0, 10)
+  const archiveUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${startStr}&end_date=${endStr}&daily=wind_speed_10m_max&wind_speed_unit=ms`
+  const archive = (await fetchJson(archiveUrl, 9000)) as {
+    daily?: { wind_speed_10m_max?: Array<number | null> }
+  } | null
+  const hist = (archive?.daily?.wind_speed_10m_max ?? []).filter(
+    (v): v is number => typeof v === 'number' && Number.isFinite(v)
+  )
+  if (hist.length >= 14) return hist.reduce((s, v) => s + v, 0) / hist.length
+
+  const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=wind_speed_10m_max&wind_speed_unit=ms&timezone=auto&forecast_days=16`
+  const forecast = (await fetchJson(forecastUrl, 7000)) as {
     daily?: { wind_speed_10m_max?: number[] }
   } | null
-  const arr = json?.daily?.wind_speed_10m_max ?? []
+  const arr = forecast?.daily?.wind_speed_10m_max ?? []
   if (!arr.length) return null
   return arr.reduce((s, v) => s + v, 0) / arr.length
 }
@@ -73,17 +86,116 @@ async function nearestRoadOsrm(lat: number, lon: number): Promise<number | null>
   return null
 }
 
+type OverpassEl = {
+  lat?: number
+  lon?: number
+  center?: { lat: number; lon: number }
+  tags?: Record<string, string>
+}
+
+async function overpassJson(query: string): Promise<{ elements?: OverpassEl[] } | null> {
+  return withTimeout(
+    (async () => {
+      const res = await fetch('/api/geo/overpass', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      })
+      if (!res.ok) return null
+      return (await res.json()) as { elements?: OverpassEl[] }
+    })(),
+    22000,
+    null
+  )
+}
+
+function elementPoint(el: OverpassEl): { lat: number; lon: number } | null {
+  if (Number.isFinite(el.lat) && Number.isFinite(el.lon)) return { lat: el.lat as number, lon: el.lon as number }
+  if (el.center && Number.isFinite(el.center.lat) && Number.isFinite(el.center.lon)) return el.center
+  return null
+}
+
+function nearestElementKm(lat: number, lon: number, elements: OverpassEl[]): number | null {
+  let best: number | null = null
+  for (const el of elements) {
+    const p = elementPoint(el)
+    if (!p) continue
+    const d = haversineKm(lat, lon, p.lat, p.lon)
+    if (best == null || d < best) best = d
+  }
+  return best
+}
+
+function parseOsmVoltageTag(raw?: string): number | null {
+  if (!raw) return null
+  const parts = raw.split(/[;/|,]+/).map((p) => p.trim()).filter(Boolean)
+  const kvs: number[] = []
+  for (const part of parts) {
+    const kvWord = part.match(/(\d+(?:\.\d+)?)\s*k\s*v\b/i)
+    if (kvWord) {
+      const n = Number(kvWord[1])
+      if (Number.isFinite(n) && n > 0) kvs.push(Math.round(n))
+      continue
+    }
+    const n = Number(part.replace(/[^\d.]/g, ''))
+    if (!Number.isFinite(n) || n <= 0) continue
+    kvs.push(n >= 1000 ? Math.round(n / 1000) : Math.round(n))
+  }
+  if (!kvs.length) return null
+  return Math.max(...kvs)
+}
+
+/** Nearest OSM power-line voltage near a corridor point. */
+export async function inferOsmLineVoltageKv(
+  lat: number,
+  lon: number,
+  radiusM = 8000
+): Promise<number | null> {
+  const query = `[out:json][timeout:16];(
+    way["power"="line"](around:${radiusM},${lat},${lon});
+    way["power"="minor_line"](around:${radiusM},${lat},${lon});
+    way["power"="cable"](around:${radiusM},${lat},${lon});
+  );out tags center 40;`
+  const json = await overpassJson(query)
+  if (!json?.elements?.length) return null
+  let bestKv: number | null = null
+  let bestD = Number.POSITIVE_INFINITY
+  for (const el of json.elements) {
+    const kv = parseOsmVoltageTag(el.tags?.voltage || el.tags?.['voltage:primary'])
+    if (kv == null) continue
+    const p = elementPoint(el)
+    const d = p ? haversineKm(lat, lon, p.lat, p.lon) : radiusM / 1000
+    if (d < bestD) {
+      bestD = d
+      bestKv = kv
+    }
+  }
+  return bestKv
+}
+
+/** Live OSM around-site query. `null` = request failed; otherwise min km or search radius if none. */
+async function liveOsmDistanceKm(
+  lat: number,
+  lon: number,
+  radiusM: number,
+  selectors: string[]
+): Promise<{ km: number; found: boolean; live: boolean }> {
+  const body = selectors.map((sel) => `${sel}(around:${radiusM},${lat},${lon});`).join('')
+  const query = `[out:json][timeout:18];(${body});out center 80;`
+  const json = await overpassJson(query)
+  if (!json) return { km: radiusM / 1000, found: false, live: false }
+  const nearest = nearestElementKm(lat, lon, json.elements ?? [])
+  if (nearest == null) return { km: radiusM / 1000, found: false, live: true }
+  return { km: nearest, found: true, live: true }
+}
+
 type PhotonFeature = {
   geometry?: { coordinates?: [number, number] }
 }
 
-/** Photon (Komoot) — fast nearby OSM search; avoids Overpass 504s. */
-async function photonNearestKm(
-  lat: number,
-  lon: number,
-  osmTag: string
-): Promise<number | null> {
-  const url = `https://photon.komoot.io/api/?q=&lat=${lat}&lon=${lon}&limit=8&osm_tag=${encodeURIComponent(osmTag)}`
+async function photonFallbackKm(lat: number, lon: number, query: string, osmTag?: string): Promise<number | null> {
+  const tag = osmTag ? `&osm_tag=${encodeURIComponent(osmTag)}` : ''
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&lat=${lat}&lon=${lon}&limit=12${tag}`
   const json = (await fetchJson(url, 6500)) as { features?: PhotonFeature[] } | null
   const feats = json?.features ?? []
   let best: number | null = null
@@ -96,17 +208,60 @@ async function photonNearestKm(
   return best
 }
 
-async function nearestAmongTags(lat: number, lon: number, tags: string[]): Promise<number | null> {
-  const dists = await Promise.all(tags.map((t) => photonNearestKm(lat, lon, t)))
-  let best: number | null = null
-  for (const d of dists) {
-    if (d == null) continue
-    if (best == null || d < best) best = d
+/** Reverse-geocode a pad to "City, State" for the analysis header. */
+export async function resolveCityStateLabel(lat: number, lon: number): Promise<string | null> {
+  const json = (await fetchJson(`/api/geo/nominatim?lat=${lat}&lon=${lon}`, 6500)) as {
+    name?: string
+    address?: Record<string, string>
+  } | null
+  const address = json?.address
+  if (!address) return null
+
+  const city =
+    address.city ||
+    address.town ||
+    address.village ||
+    address.municipality ||
+    address.city_district ||
+    address.suburb ||
+    address.county ||
+    address.hamlet ||
+    json?.name ||
+    ''
+  const state = address.state || address.state_district || ''
+  const cityName = city.trim()
+  const stateName = state.trim()
+  if (cityName && stateName && cityName.toLowerCase() !== stateName.toLowerCase()) {
+    return `${cityName}, ${stateName}`
   }
-  return best
+  if (cityName) return cityName
+  if (stateName) return stateName
+  return null
 }
 
-async function landCoverFast(lat: number, lon: number): Promise<SiteSignals['landCoverHint']> {
+async function landCoverLive(lat: number, lon: number): Promise<SiteSignals['landCoverHint']> {
+  const query = `[out:json][timeout:15];(
+    way["landuse"](around:180,${lat},${lon});
+    way["natural"](around:180,${lat},${lon});
+    node["landuse"](around:180,${lat},${lon});
+    node["natural"](around:180,${lat},${lon});
+  );out tags 30;`
+  const osm = await overpassJson(query)
+  const blob = (osm?.elements ?? [])
+    .flatMap((el) => [el.tags?.landuse, el.tags?.natural, el.tags?.water])
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+
+  if (blob) {
+    if (/water|river|lake|reservoir|pond|basin|wetland/.test(blob)) return 'water'
+    if (/industrial|residential|commercial|retail|construction|garages/.test(blob)) return 'built'
+    if (/forest|wood|farm|farmland|meadow|grass|orchard|scrub|vineyard|allotments/.test(blob)) {
+      return 'vegetation'
+    }
+    if (/quarry|bare_rock|scree|sand|heath|shingle|brownfield/.test(blob)) return 'barren'
+  }
+
   const json = (await fetchJson(`/api/geo/nominatim?lat=${lat}&lon=${lon}`, 6500)) as {
     category?: string
     type?: string
@@ -115,27 +270,22 @@ async function landCoverFast(lat: number, lon: number): Promise<SiteSignals['lan
     address?: Record<string, string>
   } | null
   if (!json) return 'unknown'
-  const blob = [
+  const named = [
     json.category,
     json.type,
     json.addresstype,
     json.extratags?.landuse,
     json.extratags?.natural,
     json.address?.landuse,
-    json.address?.suburb,
-    json.address?.village,
-    json.address?.town,
-    json.address?.city,
   ]
     .filter(Boolean)
     .join(' ')
     .toLowerCase()
 
-  if (/water|river|lake|reservoir/.test(blob)) return 'water'
-  if (/industrial|residential|commercial|building/.test(blob)) return 'built'
-  if (/forest|wood|farm|meadow|grass|orchard|scrub|field/.test(blob)) return 'vegetation'
-  if (/quarry|bare|rock|heath|sand/.test(blob)) return 'barren'
-  if (/village|hamlet|locality|county|state/.test(blob)) return 'vegetation'
+  if (/water|river|lake|reservoir/.test(named)) return 'water'
+  if (/industrial|residential|commercial|building/.test(named)) return 'built'
+  if (/forest|wood|farm|meadow|grass|orchard|scrub|field/.test(named)) return 'vegetation'
+  if (/quarry|bare|rock|heath|sand/.test(named)) return 'barren'
   return 'unknown'
 }
 
@@ -163,15 +313,14 @@ async function nearestTamsTowerKm(lat: number, lon: number): Promise<number | nu
 export type ProgressFn = (message: string, percent: number) => void
 
 /**
- * Fast screening — Overpass removed (public mirrors 502/504).
- * All sources run in parallel with ~6–7s caps.
+ * Live screening from Open-Meteo DEM/wind, OSRM roads, OSM Overpass, TAMS grid.
  */
 export async function collectSiteSignals(
   lat: number,
   lon: number,
   onProgress?: ProgressFn
 ): Promise<SiteSignals> {
-  onProgress?.('Loading DEM, roads, places & weather…', 20)
+  onProgress?.('Fetching live DEM, OSM, roads & weather…', 18)
 
   const offset = 0.0012
   const grid = [
@@ -182,17 +331,53 @@ export async function collectSiteSignals(
     { lat, lon: lon - offset },
   ]
 
-  const [elevations, windMs, roadKm, waterKm, buildingKm, photonPowerKm, land, tamsTowerKm] =
+  const [elevations, windMs, roadKm, waterLive, settleLive, powerLive, land, tamsTowerKm] =
     await Promise.all([
       fetchElevations(grid),
       fetchWind(lat, lon),
       nearestRoadOsrm(lat, lon),
-      nearestAmongTags(lat, lon, ['waterway', 'natural:water', 'landuse:reservoir']),
-      nearestAmongTags(lat, lon, ['building', 'place:village', 'place:town', 'place:hamlet']),
-      nearestAmongTags(lat, lon, ['power:tower', 'power:substation', 'power:line', 'power:pole']),
-      landCoverFast(lat, lon),
+      liveOsmDistanceKm(lat, lon, 8000, [
+        'way["natural"="water"]',
+        'relation["natural"="water"]',
+        'way["waterway"]',
+        'way["landuse"="reservoir"]',
+        'way["landuse"="basin"]',
+        'way["water"]',
+      ]),
+      liveOsmDistanceKm(lat, lon, 4000, [
+        'way["building"]',
+        'node["place"~"city|town|village|hamlet|suburb"]',
+        'way["landuse"="residential"]',
+      ]),
+      liveOsmDistanceKm(lat, lon, 25000, [
+        'node["power"="tower"]',
+        'node["power"="pole"]',
+        'way["power"="line"]',
+        'node["power"="substation"]',
+        'way["power"="substation"]',
+      ]),
+      landCoverLive(lat, lon),
       nearestTamsTowerKm(lat, lon),
     ])
+
+  onProgress?.('Merging live grid + OSM power assets…', 78)
+
+  let waterKm = waterLive.live || waterLive.found ? waterLive.km : null
+  let buildingKm = settleLive.live || settleLive.found ? settleLive.km : null
+  let osmPowerKm = powerLive.live || powerLive.found ? powerLive.km : null
+
+  if (waterKm == null) {
+    const fallback = await photonFallbackKm(lat, lon, 'lake river reservoir', 'natural:water')
+    if (fallback != null) waterKm = fallback
+  }
+  if (buildingKm == null) {
+    const fallback = await photonFallbackKm(lat, lon, 'village town', 'place:village')
+    if (fallback != null) buildingKm = fallback
+  }
+  if (osmPowerKm == null) {
+    const fallback = await photonFallbackKm(lat, lon, 'power tower', 'power:tower')
+    if (fallback != null) osmPowerKm = fallback
+  }
 
   onProgress?.('Computing screening score…', 92)
 
@@ -203,17 +388,19 @@ export async function collectSiteSignals(
     for (let i = 1; i < elevations.length; i++) {
       const e = elevations[i]
       if (e == null) continue
+      const runM = haversineKm(lat, lon, grid[i].lat, grid[i].lon) * 1000
+      if (runM < 1) continue
       const rise = Math.abs(e - centerElev)
-      const s = (Math.atan(rise / 130) * 180) / Math.PI
+      const s = (Math.atan(rise / runM) * 180) / Math.PI
       if (s > maxSlope) maxSlope = s
     }
     slopeDeg = maxSlope
   }
 
   const towerKm =
-    tamsTowerKm != null && photonPowerKm != null
-      ? Math.min(tamsTowerKm, photonPowerKm)
-      : tamsTowerKm ?? photonPowerKm
+    tamsTowerKm != null && osmPowerKm != null
+      ? Math.min(tamsTowerKm, osmPowerKm)
+      : tamsTowerKm ?? osmPowerKm
 
   return {
     lat,
@@ -224,9 +411,19 @@ export async function collectSiteSignals(
     waterKm,
     buildingKm,
     towerKm,
-    substationKm: photonPowerKm,
+    substationKm: osmPowerKm,
     windMs,
     landCoverHint: land,
+    fetchedAt: new Date().toISOString(),
+    liveOk: {
+      dem: centerElev != null,
+      road: roadKm != null,
+      water: waterLive.live || waterKm != null,
+      settlement: settleLive.live || buildingKm != null,
+      grid: tamsTowerKm != null || osmPowerKm != null,
+      wind: windMs != null,
+      landcover: land !== 'unknown',
+    },
   }
 }
 
@@ -239,9 +436,9 @@ export function parseKmlFirstPoint(kmlText: string): { lat: number; lon: number 
 export type KmlLatLng = [number, number] // [lat, lon] for Leaflet
 
 export type KmlFeature =
-  | { type: 'Point'; latlngs: KmlLatLng[]; name?: string }
-  | { type: 'LineString'; latlngs: KmlLatLng[]; name?: string }
-  | { type: 'Polygon'; latlngs: KmlLatLng[]; name?: string }
+  | { type: 'Point'; latlngs: KmlLatLng[]; name?: string; description?: string; extendedText?: string }
+  | { type: 'LineString'; latlngs: KmlLatLng[]; name?: string; description?: string; extendedText?: string }
+  | { type: 'Polygon'; latlngs: KmlLatLng[]; name?: string; description?: string; extendedText?: string }
 
 export interface ParsedKml {
   features: KmlFeature[]
@@ -278,6 +475,27 @@ function placemarkName(pm: Element): string | undefined {
   return undefined
 }
 
+function placemarkDescription(pm: Element): string | undefined {
+  for (const child of Array.from(pm.children)) {
+    if (localName(child) === 'description') {
+      const t = (child.textContent || '').trim()
+      return t || undefined
+    }
+  }
+  return undefined
+}
+
+function placemarkExtendedText(pm: Element): string | undefined {
+  const parts: string[] = []
+  for (const el of Array.from(pm.getElementsByTagName('*'))) {
+    if (localName(el) !== 'simpledata') continue
+    const name = el.getAttribute('name') || ''
+    const val = (el.textContent || '').trim()
+    if (name && val) parts.push(`${name} ${val}`)
+  }
+  return parts.length ? parts.join(' ') : undefined
+}
+
 function centroid(latlngs: KmlLatLng[]): { lat: number; lon: number } {
   let lat = 0
   let lon = 0
@@ -303,6 +521,8 @@ export function parseKmlDocument(kmlText: string): ParsedKml | null {
 
     for (const root of roots) {
       const name = placemarks.length ? placemarkName(root) : undefined
+      const description = placemarks.length ? placemarkDescription(root) : undefined
+      const extendedText = placemarks.length ? placemarkExtendedText(root) : undefined
       const nodes = Array.from(root.getElementsByTagName('*'))
       for (const el of nodes) {
         const tag = localName(el)
@@ -311,13 +531,13 @@ export function parseKmlDocument(kmlText: string): ParsedKml | null {
             (c) => localName(c) === 'coordinates'
           )
           const pts = parseCoordTuples(coordsEl?.textContent || '')
-          if (pts.length) features.push({ type: 'Point', latlngs: pts, name })
+          if (pts.length) features.push({ type: 'Point', latlngs: pts, name, description, extendedText })
         } else if (tag === 'linestring') {
           const coordsEl = Array.from(el.getElementsByTagName('*')).find(
             (c) => localName(c) === 'coordinates'
           )
           const pts = parseCoordTuples(coordsEl?.textContent || '')
-          if (pts.length >= 2) features.push({ type: 'LineString', latlngs: pts, name })
+          if (pts.length >= 2) features.push({ type: 'LineString', latlngs: pts, name, description, extendedText })
         } else if (tag === 'polygon') {
           const outer =
             Array.from(el.getElementsByTagName('*')).find(
@@ -327,7 +547,7 @@ export function parseKmlDocument(kmlText: string): ParsedKml | null {
             (c) => localName(c) === 'coordinates'
           )
           const pts = parseCoordTuples(coordsEl?.textContent || '')
-          if (pts.length >= 3) features.push({ type: 'Polygon', latlngs: pts, name })
+          if (pts.length >= 3) features.push({ type: 'Polygon', latlngs: pts, name, description, extendedText })
         }
       }
     }

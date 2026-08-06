@@ -112,11 +112,14 @@ export interface ReportDownloadInput {
   result: SuitabilityResult
   suggestions: SuitabilitySuggestions
   kmlOutlineCount?: number
+  towerCount?: number
+  voltageLabel?: string
+  spanM?: number
   generatedAt?: Date
 }
 
 export function buildSuitabilityReportHtml(input: ReportDownloadInput): string {
-  const { siteLabel, lat, lon, result, suggestions, kmlOutlineCount = 0 } = input
+  const { siteLabel, lat, lon, result, suggestions, kmlOutlineCount = 0, towerCount, voltageLabel, spanM } = input
   const when = (input.generatedAt ?? new Date()).toLocaleString(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
@@ -426,6 +429,13 @@ export function buildSuitabilityReportHtml(input: ReportDownloadInput): string {
         ${
           kmlOutlineCount > 0
             ? `<span class="chip">📎 KML · ${kmlOutlineCount} outline${kmlOutlineCount === 1 ? '' : 's'}</span>`
+            : ''
+        }
+        ${
+          towerCount != null && towerCount > 0
+            ? `<span class="chip">🗼 ${towerCount} planned towers${voltageLabel ? ` · ${esc(voltageLabel)}` : ''}${
+                spanM != null ? ` · ${spanM} m span` : ''
+              }</span>`
             : ''
         }
       </div>

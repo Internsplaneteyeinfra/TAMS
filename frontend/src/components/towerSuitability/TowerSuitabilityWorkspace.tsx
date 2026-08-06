@@ -4,7 +4,7 @@
  * KML geometries drawn as map outlines.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import {
@@ -23,10 +23,14 @@ import {
 import {
   collectSiteSignals,
   DEMO_NIRONA,
+  inferOsmLineVoltageKv,
   parseKmlDocument,
+  resolveCityStateLabel,
   type KmlFeature,
 } from './fetchSiteSignals'
+import { fetchGisTowers } from '@/lib/api'
 import { downloadSuitabilityReport } from './downloadSuitabilityReport'
+import { planTowersFromKml, voltageLabel } from './lineTowers'
 import {
   buildSuitabilitySuggestions,
   scoreSiteSignals,
@@ -35,6 +39,20 @@ import {
 } from './scoring'
 
 const MapPane = dynamic(() => import('./TowerSuitabilityMap'), { ssr: false })
+
+function isGenericSiteLabel(label: string): boolean {
+  const value = label.trim().toLowerCase()
+  if (!value) return true
+  if (value.startsWith('pad ')) return true
+  if (value === 'click map or upload kml') return true
+  if (value === 'untitled' || value === 'untitled map' || value === 'my places') return true
+  if (value === 'land' || value === 'polygon' || value === 'placemark') return true
+  return false
+}
+
+/** Shown in UI. Files up to HARD_MAX still parse reliably. */
+const KML_MAX_SIZE_LABEL_MB = 5
+const KML_HARD_MAX_BYTES = 7 * 1024 * 1024
 
 function decisionFromVerdict(v: SuitabilityVerdict): {
   label: 'Accepted' | 'Rejected' | 'Review'
@@ -76,6 +94,11 @@ export default function TowerSuitabilityWorkspace() {
   const [error, setError] = useState<string | null>(null)
   const [kmlFeatures, setKmlFeatures] = useState<KmlFeature[]>([])
   const [suggestionsOpen, setSuggestionsOpen] = useState(false)
+  const [kmlFileName, setKmlFileName] = useState('')
+  const [inferredVoltage, setInferredVoltage] = useState<{
+    kv: number
+    source: 'tams' | 'osm'
+  } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const analyzeSeq = useRef(0)
 
@@ -87,7 +110,17 @@ export default function TowerSuitabilityWorkspace() {
     setSuggestionsOpen(false)
     setLat(nextLat)
     setLon(nextLon)
-    if (label) setSiteLabel(label)
+    if (label && !isGenericSiteLabel(label)) setSiteLabel(label)
+    setProgress({ message: 'Resolving location…', percent: 5 })
+    const placeLabel = await resolveCityStateLabel(nextLat, nextLon)
+    if (seq !== analyzeSeq.current) return
+    if (placeLabel) {
+      setSiteLabel(placeLabel)
+    } else if (!label || isGenericSiteLabel(label)) {
+      setSiteLabel(`${nextLat.toFixed(5)}, ${nextLon.toFixed(5)}`)
+    } else {
+      setSiteLabel(label)
+    }
     setProgress({ message: 'Fetching satellite & OSM signals…', percent: 8 })
     try {
       const signals = await collectSiteSignals(nextLat, nextLon, (message, percent) => {
@@ -110,6 +143,8 @@ export default function TowerSuitabilityWorkspace() {
   const onMapPick = useCallback(
     (nextLat: number, nextLon: number) => {
       setKmlFeatures([])
+      setKmlFileName('')
+      setInferredVoltage(null)
       const label = `Pad ${nextLat.toFixed(5)}, ${nextLon.toFixed(5)}`
       void runAnalyze(nextLat, nextLon, label)
     },
@@ -117,15 +152,30 @@ export default function TowerSuitabilityWorkspace() {
   )
 
   const onKml = async (file: File) => {
-    const text = await file.text()
-    const parsed = parseKmlDocument(text)
-    if (!parsed) {
-      setError('Could not read KML geometry. Use Point, LineString, or Polygon placemarks.')
+    if (file.size > KML_HARD_MAX_BYTES) {
+      setError(`KML is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Max size is ${KML_MAX_SIZE_LABEL_MB} MB.`)
       return
     }
-    setKmlFeatures(parsed.features)
-    const label = file.name.replace(/\.kml$/i, '')
-    await runAnalyze(parsed.focus.lat, parsed.focus.lon, label)
+    setError(null)
+    setAnalyzing(true)
+    setProgress({ message: 'Reading KML…', percent: 4 })
+    try {
+      const text = await file.text()
+      setProgress({ message: 'Parsing KML outlines…', percent: 7 })
+      const parsed = parseKmlDocument(text)
+      if (!parsed) {
+        setAnalyzing(false)
+        setError('Could not read KML geometry. Use Point, LineString, or Polygon placemarks.')
+        return
+      }
+      setKmlFeatures(parsed.features)
+      const label = file.name.replace(/\.kml$/i, '')
+      setKmlFileName(label)
+      await runAnalyze(parsed.focus.lat, parsed.focus.lon, label)
+    } catch (e) {
+      setAnalyzing(false)
+      setError(e instanceof Error ? e.message : 'Could not read this KML file.')
+    }
   }
 
   const decision = result ? decisionFromVerdict(result.verdict) : null
@@ -137,6 +187,66 @@ export default function TowerSuitabilityWorkspace() {
     () => (result ? buildSuitabilitySuggestions(result) : null),
     [result]
   )
+  const lineTowerPlan = useMemo(
+    () =>
+      planTowersFromKml(kmlFeatures, {
+        voltageKv: inferredVoltage?.kv ?? null,
+        voltageSource: inferredVoltage?.source,
+        extraText: kmlFileName,
+        focus: { lat, lon },
+      }),
+    [kmlFeatures, inferredVoltage, kmlFileName, lat, lon]
+  )
+
+  useEffect(() => {
+    if (!kmlFeatures.length) {
+      setInferredVoltage(null)
+      return
+    }
+    let cancelled = false
+    const pathFeat =
+      kmlFeatures.find((f) => f.type === 'LineString' && f.latlngs.length >= 2) ||
+      kmlFeatures.find((f) => f.type === 'Polygon' && f.latlngs.length >= 3) ||
+      kmlFeatures[0]
+    const focus = pathFeat?.latlngs[Math.floor(pathFeat.latlngs.length / 2)] || [lat, lon]
+    const pad = 0.2
+    const bbox = `${focus[1] - pad},${focus[0] - pad},${focus[1] + pad},${focus[0] + pad}`
+
+    const run = async () => {
+      try {
+        const res = await fetchGisTowers(bbox, undefined, 800)
+        if (cancelled) return
+        let bestKv: number | null = null
+        let bestD = Number.POSITIVE_INFINITY
+        for (const tower of res.assets) {
+          const kv = tower.voltage_level_kv ?? Number(tower.metadata?.voltage_kv)
+          if (!Number.isFinite(kv) || kv <= 0) continue
+          const dLat = (tower.latitude - focus[0]) * 111
+          const dLon = (tower.longitude - focus[1]) * 111 * Math.cos((focus[0] * Math.PI) / 180)
+          const d = Math.hypot(dLat, dLon)
+          if (d < bestD) {
+            bestD = d
+            bestKv = kv
+          }
+        }
+        if (bestKv != null && bestD <= 25) {
+          setInferredVoltage({ kv: bestKv, source: 'tams' })
+          return
+        }
+      } catch {
+        /* try OSM next */
+      }
+      if (cancelled) return
+      const osmKv = await inferOsmLineVoltageKv(focus[0], focus[1], 8000)
+      if (cancelled) return
+      setInferredVoltage(osmKv != null ? { kv: osmKv, source: 'osm' } : null)
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [kmlFeatures, lat, lon])
 
   const onDownloadReport = useCallback(() => {
     if (!result || !suggestions) return
@@ -147,8 +257,11 @@ export default function TowerSuitabilityWorkspace() {
       result,
       suggestions,
       kmlOutlineCount: kmlFeatures.length,
+      towerCount: lineTowerPlan?.towerCount,
+      voltageLabel: lineTowerPlan ? voltageLabel(lineTowerPlan.voltageKv) : undefined,
+      spanM: lineTowerPlan?.spanM,
     })
-  }, [result, suggestions, siteLabel, lat, lon, kmlFeatures.length])
+  }, [result, suggestions, siteLabel, lat, lon, kmlFeatures.length, lineTowerPlan])
 
   return (
     <div className="fixed inset-0 z-[200] flex flex-col bg-[#060B17] text-slate-200">
@@ -171,17 +284,26 @@ export default function TowerSuitabilityWorkspace() {
           {kmlFeatures.length > 0 && (
             <span className="hidden sm:inline text-xs text-cyan-300/90 font-semibold">
               KML · {kmlFeatures.length} outline{kmlFeatures.length === 1 ? '' : 's'}
+              {lineTowerPlan
+                ? ` · ${lineTowerPlan.towerCount} towers · ${voltageLabel(lineTowerPlan.voltageKv)}`
+                : ''}
             </span>
           )}
-          <button
-            type="button"
-            disabled={analyzing}
-            onClick={() => fileRef.current?.click()}
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-white/10 bg-slate-950/60 text-xs font-bold text-slate-200 hover:border-cyan-500/40 disabled:opacity-50"
-          >
-            <FileUp className="w-3.5 h-3.5" />
-            Upload KML
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="hidden sm:inline text-[10px] font-semibold text-slate-500 whitespace-nowrap">
+              Max size {KML_MAX_SIZE_LABEL_MB} MB
+            </span>
+            <button
+              type="button"
+              disabled={analyzing}
+              onClick={() => fileRef.current?.click()}
+              title={`Upload KML · max ${KML_MAX_SIZE_LABEL_MB} MB`}
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-white/10 bg-slate-950/60 text-xs font-bold text-slate-200 hover:border-cyan-500/40 disabled:opacity-50"
+            >
+              <FileUp className="w-3.5 h-3.5" />
+              Upload KML
+            </button>
+          </div>
           <input
             ref={fileRef}
             type="file"
@@ -228,13 +350,19 @@ export default function TowerSuitabilityWorkspace() {
             lon={lon}
             result={result}
             kmlFeatures={kmlFeatures}
+            plannedTowers={lineTowerPlan?.towers ?? []}
+            voltageKv={lineTowerPlan?.voltageKv ?? null}
+            spanM={lineTowerPlan?.spanM}
             onPick={onMapPick}
           />
 
           {/* Left: Suggestions beside +/- zoom, then Download + factor cards below */}
           {result && suggestions && (
-            <div className="absolute top-2.5 bottom-2.5 left-2.5 z-[1100] flex flex-col items-stretch gap-2 w-[min(360px,calc(100%-1rem))] max-h-[calc(100%-1.25rem)] pointer-events-none">
-              {/* Suggestions beside +/- zoom */}
+            <div
+              className={`absolute top-2.5 bottom-2.5 left-2.5 z-[1100] flex flex-col items-stretch gap-2 max-h-[calc(100%-1.25rem)] pointer-events-none ${
+                suggestionsOpen ? 'w-[min(440px,calc(100%-1rem))]' : 'w-[min(360px,calc(100%-1rem))]'
+              }`}
+            >
               <div className="pointer-events-auto flex items-start gap-2 shrink-0">
                 <div className="w-[38px] shrink-0" aria-hidden />
                 <button
@@ -259,7 +387,7 @@ export default function TowerSuitabilityWorkspace() {
                 <div
                   role="dialog"
                   aria-label="Suitability improvement suggestions"
-                  className="pointer-events-auto shrink-0 max-h-[min(28vh,240px)] w-full rounded-2xl border border-slate-600/80 bg-[#0e172a] shadow-2xl overflow-hidden flex flex-col"
+                  className="pointer-events-auto flex-1 min-h-0 w-full rounded-2xl border border-slate-600/80 bg-[#0e172a] shadow-2xl overflow-hidden flex flex-col"
                 >
                   <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-800 bg-gradient-to-r from-amber-500/10 to-transparent shrink-0">
                     <div className="min-w-0">
@@ -308,6 +436,12 @@ export default function TowerSuitabilityWorkspace() {
                   </div>
 
                   <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
+                    {result?.disclaimer && (
+                      <div className="rounded-lg border border-amber-500/25 bg-amber-950/25 px-3.5 py-3 text-sm text-amber-100 leading-relaxed flex gap-2.5">
+                        <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <span>{result.disclaimer}</span>
+                      </div>
+                    )}
                     {suggestions.items.length === 0 ? (
                       <p className="text-sm text-slate-400">No material gaps left on screening factors.</p>
                     ) : (
@@ -343,40 +477,47 @@ export default function TowerSuitabilityWorkspace() {
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={onDownloadReport}
-                className="pointer-events-auto shrink-0 self-start inline-flex items-center gap-2 h-11 px-4 rounded-xl border border-cyan-400/50 bg-cyan-500 text-slate-950 text-sm font-bold shadow-xl hover:bg-cyan-400 transition-colors"
-                title="Download full suitability report pamphlet"
-              >
-                <Download className="w-4 h-4" />
-                Download Report
-              </button>
+              {!suggestionsOpen && (
+                <button
+                  type="button"
+                  onClick={onDownloadReport}
+                  className="pointer-events-auto shrink-0 self-start inline-flex items-center gap-2 h-11 px-4 rounded-xl border border-cyan-400/50 bg-cyan-500 text-slate-950 text-sm font-bold shadow-xl hover:bg-cyan-400 transition-colors"
+                  title="Download full suitability report pamphlet"
+                >
+                  <Download className="w-4 h-4" />
+                  Download Report
+                </button>
+              )}
 
-              {/* Factor details — flush left, stretches to bottom of map */}
-              <div className="pointer-events-auto flex-1 min-h-0 w-full flex flex-col rounded-2xl border border-slate-600/80 bg-[#0e172a] shadow-2xl overflow-hidden">
-                <div className="shrink-0 px-4 py-2.5 border-b border-slate-800 bg-[#0e172a]">
-                  <p className="text-xs uppercase tracking-wider text-slate-500 font-bold">
-                    Factor details
-                  </p>
-                </div>
-                <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-2.5">
-                  {result.factors.map((f) => (
-                    <div
-                      key={`left-note-${f.id}`}
-                      className="rounded-lg border border-slate-800/80 bg-slate-950/40 px-3.5 py-3"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-50">{f.label}</p>
-                        <p className="text-sm font-mono text-cyan-300 shrink-0 text-right">
-                          {f.rawLabel}
+              {!suggestionsOpen && (
+                <div className="pointer-events-auto flex-1 min-h-0 w-full flex flex-col rounded-2xl border border-slate-600/80 bg-[#0e172a] shadow-2xl overflow-hidden">
+                  <div className="shrink-0 px-4 py-2.5 border-b border-slate-800 bg-[#0e172a]">
+                    <p className="text-xs uppercase tracking-wider text-slate-500 font-bold">
+                      Factor details
+                    </p>
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-2.5">
+                    {result.factors.map((f) => (
+                      <div
+                        key={`left-note-${f.id}`}
+                        className="rounded-lg border border-slate-800/80 bg-slate-950/40 px-3.5 py-3"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-slate-50">{f.label}</p>
+                          <p className="text-sm font-mono text-cyan-300 shrink-0 text-right">
+                            {f.rawLabel}
+                          </p>
+                        </div>
+                        <p className="text-sm text-slate-400 mt-1.5 leading-snug">{f.note}</p>
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          {f.live !== false ? 'Live · ' : ''}
+                          {f.source}
                         </p>
                       </div>
-                      <p className="text-sm text-slate-400 mt-1.5 leading-snug">{f.note}</p>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -388,9 +529,9 @@ export default function TowerSuitabilityWorkspace() {
         </div>
 
         <aside className="w-full lg:w-[440px] xl:w-[480px] shrink-0 flex flex-col bg-[#0a1220] min-h-0 max-h-[56vh] lg:max-h-none overflow-hidden">
-          <div className="shrink-0 border-b border-slate-800 px-4 py-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
+          <div className="shrink-0 border-b border-slate-800 px-4 py-4 space-y-3 max-h-[58%] overflow-y-auto">
+            <div className="flex items-stretch gap-2">
+              <div className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-950/50 px-3.5 py-3">
                 <p className="text-xs uppercase tracking-wider text-slate-500 font-bold">
                   Analysis report
                 </p>
@@ -398,11 +539,22 @@ export default function TowerSuitabilityWorkspace() {
                 <p className="text-sm text-slate-400 font-mono mt-1">
                   {lat.toFixed(5)}, {lon.toFixed(5)}
                 </p>
+                {result?.fetchedAt && (
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400/90 mt-1.5">
+                    Live data · {new Date(result.fetchedAt).toLocaleTimeString()}
+                  </p>
+                )}
+                {lineTowerPlan && (
+                  <p className="text-xs font-black text-amber-200 mt-2">
+                    {lineTowerPlan.towerCount} towers · {voltageLabel(lineTowerPlan.voltageKv)} ·{' '}
+                    {lineTowerPlan.spanM} m
+                  </p>
+                )}
               </div>
 
               {decision && result ? (
                 <div
-                  className="shrink-0 rounded-xl border px-3.5 py-2.5 text-right min-w-[132px]"
+                  className="shrink-0 w-[132px] rounded-xl border px-3 py-3 flex flex-col justify-center text-right"
                   style={{
                     color: decision.color,
                     background: decision.bg,
@@ -423,38 +575,73 @@ export default function TowerSuitabilityWorkspace() {
                   </p>
                 </div>
               ) : analyzing ? (
-                <div className="shrink-0 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200 font-semibold">
+                <div className="shrink-0 w-[132px] rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-3 text-sm text-cyan-200 font-semibold flex items-center justify-center text-center">
                   Calculating…
                 </div>
               ) : (
-                <div className="shrink-0 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-slate-500">
+                <div className="shrink-0 w-[132px] rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-3 text-sm text-slate-500 flex items-center justify-center text-center">
                   No result yet
                 </div>
               )}
             </div>
 
+            {lineTowerPlan && (
+              <div className="rounded-xl border-2 border-amber-400 bg-amber-500/15 px-3.5 py-3">
+                <p className="text-xs uppercase tracking-wider text-amber-100 font-black">
+                  Towers · voltage · span
+                </p>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Towers</p>
+                    <p className="text-2xl font-black text-white tabular-nums">{lineTowerPlan.towerCount}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Voltage</p>
+                    <p className="text-base font-black text-amber-200 mt-1">
+                      {voltageLabel(lineTowerPlan.voltageKv)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Span</p>
+                    <p className="text-base font-black text-white mt-1 tabular-nums">{lineTowerPlan.spanM} m</p>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-2 leading-snug">
+                  {lineTowerPlan.lengthKm.toFixed(2)} km corridor. Orange dots on the map are T1…T
+                  {lineTowerPlan.towerCount}.
+                  {lineTowerPlan.voltageSource === 'tams'
+                    ? ' Voltage from nearby TAMS grid.'
+                    : lineTowerPlan.voltageSource === 'osm'
+                      ? ' Voltage from nearby OSM power line.'
+                      : lineTowerPlan.voltageSource === 'kml'
+                        ? ' Voltage read from KML / file name.'
+                        : ' Voltage not in this KML — 350 m default span.'}
+                </p>
+              </div>
+            )}
+
             {result && (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setSuggestionsOpen((v) => !v)}
-                  className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border text-xs font-bold transition-colors ${
+                  className={`inline-flex items-center justify-center gap-1.5 h-10 px-2 rounded-xl border text-xs font-bold transition-colors ${
                     suggestionsOpen
                       ? 'bg-amber-500 text-slate-950 border-amber-400'
                       : 'bg-amber-500/15 text-amber-200 border-amber-500/40 hover:bg-amber-500/25'
                   }`}
                 >
-                  <Lightbulb className="w-3.5 h-3.5" />
-                  Suggestions
-                  <span className="tabular-nums">−{suggestions?.remainingToPerfect.toFixed(1)}</span>
+                  <Lightbulb className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Suggestions</span>
+                  <span className="tabular-nums shrink-0">−{suggestions?.remainingToPerfect.toFixed(1)}</span>
                 </button>
                 <button
                   type="button"
                   onClick={onDownloadReport}
-                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-cyan-500/40 bg-cyan-500/15 text-cyan-100 text-xs font-bold hover:bg-cyan-500/25 transition-colors"
+                  className="inline-flex items-center justify-center gap-1.5 h-10 px-2 rounded-xl border border-cyan-500/40 bg-cyan-500/15 text-cyan-100 text-xs font-bold hover:bg-cyan-500/25 transition-colors"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  Download Report
+                  <Download className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Download Report</span>
                 </button>
               </div>
             )}
@@ -484,8 +671,9 @@ export default function TowerSuitabilityWorkspace() {
           <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4">
             {!result && !analyzing && (
               <p className="text-sm text-slate-400 leading-relaxed">
-                Upload a KML (points, lines, or polygons). Outlines appear on the map, then the
-                full score report with Accepted / Rejected shows here.
+                Upload a KML (points, lines, or polygons). Max size {KML_MAX_SIZE_LABEL_MB} MB.
+                Outlines appear on the map, then the full score report with Accepted / Rejected
+                shows here.
               </p>
             )}
 
@@ -499,11 +687,6 @@ export default function TowerSuitabilityWorkspace() {
 
             {result && (
               <>
-                <div className="rounded-lg border border-amber-500/25 bg-amber-950/25 px-3.5 py-3 text-sm text-amber-100 leading-relaxed flex gap-2.5">
-                  <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <span>{result.disclaimer}</span>
-                </div>
-
                 <div>
                   <p className="text-sm font-bold text-white mb-2">
                     Score calculation (Σ score × weight)
@@ -526,7 +709,12 @@ export default function TowerSuitabilityWorkspace() {
                             <tr key={f.id} className="border-t border-slate-800/80">
                               <td className="px-3 py-2.5 text-slate-100">
                                 <div className="font-semibold">{f.label}</div>
-                                <div className="text-xs text-slate-500">{f.source}</div>
+                                <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                                  {f.live !== false && (
+                                    <span className="text-emerald-400 font-bold">Live</span>
+                                  )}
+                                  <span>{f.source}</span>
+                                </div>
                               </td>
                               <td className="px-3 py-2.5 text-right font-mono text-slate-300">
                                 {f.rawLabel}

@@ -14,6 +14,7 @@ export interface FactorResult {
   score: number // 0–10
   note: string
   source: string
+  live?: boolean
 }
 
 export interface SiteSignals {
@@ -28,6 +29,16 @@ export interface SiteSignals {
   substationKm: number | null
   windMs: number | null
   landCoverHint: 'barren' | 'vegetation' | 'built' | 'water' | 'unknown'
+  fetchedAt?: string
+  liveOk?: {
+    dem: boolean
+    road: boolean
+    water: boolean
+    settlement: boolean
+    grid: boolean
+    wind: boolean
+    landcover: boolean
+  }
 }
 
 export interface SuitabilityResult {
@@ -37,6 +48,7 @@ export interface SuitabilityResult {
   factors: FactorResult[]
   signals: SiteSignals
   disclaimer: string
+  fetchedAt?: string
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
@@ -73,7 +85,8 @@ export function scoreSiteSignals(signals: SiteSignals): SuitabilityResult {
       slope != null && slope > 12
         ? 'Steep grade — pad grading / retention likely costly.'
         : 'Favourable pad slope for tower foundation screening.',
-    source: 'DEM · Open-Meteo elevation grid',
+    source: 'Live · Open-Meteo DEM',
+    live: signals.liveOk?.dem ?? slope != null,
   })
 
   const elev = signals.elevationM
@@ -91,7 +104,8 @@ export function scoreSiteSignals(signals: SiteSignals): SuitabilityResult {
     rawLabel: elev == null ? 'n/a' : `${Math.round(elev)} m`,
     score: elevScore,
     note: 'Screening band for logistics & flood exposure context.',
-    source: 'DEM · Open-Meteo',
+    source: 'Live · Open-Meteo DEM',
+    live: signals.liveOk?.dem ?? elev != null,
   })
 
   const road = signals.roadKm
@@ -99,15 +113,16 @@ export function scoreSiteSignals(signals: SiteSignals): SuitabilityResult {
     id: 'road',
     label: 'Road access',
     weight: 0.14,
-    rawLabel: road == null ? 'no OSM road in 25 km' : `${road.toFixed(2)} km`,
+    rawLabel: road == null ? 'live lookup failed' : `${road.toFixed(2)} km`,
     score: road == null ? 3 : thresholdScore(road, 0.5, 8, false),
     note:
       road == null
-        ? 'No mapped highway found nearby — treat access as uncertain.'
+        ? 'Live road lookup failed — treat access as uncertain.'
         : road > 3
           ? 'Distant from mapped roads — construction access risk.'
           : 'Reasonable access for tower erection logistics.',
-    source: 'OSRM nearest road',
+    source: 'Live · OSRM nearest road',
+    live: signals.liveOk?.road ?? road != null,
   })
 
   const water = signals.waterKm
@@ -115,15 +130,18 @@ export function scoreSiteSignals(signals: SiteSignals): SuitabilityResult {
     id: 'water',
     label: 'Water / flood buffer',
     weight: 0.16,
-    rawLabel: water == null ? 'no water found nearby' : `${water.toFixed(2)} km`,
-    score: water == null ? 5 : thresholdScore(water, 0.8, 0.05, true),
+    rawLabel: water == null ? 'live lookup failed' : water >= 7.9 ? '> 8 km' : `${water.toFixed(2)} km`,
+    score: water == null ? 5 : thresholdScore(Math.min(water, 8), 0.8, 0.05, true),
     note:
       water == null
-        ? 'No nearby water in Photon index — flood proxy incomplete.'
+        ? 'Live OSM water query failed — flood proxy incomplete.'
         : water < 0.15
           ? 'Very close to mapped water — flood / scour risk.'
-          : 'Acceptable distance from mapped surface water.',
-    source: 'Photon · OSM water',
+          : water >= 7.9
+            ? 'No mapped water within 8 km (live OSM).'
+            : 'Acceptable distance from mapped surface water.',
+    source: 'Live · OSM Overpass water',
+    live: signals.liveOk?.water ?? water != null,
   })
 
   const building = signals.buildingKm
@@ -131,15 +149,19 @@ export function scoreSiteSignals(signals: SiteSignals): SuitabilityResult {
     id: 'clearance',
     label: 'Settlement clearance',
     weight: 0.12,
-    rawLabel: building == null ? 'no settlement found nearby' : `${building.toFixed(2)} km`,
-    score: building == null ? 7 : thresholdScore(building, 0.25, 0.02, true),
+    rawLabel:
+      building == null ? 'live lookup failed' : building >= 3.9 ? '> 4 km' : `${building.toFixed(2)} km`,
+    score: building == null ? 6 : thresholdScore(Math.min(building, 4), 0.25, 0.02, true),
     note:
       building == null
-        ? 'No mapped building/place nearby — likely open land (verify on imagery).'
+        ? 'Live OSM settlement query failed — verify on imagery.'
         : building < 0.08
           ? 'Close to mapped buildings — ROW / social risk.'
-          : 'Clearance from mapped settlements looks workable.',
-    source: 'Photon · OSM places',
+          : building >= 3.9
+            ? 'No mapped settlement within 4 km (live OSM).'
+            : 'Clearance from mapped settlements looks workable.',
+    source: 'Live · OSM Overpass places',
+    live: signals.liveOk?.settlement ?? building != null,
   })
 
   const tower = signals.towerKm
@@ -155,11 +177,12 @@ export function scoreSiteSignals(signals: SiteSignals): SuitabilityResult {
     score: corridorDist == null ? 4 : thresholdScore(corridorDist, 2, 35, false),
     note:
       corridorDist == null
-        ? 'No TAMS/Photon power asset nearby — greenfield assumption.'
+        ? 'No live TAMS/OSM power asset nearby — greenfield assumption.'
         : corridorDist < 1
           ? 'Near existing towers/lines — good for extension / tap.'
           : 'Far from mapped grid assets — greenfield corridor cost.',
-    source: 'TAMS · Photon power',
+    source: 'Live · TAMS + OSM power',
+    live: signals.liveOk?.grid ?? corridorDist != null,
   })
 
   const wind = signals.windMs
@@ -169,8 +192,9 @@ export function scoreSiteSignals(signals: SiteSignals): SuitabilityResult {
     weight: 0.06,
     rawLabel: wind == null ? 'n/a' : `${wind.toFixed(1)} m/s`,
     score: wind == null ? 6 : thresholdScore(wind, 4, 12, false),
-    note: 'Open-Meteo daily max wind (m/s). Structural design still needs IS wind zone.',
-    source: 'Open-Meteo · wind_speed_unit=ms',
+    note: 'Live Open-Meteo 90-day mean daily max wind (m/s). Structural design still needs IS wind zone.',
+    source: 'Live · Open-Meteo archive wind',
+    live: signals.liveOk?.wind ?? wind != null,
   })
 
   let landScore = 6
@@ -201,8 +225,9 @@ export function scoreSiteSignals(signals: SiteSignals): SuitabilityResult {
     weight: 0.08,
     rawLabel: landLabel,
     score: landScore,
-    note: 'OSM landuse/natural + Nominatim reverse — not a cadastral certificate.',
-    source: 'OSM · Nominatim',
+    note: 'Live OSM landuse/natural around the pad — not a cadastral certificate.',
+    source: 'Live · OSM landuse',
+    live: signals.liveOk?.landcover ?? signals.landCoverHint !== 'unknown',
   })
 
   const weightSum = factors.reduce((s, f) => s + f.weight, 0)
@@ -235,7 +260,8 @@ export function scoreSiteSignals(signals: SiteSignals): SuitabilityResult {
     factors,
     signals,
     disclaimer:
-      'Screening score from open satellite DEM + OSM + weather only. Not a substitute for borehole, lab SBC/pile, CBR, or earth-resistivity investigation (~65–80% site-ranking confidence).',
+      'Live screening from Open-Meteo DEM/wind, OSRM roads, OSM Overpass, and TAMS grid. Not a substitute for borehole, lab SBC/pile, CBR, or earth-resistivity investigation (~65–80% site-ranking confidence).',
+    fetchedAt: signals.fetchedAt || new Date().toISOString(),
   }
 }
 

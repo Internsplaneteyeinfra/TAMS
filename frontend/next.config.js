@@ -1,40 +1,28 @@
 /**
- * Next.js config — API proxy and public env wiring.
- *
- * Local: browser → NEXT_PUBLIC_API_BASE_URL (/api/v1) → rewrite → BACKEND_URL
- * Render site: https://tams-1-tgkn.onrender.com
- * Set BACKEND_URL to the Railway API (https://….up.railway.app)
- * and NEXT_PUBLIC_HOSTED_API_BASE_URL to https://….up.railway.app/api/v1
- * so the browser can reach the API even if the Next rewrite fails.
+ * Next.js config — same-origin /api/v1 is proxied by pages/api/v1/[...path].ts
+ * to whatever backend host/port is in use (BACKEND_URL, BACKEND_PORT, or inferred).
  */
-const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000'
-
 if (
   process.env.NODE_ENV === 'production' &&
-  (!process.env.BACKEND_URL || process.env.BACKEND_URL.includes('127.0.0.1'))
+  (!process.env.BACKEND_URL || String(process.env.BACKEND_URL).includes('127.0.0.1'))
 ) {
   console.warn(
     '[tams] BACKEND_URL is unset or local. On Render, set BACKEND_URL to your Railway https://….up.railway.app or data will not load via /api proxy.'
   )
 }
 
+const extraDevOrigins = String(process.env.ALLOWED_DEV_ORIGINS || '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean)
+
 const config = {
   reactStrictMode: true,
   swcMinify: true,
-  // Allow opening the app via LAN IP (e.g. http://192.168.42.111:3000)
-  allowedDevOrigins: ['192.168.42.111', '127.0.0.1', 'localhost'],
+  allowedDevOrigins: ['127.0.0.1', 'localhost', ...extraDevOrigins],
   transpilePackages: ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
   typescript: {
     tsconfigPath: './tsconfig.json',
-  },
-  async rewrites() {
-    return [
-      {
-        // Only proxy backend REST under /api/v1 — leave /api/geo/* for Next routes
-        source: '/api/v1/:path*',
-        destination: `${BACKEND_URL}/api/v1/:path*`,
-      },
-    ]
   },
   env: {
     NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1',

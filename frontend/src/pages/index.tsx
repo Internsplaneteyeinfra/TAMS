@@ -346,7 +346,7 @@ export default function Home() {
                 onClick={() => void refetchAssets()}
                 className="rounded-full border border-amber-500/40 bg-[#0b1224]/95 px-3 py-1.5 text-[11px] font-semibold text-amber-200 shadow-lg backdrop-blur-sm hover:border-amber-400/60"
               >
-                No map assets loaded — click to retry (is backend on :8000?)
+                No map assets loaded — click to retry (is the API reachable?)
               </button>
             </div>
           )}

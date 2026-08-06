@@ -1,34 +1,38 @@
 const CONFIGURED_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
 
-// Hosted backend fallback from env (used when opened from a non-local host
-// and NEXT_PUBLIC_API_BASE_URL is still a relative path like /api/v1).
-const HOSTED_BACKEND_BASE =
-  process.env.NEXT_PUBLIC_HOSTED_API_BASE_URL || ''
+// Optional absolute overrides only. Unset = same origin the UI was opened on.
+const LOCAL_API_OVERRIDE = process.env.NEXT_PUBLIC_LOCAL_API_BASE_URL || ''
+const HOSTED_API_OVERRIDE = process.env.NEXT_PUBLIC_HOSTED_API_BASE_URL || ''
 
-// Local dev backend (FastAPI). The Next.js dev rewrite proxy resets the
-// connection (ECONNRESET / socket hang up) on large responses like
-// /assets (~10 MB), so on loopback we call the backend directly — CORS in
-// DEBUG allows localhost/127.0.0.1.
-const LOCAL_DIRECT_BASE =
-  process.env.NEXT_PUBLIC_LOCAL_API_BASE_URL || 'http://127.0.0.1:8000/api/v1'
+function isLoopbackHost(host: string): boolean {
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]'
+}
+
+function isPrivateHost(host: string): boolean {
+  if (isLoopbackHost(host)) return true
+  if (host.startsWith('192.168.') || host.startsWith('10.')) return true
+  const match = host.match(/^172\.(\d+)\./)
+  if (!match) return false
+  const second = Number(match[1])
+  return second >= 16 && second <= 31
+}
 
 function resolveApiBase(): string {
+  if (CONFIGURED_BASE && !CONFIGURED_BASE.startsWith('/')) {
+    return CONFIGURED_BASE.replace(/\/$/, '')
+  }
+
   if (typeof window !== 'undefined') {
     const host = window.location.hostname
-    const isLoopback = host === 'localhost' || host === '127.0.0.1'
-    const isLan = host.startsWith('192.168.') || host.startsWith('10.')
-
-    // Loopback dev: skip the flaky Next proxy, hit the backend directly.
-    if (isLoopback && CONFIGURED_BASE.startsWith('/')) {
-      return LOCAL_DIRECT_BASE
+    if (isPrivateHost(host) && LOCAL_API_OVERRIDE) {
+      return LOCAL_API_OVERRIDE.replace(/\/$/, '')
     }
-
-    // Deployed (non-local, non-LAN) with a relative base: use hosted backend.
-    if (!isLoopback && !isLan && CONFIGURED_BASE.startsWith('/') && HOSTED_BACKEND_BASE) {
-      return HOSTED_BACKEND_BASE
+    if (!isPrivateHost(host) && HOSTED_API_OVERRIDE) {
+      return HOSTED_API_OVERRIDE.replace(/\/$/, '')
     }
   }
-  return CONFIGURED_BASE
+
+  return CONFIGURED_BASE || '/api/v1'
 }
 
 export function getApiBase(): string {
