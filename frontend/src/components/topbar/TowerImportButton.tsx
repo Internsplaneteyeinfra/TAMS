@@ -13,12 +13,34 @@ interface TowerImportButtonProps {
 }
 
 const STATE_PACKS = [
+  { id: 'andhra', label: 'AP', state: 'Andhra Pradesh', placeId: 'andhra-pradesh' },
+  { id: 'arunachal', label: 'AR', state: 'Arunachal Pradesh', placeId: 'arunachal-pradesh' },
+  { id: 'assam', label: 'AS', state: 'Assam', placeId: 'assam' },
+  { id: 'bihar', label: 'BR', state: 'Bihar', placeId: 'bihar' },
+  { id: 'chhattisgarh', label: 'CG', state: 'Chhattisgarh', placeId: 'chhattisgarh' },
   { id: 'delhi', label: 'DL', state: 'Delhi', placeId: 'delhi' },
+  { id: 'goa', label: 'GA', state: 'Goa', placeId: 'goa' },
   { id: 'haryana', label: 'HR', state: 'Haryana', placeId: 'haryana' },
   { id: 'himachal', label: 'HP', state: 'Himachal Pradesh', placeId: 'himachal-pradesh' },
+  { id: 'jharkhand', label: 'JH', state: 'Jharkhand', placeId: 'jharkhand' },
+  { id: 'karnataka', label: 'KA', state: 'Karnataka', placeId: 'karnataka' },
+  { id: 'kerala', label: 'KL', state: 'Kerala', placeId: 'kerala' },
+  { id: 'madhya', label: 'MP', state: 'Madhya Pradesh', placeId: 'madhya-pradesh' },
+  { id: 'maharashtra', label: 'MH', state: 'Maharashtra', placeId: 'maharashtra' },
+  { id: 'manipur', label: 'MN', state: 'Manipur', placeId: 'manipur' },
+  { id: 'meghalaya', label: 'ML', state: 'Meghalaya', placeId: 'meghalaya' },
+  { id: 'mizoram', label: 'MZ', state: 'Mizoram', placeId: 'mizoram' },
+  { id: 'nagaland', label: 'NL', state: 'Nagaland', placeId: 'nagaland' },
+  { id: 'odisha', label: 'OD', state: 'Odisha', placeId: 'odisha' },
   { id: 'punjab', label: 'PB', state: 'Punjab', placeId: 'punjab' },
   { id: 'rajasthan', label: 'RJ', state: 'Rajasthan', placeId: 'rajasthan' },
+  { id: 'sikkim', label: 'SK', state: 'Sikkim', placeId: 'sikkim' },
+  { id: 'tamilnadu', label: 'TN', state: 'Tamil Nadu', placeId: 'tamil-nadu' },
+  { id: 'telangana', label: 'TS', state: 'Telangana', placeId: 'telangana' },
+  { id: 'tripura', label: 'TR', state: 'Tripura', placeId: 'tripura' },
+  { id: 'uttarpradesh', label: 'UP', state: 'Uttar Pradesh', placeId: 'uttar-pradesh' },
   { id: 'uttarakhand', label: 'UK', state: 'Uttarakhand', placeId: 'uttarakhand' },
+  { id: 'westbengal', label: 'WB', state: 'West Bengal', placeId: 'west-bengal' },
 ] as const
 
 type ImportMode = 'file' | (typeof STATE_PACKS)[number]['id'] | 'all'
