@@ -1,107 +1,63 @@
 import React from 'react'
-
 import { Box, Globe, Map as MapIcon, Mountain, Satellite } from 'lucide-react'
-
-
 
 export type MapBasemap = '3d' | '2d' | 'street' | 'satellite' | 'terrain'
 
-
-
 const MODES: { id: MapBasemap; label: string; icon: React.ElementType }[] = [
-
   { id: '3d', label: '3D', icon: Box },
-
   { id: '2d', label: '2D', icon: MapIcon },
-
   { id: 'street', label: 'Street', icon: Globe },
-
   { id: 'satellite', label: 'Satellite', icon: Satellite },
-
   { id: 'terrain', label: 'Terrain', icon: Mountain },
-
 ]
 
-
-
 interface MapViewModeBarProps {
-
   mode: MapBasemap
-
   onChange: (mode: MapBasemap) => void
-
   variant?: 'floating' | 'inline' | 'rail'
-
 }
-
-
 
 export default function MapViewModeBar({ mode, onChange, variant = 'floating' }: MapViewModeBarProps) {
-
   const isRail = variant === 'rail'
-
-
+  const isInline = variant === 'inline'
 
   return (
-
     <div
-
-      className={`bg-[#0a1020]/95 backdrop-blur-xl rounded-lg p-0.5 border border-slate-700/80 shadow-xl gap-0.5 ${isRail
-
-        ? 'flex flex-col w-9 shrink-0'
-
-        : `flex shrink-0 ${variant === 'inline' ? '' : 'absolute top-3 right-14 z-[2001]'}`
-
-        }`}
-
+      className={
+        isRail
+          ? 'flex w-11 shrink-0 flex-col gap-0.5 rounded-lg bg-slate-900/60 p-0.5'
+          : isInline
+            ? 'relative z-0 flex shrink-0 gap-0.5 rounded-lg border border-slate-700/80 bg-[#0a1020]/95 p-0.5 shadow-lg'
+            : 'absolute top-3 right-14 z-[2001] flex shrink-0 gap-0.5 rounded-lg border border-slate-700/80 bg-[#0a1020]/95 p-0.5 shadow-xl backdrop-blur-xl'
+      }
       role="group"
-
       aria-label="Map view mode"
-
     >
-
       {MODES.map((m) => {
-
         const Icon = m.icon
-
         return (
-
           <button
-
             key={m.id}
-
             type="button"
-
             title={m.label}
-
             onClick={() => onChange(m.id)}
-
-            className={`${isRail ? 'w-full h-8' : variant === 'inline' ? 'px-1.5 py-1.5' : 'px-2 py-1.5'
-
-              } text-[9px] font-extrabold uppercase tracking-wider rounded-md flex items-center justify-center gap-1 transition ${mode === m.id
-
+            className={`${
+              isRail
+                ? 'flex h-8 w-full items-center justify-center rounded-md'
+                : isInline
+                  ? 'px-1.5 py-1.5'
+                  : 'px-2 py-1.5'
+            } flex items-center justify-center gap-1 text-[9px] font-extrabold uppercase tracking-wider transition ${
+              mode === m.id
                 ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-
-              }`}
-
+                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+            }`}
           >
-
-            <Icon className="w-3.5 h-3.5 shrink-0" />
-
-            {!isRail && variant !== 'inline' && <span className="hidden sm:inline">{m.label}</span>}
-
+            <Icon className="h-3.5 w-3.5 shrink-0" />
+            {!isRail && !isInline && <span className="hidden sm:inline">{m.label}</span>}
           </button>
-
         )
-
       })}
-
     </div>
-
   )
-
 }
-
-

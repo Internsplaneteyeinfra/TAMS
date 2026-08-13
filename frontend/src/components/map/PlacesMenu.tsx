@@ -8,6 +8,8 @@ interface PlacesMenuProps {
   onSelectPlace: (placeId: string) => void
   assetCounts?: Record<string, number>
   variant?: 'toolbar' | 'default'
+  /** Fired when the places panel opens/closes (e.g. hide map tools while open). */
+  onOpenChange?: (open: boolean) => void
 }
 
 function PlaceColumn({
@@ -28,7 +30,7 @@ function PlaceColumn({
   assetCounts?: Record<string, number>
 }) {
   return (
-    <div className="min-w-[168px] max-w-[200px] border-r border-slate-800/90 last:border-r-0 flex flex-col max-h-[min(70vh,420px)]">
+    <div className="min-w-[180px] max-w-[220px] border-r border-slate-800/90 last:border-r-0 flex flex-col max-h-[min(70vh,440px)]">
       {title && (
         <div className="px-3 py-2 border-b border-slate-800/80 bg-slate-950/80 shrink-0">
           <p className="text-[8px] font-bold text-slate-500 uppercase tracking-[0.14em]">{title}</p>
@@ -67,22 +69,36 @@ function PlaceColumn({
   )
 }
 
+/** States under India — skip the India root so the menu lists states only. */
+const INDIA_ROOT = PLACES_TREE[0]
+const STATE_NODES: PlaceNode[] = INDIA_ROOT?.children ?? []
+
 export default function PlacesMenu({
   selectedPlaceId,
   onSelectPlace,
   assetCounts,
   variant = 'default',
+  onOpenChange,
 }: PlacesMenuProps) {
   const [open, setOpen] = useState(false)
   const path = useMemo(() => getPlacePath(selectedPlaceId), [selectedPlaceId])
-  const [hoverPath, setHoverPath] = useState<PlaceNode[]>([])
+  const [hoverState, setHoverState] = useState<PlaceNode | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+
+  const selectedState = useMemo(() => {
+    // path: India → State → City — pick the state node
+    return path.find((n) => n.stateOrCountry) ?? path[1] ?? null
+  }, [path])
 
   useEffect(() => {
     if (open) {
-      setHoverPath(path.length > 1 ? path.slice(0, -1) : [])
+      setHoverState(selectedState)
     }
-  }, [open, path])
+  }, [open, selectedState])
+
+  useEffect(() => {
+    onOpenChange?.(open)
+  }, [open, onOpenChange])
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -97,13 +113,8 @@ export default function PlacesMenu({
     setOpen(false)
   }
 
-  const col1 = PLACES_TREE
-  const col2Node = hoverPath[0] ?? path[0]
-  const col2 = col2Node?.children ?? []
-  const col3Node = hoverPath[1] ?? path[1]
-  const col3 = col3Node?.children ?? []
-  const col4Node = hoverPath[2] ?? path[2]
-  const col4 = col4Node?.children ?? []
+  const activeState = hoverState ?? selectedState
+  const cityNodes = activeState?.children ?? []
 
   const selectedLabel = path[path.length - 1]?.label ?? 'Places'
 
@@ -125,47 +136,27 @@ export default function PlacesMenu({
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-2 z-[8000] flex rounded-xl border border-slate-600 bg-[#0a1020] shadow-2xl shadow-black/60 overflow-hidden">
+        <div
+          className="absolute top-full right-0 mt-2 z-[8000] flex rounded-xl border border-slate-600 bg-[#0a1020] shadow-2xl shadow-black/60 overflow-hidden"
+          role="menu"
+          aria-label="Select state"
+        >
           <PlaceColumn
-            title="India"
-            nodes={col1}
+            title="States"
+            nodes={STATE_NODES}
             selectedPlaceId={selectedPlaceId}
-            activeId={hoverPath[0]?.id ?? path[0]?.id ?? null}
-            onHover={(node) => setHoverPath([node])}
+            activeId={activeState?.id ?? null}
+            onHover={(node) => setHoverState(node)}
             onSelect={handleSelect}
             assetCounts={assetCounts}
           />
-          {col2.length > 0 && (
+          {cityNodes.length > 0 && (
             <PlaceColumn
-              title={col2Node?.label ?? 'States'}
-              nodes={col2}
+              title={activeState?.label ?? 'Cities'}
+              nodes={cityNodes}
               selectedPlaceId={selectedPlaceId}
-              activeId={hoverPath[1]?.id ?? path[1]?.id ?? null}
-              onHover={(node) => col2Node && setHoverPath([col2Node, node])}
-              onSelect={handleSelect}
-              assetCounts={assetCounts}
-            />
-          )}
-          {col3.length > 0 && (
-            <PlaceColumn
-              title={col3Node?.label}
-              nodes={col3}
-              selectedPlaceId={selectedPlaceId}
-              activeId={hoverPath[2]?.id ?? path[2]?.id ?? null}
-              onHover={(node) => col2Node && col3Node && setHoverPath([col2Node, col3Node, node])}
-              onSelect={handleSelect}
-              assetCounts={assetCounts}
-            />
-          )}
-          {col4.length > 0 && (
-            <PlaceColumn
-              title={col4Node?.label}
-              nodes={col4}
-              selectedPlaceId={selectedPlaceId}
-              activeId={hoverPath[3]?.id ?? path[3]?.id ?? null}
-              onHover={(node) => {
-                if (col2Node && col3Node && col4Node) setHoverPath([col2Node, col3Node, col4Node, node])
-              }}
+              activeId={path[path.length - 1]?.id === activeState?.id ? null : path[path.length - 1]?.id ?? null}
+              onHover={() => {}}
               onSelect={handleSelect}
               assetCounts={assetCounts}
             />

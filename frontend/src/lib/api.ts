@@ -162,13 +162,18 @@ export interface RegionAssetStats {
   source?: string
 }
 
-export async function fetchGisStats(placeId: string): Promise<RegionAssetStats> {
+export async function fetchGisStats(
+  placeId: string,
+  signal?: AbortSignal
+): Promise<RegionAssetStats> {
   const params = new URLSearchParams({ place_id: placeId })
-  return fetchApi<RegionAssetStats>(`/gis/stats?${params}`)
+  return fetchApi<RegionAssetStats>(`/gis/stats?${params}`, { signal })
 }
 
-export async function fetchGisPlaceStats(): Promise<Record<string, { total: number }>> {
-  return fetchApi<Record<string, { total: number }>>('/gis/stats/places')
+export async function fetchGisPlaceStats(
+  signal?: AbortSignal
+): Promise<Record<string, { total: number }>> {
+  return fetchApi<Record<string, { total: number }>>('/gis/stats/places', { signal })
 }
 
 export interface GisTowersResult {
@@ -177,6 +182,25 @@ export interface GisTowersResult {
   total: number
   limit: number
   source?: string
+}
+
+export async function fetchGisProximity(
+  centerLat: number,
+  centerLon: number,
+  radiusKm = 50,
+  assetTypes?: Array<'tower' | 'line' | 'substation'>
+): Promise<{
+  center: { lat: number; lon: number }
+  radius_km: number
+  count: number
+  assets: Array<Asset & { distance_km?: number }>
+}> {
+  return postApi('/gis/analytics/proximity', {
+    center_lat: centerLat,
+    center_lon: centerLon,
+    radius_km: radiusKm,
+    asset_types: assetTypes,
+  })
 }
 
 export async function fetchGisTowers(

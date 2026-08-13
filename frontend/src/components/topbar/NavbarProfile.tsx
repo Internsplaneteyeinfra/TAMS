@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { ChevronDown, LogOut, Settings, User } from 'lucide-react'
 
 export default function NavbarProfile() {
@@ -38,22 +39,37 @@ export default function NavbarProfile() {
             <p className="text-[9px] text-slate-500">operations@tams.grid</p>
           </div>
           <ul className="py-1">
-            {[
-              { icon: User, label: 'Profile' },
-              { icon: Settings, label: 'Settings' },
-              { icon: LogOut, label: 'Sign out' },
-            ].map(({ icon: Icon, label }) => (
-              <li key={label}>
-                <button
-                  type="button"
-                  className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800/80 transition-colors"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <Icon className="w-3.5 h-3.5 text-slate-500" />
-                  {label}
-                </button>
-              </li>
-            ))}
+            <li>
+              <button
+                type="button"
+                className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800/80 transition-colors"
+                onClick={() => setIsOpen(false)}
+              >
+                <User className="w-3.5 h-3.5 text-slate-500" />
+                Profile
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800/80 transition-colors"
+                onClick={() => setIsOpen(false)}
+              >
+                <Settings className="w-3.5 h-3.5 text-slate-500" />
+                Settings
+              </button>
+            </li>
+            <li>
+              <Link
+                href="/"
+                className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-rose-200 hover:bg-slate-800/80 transition-colors"
+                onClick={() => setIsOpen(false)}
+                title="Back to module selection"
+              >
+                <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                Logout
+              </Link>
+            </li>
           </ul>
         </div>
       )}

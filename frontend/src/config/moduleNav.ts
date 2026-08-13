@@ -6,7 +6,7 @@ export interface ModuleNavItem {
 
 /** Enterprise module routes — shared by GIS sidebars and MUI AppLayout. */
 export const MODULE_NAV_ITEMS: ModuleNavItem[] = [
-  { href: '/', label: 'GIS Command Center', shortLabel: 'Map' },
+  { href: '/analyzer', label: 'GIS Command Center', shortLabel: 'Map' },
   { href: '/dashboard', label: 'Operations Dashboard', shortLabel: 'Ops' },
   { href: '/assets', label: 'Asset Registry', shortLabel: 'Assets' },
   { href: '/alarms', label: 'Alarm Center', shortLabel: 'Alarms' },

@@ -1,7 +1,7 @@
-import type { NextApiRequest, NextApiResponse } from 'next'
 import http from 'http'
 import https from 'https'
 import { URL } from 'url'
+import type { NextApiRequest, NextApiResponse } from 'next'
 
 const { resolveBackendOrigin } = require('../../../../lib/resolveBackendUrl') as {
   resolveBackendOrigin: (hostHeader?: string) => string

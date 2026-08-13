@@ -1,7 +1,121 @@
 import type { KmlFeature, KmlLatLng } from './fetchSiteSignals'
 
-/** Typical 132–220 kV transmission span in India. */
+/** Fallback when voltage unknown — mid 132–220 kV practice. */
 export const DEFAULT_TOWER_SPAN_M = 350
+
+/**
+ * Screening spans for India (typical corridor planning).
+ * Not a certified structural design — final spans need sag-tension, wind/ice zone,
+ * IS 5613 / CEA safety clearances, and utility standards.
+ */
+export interface VoltageClassStandard {
+  kv: number
+  /** Ruling / average span used for tower count estimate */
+  rulingSpanM: number
+  /** Practical denser spacing (more towers) */
+  minSpanM: number
+  /** Practical longer span before sag/clearance risk rises */
+  maxSpanM: number
+  /** Indicative ROW width (m) — order of magnitude from practice */
+  rowWidthM: number
+  label: string
+  note: string
+}
+
+export const VOLTAGE_CLASS_STANDARDS: VoltageClassStandard[] = [
+  {
+    kv: 33,
+    rulingSpanM: 120,
+    minSpanM: 80,
+    maxSpanM: 180,
+    rowWidthM: 15,
+    label: '33 kV',
+    note: 'Often poles/H-poles; short spans for distribution / sub-transmission.',
+  },
+  {
+    kv: 66,
+    rulingSpanM: 200,
+    minSpanM: 150,
+    maxSpanM: 250,
+    rowWidthM: 18,
+    label: '66 kV',
+    note: 'Sub-transmission; denser than 132 kV.',
+  },
+  {
+    kv: 110,
+    rulingSpanM: 280,
+    minSpanM: 220,
+    maxSpanM: 320,
+    rowWidthM: 22,
+    label: '110 kV',
+    note: 'Regional class; treat near 132 kV practice.',
+  },
+  {
+    kv: 132,
+    rulingSpanM: 320,
+    minSpanM: 280,
+    maxSpanM: 380,
+    rowWidthM: 27,
+    label: '132 kV',
+    note: 'Common STU lines; ~300–350 m ruling span in flat terrain.',
+  },
+  {
+    kv: 220,
+    rulingSpanM: 360,
+    minSpanM: 320,
+    maxSpanM: 420,
+    rowWidthM: 35,
+    label: '220 kV',
+    note: 'EHV; longer spans; higher clearance & ROW.',
+  },
+  {
+    kv: 400,
+    rulingSpanM: 400,
+    minSpanM: 360,
+    maxSpanM: 480,
+    rowWidthM: 46,
+    label: '400 kV',
+    note: 'CEA EHV practice; span limited by sag, wind, river crossings.',
+  },
+  {
+    kv: 765,
+    rulingSpanM: 450,
+    minSpanM: 400,
+    maxSpanM: 520,
+    rowWidthM: 64,
+    label: '765 kV',
+    note: 'UHV; specialized towers; large ROW and strict clearances.',
+  },
+]
+
+export const VOLTAGE_OPTIONS_KV = VOLTAGE_CLASS_STANDARDS.map((s) => s.kv)
+
+export type SpanPolicy = 'ruling' | 'dense' | 'long'
+
+export function standardForVoltageKv(voltageKv: number | null): VoltageClassStandard | null {
+  if (voltageKv == null) return null
+  const exact = VOLTAGE_CLASS_STANDARDS.find((s) => s.kv === voltageKv)
+  if (exact) return exact
+  // nearest class
+  let best = VOLTAGE_CLASS_STANDARDS[0]
+  let bestD = Math.abs(best.kv - voltageKv)
+  for (const s of VOLTAGE_CLASS_STANDARDS) {
+    const d = Math.abs(s.kv - voltageKv)
+    if (d < bestD) {
+      best = s
+      bestD = d
+    }
+  }
+  return best
+}
+
+export function spanForVoltageKv(voltageKv: number | null, policy: SpanPolicy = 'ruling'): number {
+  const std = standardForVoltageKv(voltageKv)
+  if (!std) return DEFAULT_TOWER_SPAN_M
+  if (policy === 'dense') return std.minSpanM
+  if (policy === 'long') return std.maxSpanM
+  return std.rulingSpanM
+}
 
 export function parseVoltageFromText(...parts: Array<string | undefined | null>): number | null {
   const blob = parts.filter(Boolean).join(' ')
@@ -21,18 +135,53 @@ export function parseVoltageFromText(...parts: Array<string | undefined | null>)
   return null
 }
 
-export function spanForVoltageKv(voltageKv: number | null): number {
-  if (voltageKv == null) return DEFAULT_TOWER_SPAN_M
-  if (voltageKv <= 33) return 180
-  if (voltageKv <= 66) return 220
-  if (voltageKv <= 132) return 300
-  if (voltageKv <= 220) return 350
-  if (voltageKv <= 400) return 400
-  return 450
-}
-
 export function voltageLabel(voltageKv: number | null): string {
   return voltageKv != null ? `${voltageKv} kV` : 'Voltage unknown'
+}
+
+/** Human label for how voltage was chosen — honest about live vs planning. */
+export function voltageSourceLabel(
+  source: 'kml' | 'tams' | 'osm' | 'manual' | 'default' | 'substation'
+): string {
+  switch (source) {
+    case 'tams':
+      return 'Live · TAMS GIS nearby tower'
+    case 'substation':
+      return 'Live · nearest substation / plant (TAMS or OSM)'
+    case 'osm':
+      return 'Live · OSM power line voltage tag'
+    case 'kml':
+      return 'From KML metadata'
+    case 'manual':
+      return 'Manual · CEA planning class you selected'
+    default:
+      return 'Not set — pick voltage for CEA planning bands'
+  }
+}
+
+export function towerPredictionNote(
+  lengthKm: number,
+  spanM: number,
+  towerCount: number,
+  std?: VoltageClassStandard | null
+): string {
+  const base = `Corridor ${lengthKm.toFixed(2)} km ÷ ${spanM} m span ≈ ${towerCount} towers (T1 at start, then every span).`
+  if (!std) return `${base} Pick a voltage class for standard spacing.`
+  return `${base} ${std.label} practice: ${std.minSpanM}–${std.maxSpanM} m (ruling ${std.rulingSpanM} m). ROW ~${std.rowWidthM} m.`
+}
+
+export function estimateTowerBand(lengthKm: number, std: VoltageClassStandard): {
+  dense: number
+  ruling: number
+  long: number
+} {
+  const lengthM = lengthKm * 1000
+  const count = (span: number) => Math.max(1, Math.floor(lengthM / span) + 1)
+  return {
+    dense: count(std.minSpanM),
+    ruling: count(std.rulingSpanM),
+    long: count(std.maxSpanM),
+  }
 }
 
 function haversineM(a: KmlLatLng, b: KmlLatLng): number {
@@ -135,7 +284,7 @@ export interface LineTowerPlan {
   towerCount: number
   towers: PlannedTower[]
   voltageKv: number | null
-  voltageSource: 'kml' | 'tams' | 'osm' | 'default'
+  voltageSource: 'kml' | 'tams' | 'osm' | 'manual' | 'default' | 'substation'
 }
 
 function dropClosing(latlngs: KmlLatLng[]): KmlLatLng[] {
@@ -165,7 +314,8 @@ function polygonToCorridor(latlngs: KmlLatLng[]): KmlLatLng[] {
   const walk = (start: number, end: number, dir: 1 | -1): KmlLatLng[] => {
     const out: KmlLatLng[] = []
     let i = start
-    while (true) {
+    // Walk around the ring until we reach `end` (guaranteed for a closed ring)
+    for (let step = 0; step <= ring.length; step++) {
       out.push(ring[i])
       if (i === end) break
       i = (i + dir + ring.length) % ring.length
@@ -195,6 +345,7 @@ export function planTowersFromKml(
   features: KmlFeature[],
   options?: {
     spanM?: number
+    spanPolicy?: SpanPolicy
     voltageKv?: number | null
     voltageSource?: Exclude<LineTowerPlan['voltageSource'], 'kml' | 'default'>
     extraText?: string
@@ -235,10 +386,16 @@ export function planTowersFromKml(
     ...features.map((f) => f.description),
     ...features.map((f) => f.extendedText)
   )
-  const voltageKv = kmlVoltage ?? options?.voltageKv ?? null
-  const spanM = options?.spanM ?? spanForVoltageKv(voltageKv)
-  const voltageSource: LineTowerPlan['voltageSource'] =
-    kmlVoltage != null ? 'kml' : options?.voltageKv != null ? options.voltageSource ?? 'tams' : 'default'
+  const manual = options?.voltageSource === 'manual' && options.voltageKv != null
+  const voltageKv = manual ? options!.voltageKv! : kmlVoltage ?? options?.voltageKv ?? null
+  const spanM = options?.spanM ?? spanForVoltageKv(voltageKv, options?.spanPolicy ?? 'ruling')
+  const voltageSource: LineTowerPlan['voltageSource'] = manual
+    ? 'manual'
+    : kmlVoltage != null
+      ? 'kml'
+      : options?.voltageKv != null
+        ? options.voltageSource ?? 'tams'
+        : 'default'
 
   let lengthM = 0
   const towers: PlannedTower[] = []

@@ -22,7 +22,7 @@ export default function SidebarNav({ collapsed = false, onAssetTypeFilter }: Sid
   }
 
   const handleChildClick = (href: string, assetType?: 'tower' | 'line' | 'substation') => {
-    if (assetType && router.pathname === '/' && onAssetTypeFilter) {
+    if (assetType && router.pathname === '/analyzer' && onAssetTypeFilter) {
       onAssetTypeFilter(assetType)
       return
     }
@@ -109,7 +109,7 @@ export default function SidebarNav({ collapsed = false, onAssetTypeFilter }: Sid
                 <ul className="ml-4 mt-px mb-1 space-y-px border-l border-slate-800/80 pl-1.5">
                   {item.children!.map((child) => {
                     const childActive = router.pathname === child.href && !child.assetType
-                    if (child.assetType && router.pathname === '/') {
+                    if (child.assetType && router.pathname === '/analyzer') {
                       return (
                         <li key={child.label}>
                           <button

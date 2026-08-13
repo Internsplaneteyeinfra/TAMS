@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
 import { Bot, Send, X } from 'lucide-react'
 
+import { MAP_BOTTOM_INSET } from '@/components/map/mapLayout'
+
 const SUGGESTIONS = [
   'Show critical towers',
   'Show Maharashtra alerts',
@@ -25,7 +27,10 @@ export default function AIAssistantFab({ onPrompt, rightOffset = '1rem' }: AIAss
   }
 
   return (
-    <div className="absolute bottom-14 z-[2000] flex flex-col items-end gap-2" style={{ right: rightOffset }}>
+    <div
+      className="absolute z-[2000] flex flex-col items-end gap-2"
+      style={{ right: rightOffset, bottom: MAP_BOTTOM_INSET }}
+    >
       {open && (
         <div className="w-72 rounded-lg bg-[#0b1220] border border-slate-700 overflow-hidden">
           <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between bg-[#080d18]">

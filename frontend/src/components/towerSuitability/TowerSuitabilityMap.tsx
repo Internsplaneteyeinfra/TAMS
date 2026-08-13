@@ -3,11 +3,27 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
 import { GOOGLE_SATELLITE_URL, GOOGLE_SUBDOMAINS } from '@/lib/basemapTiles'
-import type { KmlFeature } from './fetchSiteSignals'
+import type { KmlFeature, KmlLatLng } from './fetchSiteSignals'
 import type { PlannedTower } from './lineTowers'
 import { voltageLabel } from './lineTowers'
+import type { NearbyPowerAsset } from './nearbyPowerSupply'
+import { powerKindLabel } from './nearbyPowerSupply'
+import type { PlannedTowerAdvice } from './corridorPlacementAdvice'
 import type { SuitabilityResult } from './scoring'
 import { verdictColor } from './scoring'
+
+export type DrawMode = 'pin' | 'line' | 'polygon' | 'point'
+
+function centroidOf(pts: KmlLatLng[]): { lat: number; lon: number } {
+  let lat = 0
+  let lon = 0
+  for (const [a, b] of pts) {
+    lat += a
+    lon += b
+  }
+  const n = Math.max(1, pts.length)
+  return { lat: lat / n, lon: lon / n }
+}
 
 export default function TowerSuitabilityMap({
   lat,
@@ -15,35 +31,147 @@ export default function TowerSuitabilityMap({
   result,
   kmlFeatures,
   plannedTowers = [],
+  nearbyAssets = [],
+  placementAdvice = [],
   voltageKv = null,
   spanM,
+  searchRadiusKm = 8,
+  drawMode,
+  onDrawModeChange,
   onPick,
+  onGeometryDrawn,
 }: {
   lat: number
   lon: number
   result: SuitabilityResult | null
   kmlFeatures: KmlFeature[]
   plannedTowers?: PlannedTower[]
+  nearbyAssets?: NearbyPowerAsset[]
+  placementAdvice?: PlannedTowerAdvice[]
   voltageKv?: number | null
   spanM?: number
+  searchRadiusKm?: number
+  drawMode: DrawMode
+  onDrawModeChange: (mode: DrawMode) => void
   onPick: (lat: number, lon: number) => void
+  onGeometryDrawn: (feature: KmlFeature, focus: { lat: number; lon: number }) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const markerRef = useRef<L.CircleMarker | null>(null)
   const ringRef = useRef<L.Circle | null>(null)
+  const searchRingRef = useRef<L.Circle | null>(null)
   const kmlLayerRef = useRef<L.LayerGroup | null>(null)
+  const nearbyLayerRef = useRef<L.LayerGroup | null>(null)
+  const draftLayerRef = useRef<L.LayerGroup | null>(null)
+  const draftPtsRef = useRef<KmlLatLng[]>([])
+  const drawModeRef = useRef(drawMode)
   const onPickRef = useRef(onPick)
+  const onDrawnRef = useRef(onGeometryDrawn)
   const [mapReady, setMapReady] = useState(0)
+  const [draftCount, setDraftCount] = useState(0)
+
+  drawModeRef.current = drawMode
   onPickRef.current = onPick
+  onDrawnRef.current = onGeometryDrawn
+
+  const clearDraft = () => {
+    draftPtsRef.current = []
+    setDraftCount(0)
+    draftLayerRef.current?.clearLayers()
+  }
+
+  const redrawDraft = () => {
+    const layer = draftLayerRef.current
+    if (!layer) return
+    layer.clearLayers()
+    const pts = draftPtsRef.current
+    pts.forEach(([la, lo], i) => {
+      L.circleMarker([la, lo], {
+        radius: 6,
+        color: '#fff',
+        weight: 2,
+        fillColor: drawModeRef.current === 'polygon' ? '#22d3ee' : '#fbbf24',
+        fillOpacity: 1,
+      })
+        .bindTooltip(`${i + 1}`, { permanent: true, direction: 'top', className: 'ts-tower-label', offset: [0, -6] })
+        .addTo(layer)
+    })
+    if (pts.length >= 2) {
+      if (drawModeRef.current === 'polygon' && pts.length >= 3) {
+        L.polygon(pts, {
+          color: '#22d3ee',
+          weight: 2.5,
+          fillColor: '#22d3ee',
+          fillOpacity: 0.15,
+          dashArray: '6 4',
+        }).addTo(layer)
+      } else {
+        L.polyline(pts, {
+          color: '#fbbf24',
+          weight: 4,
+          dashArray: '8 6',
+          opacity: 0.95,
+        }).addTo(layer)
+      }
+    }
+  }
+
+  const finishDraft = () => {
+    const pts = draftPtsRef.current
+    const mode = drawModeRef.current
+    if (mode === 'line' && pts.length >= 2) {
+      const feature: KmlFeature = { type: 'LineString', latlngs: [...pts], name: 'Drawn line' }
+      const mid = pts[Math.floor(pts.length / 2)]
+      draftPtsRef.current = []
+      setDraftCount(0)
+      draftLayerRef.current?.clearLayers()
+      onDrawnRef.current(feature, { lat: mid[0], lon: mid[1] })
+      return
+    }
+    if (mode === 'polygon' && pts.length >= 3) {
+      const closed = [...pts]
+      const a = closed[0]
+      const b = closed[closed.length - 1]
+      if (Math.abs(a[0] - b[0]) > 1e-9 || Math.abs(a[1] - b[1]) > 1e-9) closed.push([...a] as KmlLatLng)
+      const feature: KmlFeature = { type: 'Polygon', latlngs: closed, name: 'Drawn polygon' }
+      const focus = centroidOf(pts)
+      draftPtsRef.current = []
+      setDraftCount(0)
+      draftLayerRef.current?.clearLayers()
+      onDrawnRef.current(feature, focus)
+    }
+  }
+
+  const finishDraftRef = useRef(finishDraft)
+  const clearDraftRef = useRef(clearDraft)
+  const redrawDraftRef = useRef(redrawDraft)
+  finishDraftRef.current = finishDraft
+  clearDraftRef.current = clearDraft
+  redrawDraftRef.current = redrawDraft
+
+  const clearLeafletContainer = (el: HTMLDivElement | null) => {
+    if (!el) return
+    const node = el as HTMLDivElement & { _leaflet_id?: number }
+    delete node._leaflet_id
+    el.replaceChildren()
+  }
 
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return
-    const map = L.map(containerRef.current, {
+    const container = containerRef.current
+    if (!container || mapRef.current) return
+    if ((container as HTMLDivElement & { _leaflet_id?: number })._leaflet_id != null) {
+      clearLeafletContainer(container)
+    }
+
+    const map = L.map(container, {
       center: [lat, lon],
       zoom: 14,
       zoomControl: true,
+      preferCanvas: true,
     })
+    mapRef.current = map
+
     L.tileLayer(GOOGLE_SATELLITE_URL, {
       maxZoom: 20,
       subdomains: [...GOOGLE_SUBDOMAINS],
@@ -51,20 +179,67 @@ export default function TowerSuitabilityMap({
     }).addTo(map)
 
     map.on('click', (e: L.LeafletMouseEvent) => {
-      onPickRef.current(e.latlng.lat, e.latlng.lng)
+      const mode = drawModeRef.current
+      const { lat: la, lng: lo } = e.latlng
+      if (mode === 'pin' || mode === 'point') {
+        clearDraftRef.current()
+        onPickRef.current(la, lo)
+        return
+      }
+      draftPtsRef.current = [...draftPtsRef.current, [la, lo]]
+      setDraftCount(draftPtsRef.current.length)
+      redrawDraftRef.current()
     })
 
-    kmlLayerRef.current = L.layerGroup().addTo(map)
-    mapRef.current = map
-    setMapReady((n) => n + 1)
-    requestAnimationFrame(() => map.invalidateSize())
+    map.on('dblclick', (e: L.LeafletMouseEvent) => {
+      if (drawModeRef.current === 'pin' || drawModeRef.current === 'point') return
+      L.DomEvent.stopPropagation(e as unknown as Event)
+      L.DomEvent.preventDefault(e as unknown as Event)
+      const pts = draftPtsRef.current
+      if (pts.length >= 2) {
+        const last = pts[pts.length - 1]
+        const prev = pts[pts.length - 2]
+        if (Math.abs(last[0] - prev[0]) < 1e-7 && Math.abs(last[1] - prev[1]) < 1e-7) {
+          draftPtsRef.current = pts.slice(0, -1)
+          setDraftCount(draftPtsRef.current.length)
+        }
+      }
+      finishDraftRef.current()
+    })
+
+    const attachLayers = () => {
+      if (!mapRef.current) return
+      kmlLayerRef.current = L.layerGroup().addTo(map)
+      draftLayerRef.current = L.layerGroup().addTo(map)
+      setMapReady((n) => n + 1)
+      map.invalidateSize()
+    }
+
+    map.whenReady(() => {
+      requestAnimationFrame(attachLayers)
+    })
+
     return () => {
+      map.off()
       map.remove()
       mapRef.current = null
       kmlLayerRef.current = null
+      nearbyLayerRef.current = null
+      draftLayerRef.current = null
+      markerRef.current = null
+      ringRef.current = null
+      clearLeafletContainer(containerRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    clearDraftRef.current()
+    const map = mapRef.current
+    if (!map) return
+    if (drawMode === 'pin' || drawMode === 'point') map.doubleClickZoom.enable()
+    else map.doubleClickZoom.disable()
+  }, [drawMode])
 
   useEffect(() => {
     const map = mapRef.current
@@ -144,14 +319,23 @@ export default function TowerSuitabilityMap({
     })
 
     const dense = plannedTowers.length > 60
+    const adviceByIndex = new Map(placementAdvice.map((a) => [a.index, a]))
     plannedTowers.forEach((tower) => {
+      const advice = adviceByIndex.get(tower.index)
+      const fill =
+        advice?.verdict === 'skip_existing'
+          ? '#f87171'
+          : advice?.verdict === 'too_close'
+            ? '#fbbf24'
+            : advice?.verdict === 'review'
+              ? '#38bdf8'
+              : '#f59e0b'
       L.circleMarker([tower.lat, tower.lon], {
         radius: dense ? 7 : 11,
         color: '#ffffff',
         weight: 3,
-        fillColor: '#f59e0b',
+        fillColor: fill,
         fillOpacity: 1,
-        pane: 'markerPane',
       })
         .bindTooltip(`T${tower.index}`, {
           permanent: !dense || tower.index === 1 || tower.index === plannedTowers.length || tower.index % 5 === 0,
@@ -162,7 +346,19 @@ export default function TowerSuitabilityMap({
         .bindPopup(
           `<strong>Tower T${tower.index}</strong><br/>${voltageLabel(voltageKv)}<br/>${
             spanM ? `${spanM} m span` : ''
-          }<br/>${tower.lat.toFixed(5)}, ${tower.lon.toFixed(5)}`
+          }<br/>${
+            advice
+              ? `<b>${
+                  advice.verdict === 'place'
+                    ? 'Can place'
+                    : advice.verdict === 'skip_existing'
+                      ? 'Cannot place — tower already here'
+                      : advice.verdict === 'too_close'
+                        ? 'Cannot place — under min span'
+                        : 'Review first'
+                }</b><br/>${advice.reason}<br/>`
+              : ''
+          }${tower.lat.toFixed(5)}, ${tower.lon.toFixed(5)}`
         )
         .addTo(layer)
       bounds.extend([tower.lat, tower.lon])
@@ -171,13 +367,115 @@ export default function TowerSuitabilityMap({
     if (bounds.isValid()) {
       map.fitBounds(bounds.pad(0.2), { animate: true, maxZoom: 16 })
     }
-  }, [kmlFeatures, plannedTowers, voltageKv, spanM, mapReady])
+  }, [kmlFeatures, plannedTowers, voltageKv, spanM, placementAdvice, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
-    if (!map) return
+    if (!map || !mapReady) return
+
+    if (!nearbyLayerRef.current) {
+      nearbyLayerRef.current = L.layerGroup().addTo(map)
+    }
+    const layer = nearbyLayerRef.current
+    layer.clearLayers()
+
+    // Existing infrastructure only — never mix with planned T1…Tn (those are on kml layer)
+    nearbyAssets.forEach((asset) => {
+      // Spec styles: tower=blue, substation=purple, line=green, pole=teal
+      const fill =
+        asset.kind === 'substation'
+          ? '#a855f7' // purple
+          : asset.kind === 'line'
+            ? '#22c55e' // green
+            : asset.kind === 'tower'
+              ? '#3b82f6' // blue
+              : asset.kind === 'plant'
+                ? '#ec4899'
+                : '#2dd4bf' // pole
+
+      const marker = L.circleMarker([asset.lat, asset.lon], {
+        radius: asset.kind === 'pole' ? 6 : asset.kind === 'tower' ? 9 : 8,
+        color: '#ffffff',
+        weight: 2,
+        fillColor: fill,
+        fillOpacity: 0.95,
+      })
+
+      const voltageText =
+        asset.voltageKv != null ? `${asset.voltageKv} kV` : 'Unknown'
+      const conf =
+        asset.voltageKv != null
+          ? asset.voltageInferred
+            ? 'medium (inferred)'
+            : 'high (tagged)'
+          : 'low'
+      const distText =
+        asset.distanceKm < 1
+          ? `${Math.round(asset.distanceKm * 1000)} m`
+          : `${asset.distanceKm.toFixed(2)} km`
+
+      marker
+        .bindTooltip(
+          `${powerKindLabel(asset.kind)}${
+            asset.voltageKv != null ? ` · ${asset.voltageKv} kV` : ' · Unknown V'
+          }`,
+          { direction: 'top', offset: [0, -6] }
+        )
+        .bindPopup(
+          `<strong>${asset.name}</strong><br/>` +
+            `ID: ${asset.id}<br/>` +
+            `${powerKindLabel(asset.kind)} · ${distText} (Haversine)<br/>` +
+            `Voltage: ${voltageText}<br/>` +
+            `Source: ${asset.source === 'tams' ? 'TAMS GIS' : 'OSM'} · Confidence: ${conf}<br/>` +
+            `<span style="opacity:.7">Existing infrastructure — not a planned corridor tower</span>`
+        )
+        .addTo(layer)
+
+      // Green line stub for line assets (point representation of nearest vertex)
+      if (asset.kind === 'line') {
+        L.circleMarker([asset.lat, asset.lon], {
+          radius: 4,
+          color: '#22c55e',
+          weight: 2,
+          fillColor: '#22c55e',
+          fillOpacity: 0.5,
+        }).addTo(layer)
+      }
+    })
+
+    // Cyan dashed proposed connection from site to nearest existing asset
+    const nearest =
+      [...nearbyAssets].sort((a, b) => a.distanceKm - b.distanceKm)[0] ?? null
+    if (nearest && Number.isFinite(nearest.lat) && Number.isFinite(nearest.lon)) {
+      L.polyline(
+        [
+          [lat, lon],
+          [nearest.lat, nearest.lon],
+        ],
+        {
+          color: '#22d3ee',
+          weight: 3,
+          opacity: 0.85,
+          dashArray: '8 6',
+        }
+      )
+        .bindTooltip(
+          `Proposed connection · ${
+            nearest.distanceKm < 1
+              ? `${Math.round(nearest.distanceKm * 1000)} m`
+              : `${nearest.distanceKm.toFixed(2)} km`
+          } direct (Haversine)`,
+          { sticky: true }
+        )
+        .addTo(layer)
+    }
+  }, [nearbyAssets, lat, lon, mapReady])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
     const color = result ? verdictColor(result.verdict) : '#22d3ee'
-    const hidePad = plannedTowers.length > 0
+    const hidePad = plannedTowers.length > 0 || kmlFeatures.some((f) => f.type !== 'Point')
 
     if (!markerRef.current) {
       markerRef.current = L.circleMarker([lat, lon], {
@@ -205,6 +503,21 @@ export default function TowerSuitabilityMap({
       ringRef.current.setStyle({ color, fillColor: color })
     }
 
+    const searchMeters = Math.max(searchRadiusKm, 8) * 1000
+    if (!searchRingRef.current) {
+      searchRingRef.current = L.circle([lat, lon], {
+        radius: searchMeters,
+        color: '#22d3ee',
+        weight: 2,
+        dashArray: '8 6',
+        fillColor: '#22d3ee',
+        fillOpacity: 0.04,
+      }).addTo(map)
+    } else {
+      searchRingRef.current.setLatLng([lat, lon])
+      searchRingRef.current.setRadius(searchMeters)
+    }
+
     if (hidePad) {
       markerRef.current.setStyle({ opacity: 0, fillOpacity: 0 })
       ringRef.current.setStyle({ opacity: 0, fillOpacity: 0 })
@@ -214,39 +527,87 @@ export default function TowerSuitabilityMap({
     }
 
     if (!kmlFeatures.length) {
-      map.panTo([lat, lon], { animate: true })
+      if (searchRadiusKm >= 15 && searchRingRef.current) {
+        map.fitBounds(searchRingRef.current.getBounds(), { padding: [28, 28], maxZoom: 11, animate: true })
+      } else {
+        map.panTo([lat, lon], { animate: true })
+      }
     }
-  }, [lat, lon, result, kmlFeatures.length, plannedTowers.length, mapReady])
+  }, [lat, lon, result, kmlFeatures, plannedTowers.length, mapReady, searchRadiusKm])
+
+  const canFinish =
+    (drawMode === 'line' && draftCount >= 2) || (drawMode === 'polygon' && draftCount >= 3)
+
+  const hint =
+    drawMode === 'pin'
+      ? 'Set start · click map (or use lat/lon) to fix projection — clear & click again to move'
+      : drawMode === 'point'
+        ? 'Point pad · click map to analyze that pad now'
+        : drawMode === 'line'
+          ? `Line mode · click vertices (${draftCount}) · Finish when done`
+          : `Polygon mode · click corners (${draftCount}) · Finish when done`
 
   return (
     <div className="absolute inset-0">
       <div ref={containerRef} className="absolute inset-0 w-full h-full ts-suitability-map" />
-      {(plannedTowers.length > 0 || kmlFeatures.length > 0) && (
-        <div className="absolute top-3 left-1/2 z-[1200] -translate-x-1/2 pointer-events-none max-w-[min(520px,calc(100%-7rem))]">
-          <div className="rounded-2xl border-2 border-amber-300 bg-slate-950/92 px-4 py-2.5 shadow-2xl backdrop-blur-md text-center">
-            {plannedTowers.length > 0 ? (
+
+      <div className="absolute top-3 left-1/2 z-[1200] -translate-x-1/2 w-[min(640px,calc(100%-1.5rem))] pointer-events-auto">
+        <div className="rounded-2xl border border-slate-600/80 bg-slate-950/92 px-3 py-2.5 shadow-2xl backdrop-blur-md">
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
+            {(
+              [
+                { id: 'pin' as const, label: 'Set start' },
+                { id: 'line' as const, label: 'Draw line' },
+                { id: 'polygon' as const, label: 'Draw polygon' },
+                { id: 'point' as const, label: 'Pad point' },
+              ] as const
+            ).map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => onDrawModeChange(m.id)}
+                className={`h-9 px-3 rounded-xl text-xs font-black border transition-colors ${
+                  drawMode === m.id
+                    ? 'bg-cyan-500 text-slate-950 border-cyan-300'
+                    : 'bg-slate-900/80 text-slate-300 border-slate-700 hover:border-cyan-500/40'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+            {(drawMode === 'line' || drawMode === 'polygon') && (
               <>
-                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-200">
-                  Planned towers on this site
-                </p>
-                <p className="mt-1 text-2xl font-black text-white tabular-nums leading-none">
-                  {plannedTowers.length}
-                  <span className="ml-2 text-sm font-bold text-slate-300">towers</span>
-                  <span className="mx-2 text-slate-600">·</span>
-                  <span className="text-lg text-amber-200">{voltageLabel(voltageKv)}</span>
-                </p>
-                {spanM != null && (
-                  <p className="mt-1 text-xs font-semibold text-slate-300">
-                    {spanM} m span · orange dots T1…T{plannedTowers.length} · click a dot for details
-                  </p>
-                )}
+                <button
+                  type="button"
+                  disabled={!canFinish}
+                  onClick={() => finishDraftRef.current()}
+                  className="h-9 px-3 rounded-xl text-xs font-black border border-emerald-400/50 bg-emerald-500/20 text-emerald-100 disabled:opacity-40 hover:bg-emerald-500/30"
+                >
+                  Finish drawing
+                </button>
+                <button
+                  type="button"
+                  disabled={draftCount === 0}
+                  onClick={() => clearDraftRef.current()}
+                  className="h-9 px-3 rounded-xl text-xs font-bold border border-slate-600 text-slate-300 disabled:opacity-40 hover:bg-slate-800"
+                >
+                  Clear draft
+                </button>
               </>
-            ) : (
-              <p className="text-sm font-bold text-slate-200">KML outline loaded — no tower path yet</p>
             )}
           </div>
+          <p className="mt-1.5 text-center text-[11px] font-semibold text-slate-400">{hint}</p>
+          {plannedTowers.length > 0 && (
+            <p className="mt-1 text-center text-sm font-black text-amber-200 tabular-nums">
+              {plannedTowers.length} towers · {voltageLabel(voltageKv)}
+              {spanM != null ? ` · ${spanM} m` : ''}
+            </p>
+          )}
+          <p className="mt-0.5 text-center text-[10px] font-bold text-cyan-300/80 tabular-nums">
+            Live search {searchRadiusKm} km (cyan ring)
+          </p>
         </div>
-      )}
+      </div>
     </div>
   )
 }

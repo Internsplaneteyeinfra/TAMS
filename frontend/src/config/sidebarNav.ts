@@ -5,7 +5,6 @@ import {
   FileText,
   LayoutDashboard,
   Layers,
-  MapPinned,
   RadioTower,
   Satellite,
   Settings,
@@ -27,13 +26,13 @@ export interface SidebarNavItem {
 
 /** Nested sidebar navigation — additive menu structure for GIS Command Center. */
 export const SIDEBAR_NAV_ITEMS: SidebarNavItem[] = [
-  { id: 'dashboard', label: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { id: 'dashboard', label: 'Dashboard', href: '/analyzer', icon: LayoutDashboard },
   {
     id: 'operations',
     label: 'Operations',
     icon: Activity,
     children: [
-      { label: 'Live Grid', href: '/' },
+      { label: 'Live Grid', href: '/analyzer' },
       { label: 'AI Monitoring', href: '/monitoring' },
       { label: 'Alerts', href: '/alarms' },
       { label: 'Maintenance', href: '/maintenance' },
@@ -45,15 +44,13 @@ export const SIDEBAR_NAV_ITEMS: SidebarNavItem[] = [
     label: 'Assets',
     icon: Layers,
     children: [
-      { label: 'Substations', href: '/', assetType: 'substation' },
-      { label: 'Towers', href: '/', assetType: 'tower' },
-      { label: 'Lines', href: '/', assetType: 'line' },
+      { label: 'Substations', href: '/analyzer', assetType: 'substation' },
+      { label: 'Towers', href: '/analyzer', assetType: 'tower' },
+      { label: 'Lines', href: '/analyzer', assetType: 'line' },
       { label: 'Tower Types 3D', href: '/tower-types' },
-      { label: 'Site Suitability', href: '/tower-suitability' },
     ],
   },
   { id: 'tower-types', label: 'Tower Types 3D', href: '/tower-types', icon: RadioTower },
-  { id: 'site-suitability', label: 'Site Suitability', href: '/tower-suitability', icon: MapPinned },
   { id: 'satellite', label: 'Satellite', href: '/monitoring', icon: Satellite },
   { id: 'analytics', label: 'Analytics', href: '/analytics', icon: BarChart3 },
   { id: 'reports', label: 'Reports', href: '/analytics', icon: FileText },

@@ -4,6 +4,8 @@
  * Claimed accuracy band: ~65–80% for site ranking, not foundation design.
  */
 
+import type { NearbyPowerSupply } from './nearbyPowerSupply'
+
 export type SuitabilityVerdict = 'preferred' | 'conditional' | 'unsuitable'
 
 export interface FactorResult {
@@ -39,6 +41,14 @@ export interface SiteSignals {
     wind: boolean
     landcover: boolean
   }
+  /** True when Overpass failed and Photon geocode fallback was used. */
+  usedFallback?: {
+    water?: boolean
+    settlement?: boolean
+    grid?: boolean
+  }
+  /** Nearest substations/plants and voltage classes from live TAMS + OSM. */
+  nearbyPower?: NearbyPowerSupply
 }
 
 export interface SuitabilityResult {
@@ -126,64 +136,203 @@ export function scoreSiteSignals(signals: SiteSignals): SuitabilityResult {
   })
 
   const water = signals.waterKm
+  const waterFallback = signals.usedFallback?.water
   factors.push({
     id: 'water',
     label: 'Water / flood buffer',
-    weight: 0.16,
+    weight: 0.14,
     rawLabel: water == null ? 'live lookup failed' : water >= 7.9 ? '> 8 km' : `${water.toFixed(2)} km`,
     score: water == null ? 5 : thresholdScore(Math.min(water, 8), 0.8, 0.05, true),
     note:
       water == null
         ? 'Live OSM water query failed — flood proxy incomplete.'
-        : water < 0.15
-          ? 'Very close to mapped water — flood / scour risk.'
-          : water >= 7.9
-            ? 'No mapped water within 8 km (live OSM).'
-            : 'Acceptable distance from mapped surface water.',
-    source: 'Live · OSM Overpass water',
-    live: signals.liveOk?.water ?? water != null,
+        : waterFallback
+          ? 'Overpass failed — weaker Photon fallback; verify on imagery.'
+          : water < 0.15
+            ? 'Very close to mapped water — flood / scour risk.'
+            : water >= 7.9
+              ? 'No mapped water within 8 km (live OSM).'
+              : 'Acceptable distance from mapped surface water.',
+    source: waterFallback ? 'Fallback · Photon geocode' : 'Live · OSM Overpass water',
+    live: (signals.liveOk?.water ?? water != null) && !waterFallback,
   })
 
   const building = signals.buildingKm
+  const settleFallback = signals.usedFallback?.settlement
   factors.push({
     id: 'clearance',
     label: 'Settlement clearance',
-    weight: 0.12,
+    weight: 0.1,
     rawLabel:
       building == null ? 'live lookup failed' : building >= 3.9 ? '> 4 km' : `${building.toFixed(2)} km`,
     score: building == null ? 6 : thresholdScore(Math.min(building, 4), 0.25, 0.02, true),
     note:
       building == null
         ? 'Live OSM settlement query failed — verify on imagery.'
-        : building < 0.08
-          ? 'Close to mapped buildings — ROW / social risk.'
-          : building >= 3.9
-            ? 'No mapped settlement within 4 km (live OSM).'
-            : 'Clearance from mapped settlements looks workable.',
-    source: 'Live · OSM Overpass places',
-    live: signals.liveOk?.settlement ?? building != null,
+        : settleFallback
+          ? 'Overpass failed — weaker Photon fallback; verify on imagery.'
+          : building < 0.08
+            ? 'Close to mapped buildings — ROW / social risk.'
+            : building >= 3.9
+              ? 'No mapped settlement within 4 km (live OSM).'
+              : 'Clearance from mapped settlements looks workable.',
+    source: settleFallback ? 'Fallback · Photon geocode' : 'Live · OSM Overpass places',
+    live: (signals.liveOk?.settlement ?? building != null) && !settleFallback,
   })
 
-  const tower = signals.towerKm
-  const sub = signals.substationKm
-  const corridorDist =
-    tower != null && sub != null ? Math.min(tower, sub) : tower ?? sub
-  factors.push({
-    id: 'corridor',
-    label: 'Grid corridor proximity',
-    weight: 0.14,
-    rawLabel:
-      corridorDist == null ? 'no grid asset found nearby' : `${corridorDist.toFixed(2)} km`,
-    score: corridorDist == null ? 4 : thresholdScore(corridorDist, 2, 35, false),
-    note:
-      corridorDist == null
-        ? 'No live TAMS/OSM power asset nearby — greenfield assumption.'
-        : corridorDist < 1
-          ? 'Near existing towers/lines — good for extension / tap.'
-          : 'Far from mapped grid assets — greenfield corridor cost.',
-    source: 'Live · TAMS + OSM power',
-    live: signals.liveOk?.grid ?? corridorDist != null,
-  })
+  const power = signals.nearbyPower
+  const nearestPower = power?.nearest
+  const suggestedKv = power?.suggestedVoltageKv
+  const powerUnavailable = power != null && !power.dataAvailable
+
+  // Factor: Power connectivity — how close the nearest suitable tower/line/SS is
+  {
+    const connectDist = nearestPower?.distanceKm ?? null
+    let pcs: number
+    let note: string
+    if (powerUnavailable) {
+      pcs = 5 // neutral — missing data is not unsuitability
+      note =
+        'Power data unavailable (TAMS/OSM). This factor is held neutral — not an engineering rejection.'
+    } else if (!nearestPower) {
+      pcs = 5
+      note = power?.note ?? 'No existing power assets found in search radius.'
+    } else {
+      pcs = thresholdScore(connectDist!, 0.2, 20, false)
+      if (power?.nearestPole && power.nearestPole.distanceKm <= 0.35) pcs = Math.min(10, pcs + 2)
+      if (nearestPower.kind === 'tower' && (connectDist ?? 99) <= 2) pcs = Math.min(10, pcs + 1.2)
+      if (nearestPower.kind === 'substation') pcs = Math.min(10, pcs + 0.8)
+      if (power?.interconnectEase === 'easy') pcs = Math.min(10, pcs + 0.5)
+      note = power?.note ?? 'Existing grid asset found nearby.'
+    }
+    factors.push({
+      id: 'power_connectivity',
+      label: 'Power connectivity',
+      weight: 0.10,
+      rawLabel: powerUnavailable
+        ? 'data unavailable'
+        : nearestPower
+          ? `${nearestPower.name} · ${nearestPower.distanceKm.toFixed(1)} km`
+          : `none within ${power?.searchRadiusKm ?? 8} km`,
+      score: pcs,
+      note,
+      source: nearestPower
+        ? `Live · ${nearestPower.source === 'tams' ? 'TAMS GIS' : 'OSM Overpass'}`
+        : 'Live · TAMS + OSM power assets',
+      live: power != null && !powerUnavailable,
+    })
+  }
+
+  // Factor: Voltage suitability — does the available voltage match a useful planning tier?
+  {
+    const USEFUL_KV = [11, 33, 66, 110, 132, 220, 400, 765]
+    const available = power?.availableVoltageKv ?? []
+    const matched = available.some((kv) => USEFUL_KV.includes(kv))
+    const hasHighVoltage = available.some((kv) => kv >= 33)
+    const tag = suggestedKv != null && !nearestPower?.voltageInferred
+    let vs: number
+    let note: string
+    if (powerUnavailable) {
+      vs = 5
+      note = 'Voltage unknown — power data unavailable. Utility nameplate verification required.'
+    } else if (!available.length) {
+      vs = 5
+      note = 'No voltage tags on nearby assets — do not invent; verify with utility drawings.'
+    } else if (tag && hasHighVoltage) {
+      vs = 9
+      note = `Voltages mapped nearby: ${available.slice(0, 5).join(', ')} kV.`
+    } else if (tag) {
+      vs = 7
+      note = `Voltages mapped nearby: ${available.slice(0, 5).join(', ')} kV.`
+    } else if (matched && hasHighVoltage) {
+      vs = 7
+      note = `Voltages mapped nearby: ${available.slice(0, 5).join(', ')} kV.`
+    } else if (matched) {
+      vs = 6
+      note = `Voltages mapped nearby: ${available.slice(0, 5).join(', ')} kV.`
+    } else {
+      vs = 5
+      note = 'Voltage tags present but outside common planning tiers.'
+    }
+    const kVLabel = powerUnavailable
+      ? 'unavailable'
+      : suggestedKv != null
+        ? `${suggestedKv} kV`
+        : available.length
+          ? available.slice(0, 3).join('/') + ' kV'
+          : 'unknown'
+    factors.push({
+      id: 'voltage_suitability',
+      label: 'Voltage suitability',
+      weight: 0.08,
+      rawLabel: kVLabel,
+      score: vs,
+      note,
+      source: nearestPower?.source === 'tams' ? 'Live · TAMS GIS' : 'Live · OSM Overpass power tags',
+      live: power != null && !powerUnavailable,
+    })
+  }
+
+  // Factor: Connection distance — is the estimated corridor run short enough?
+  {
+    const connKmEst = powerUnavailable
+      ? null
+      : power?.estimatedPracticalConnectionDistanceKm ??
+        power?.connectionDistanceKm ??
+        (nearestPower?.distanceKm != null ? nearestPower.distanceKm * 1.2 : null)
+    const cds = powerUnavailable || connKmEst == null ? 5 : thresholdScore(connKmEst, 0.3, 15, false)
+    factors.push({
+      id: 'connection_distance',
+      label: 'Connection distance',
+      weight: 0.08,
+      rawLabel:
+        powerUnavailable || connKmEst == null
+          ? 'unavailable'
+          : connKmEst < 1
+            ? `~${(connKmEst * 1000).toFixed(0)} m`
+            : `~${connKmEst.toFixed(1)} km`,
+      score: cds,
+      note: powerUnavailable
+        ? 'Connection distance unknown — power data unavailable (neutral score).'
+        : connKmEst == null
+          ? 'No nearby existing asset — connection distance unknown.'
+          : connKmEst <= 0.5
+            ? 'Very short connection run — low corridor cost (screening estimate = direct × 1.2).'
+            : connKmEst <= 2
+              ? 'Short spur to existing grid — manageable connection (screening estimate).'
+              : connKmEst <= 8
+                ? 'Moderate connection run — multi-tower spur needed (screening estimate).'
+                : 'Long connection — significant corridor construction cost (screening estimate).',
+      source: 'Live · TAMS + OSM (Haversine × 1.2 practical factor)',
+      live: power != null && !powerUnavailable,
+    })
+  }
+
+  // Factor: Corridor feasibility — route obstacles (water, buildings, terrain)
+  {
+    const water = signals.waterKm
+    const building = signals.buildingKm
+    const slope = signals.slopeDeg
+    let cf = 8 // start optimistic
+    const issues: string[] = []
+    if (water != null && water < 0.15) { cf -= 2; issues.push('close water crossing') }
+    if (building != null && building < 0.1) { cf -= 2; issues.push('settlement obstruction') }
+    if (slope != null && slope > 12) { cf -= 1.5; issues.push('steep terrain') }
+    if (slope != null && slope > 18) { cf -= 1; issues.push('very steep grade') }
+    cf = clamp(cf, 0, 10)
+    factors.push({
+      id: 'corridor_feasibility',
+      label: 'Corridor feasibility',
+      weight: 0.06,
+      rawLabel: issues.length ? issues.join(', ') : 'No major obstruction',
+      score: cf,
+      note: issues.length
+        ? `Route may cross: ${issues.join(', ')}. Verify on imagery before corridor design.`
+        : 'No major water/settlement/slope obstruction detected on open data for the connection route.',
+      source: 'Live · OSM Overpass + Open-Meteo DEM heuristic',
+      live: water != null || building != null || slope != null,
+    })
+  }
 
   const wind = signals.windMs
   factors.push({
@@ -241,7 +390,7 @@ export function scoreSiteSignals(signals: SiteSignals): SuitabilityResult {
   if (finalScore >= 7) verdict = 'preferred'
   else if (finalScore < 4.5) verdict = 'unsuitable'
 
-  // Confidence rises when more open signals resolved
+  // Confidence rises when more open signals resolved; penalize Photon fallbacks
   const resolved = [
     signals.elevationM,
     signals.slopeDeg,
@@ -251,7 +400,13 @@ export function scoreSiteSignals(signals: SiteSignals): SuitabilityResult {
     signals.towerKm ?? signals.substationKm,
     signals.windMs,
   ].filter((v) => v != null).length
-  const confidencePct = Math.round(55 + (resolved / 7) * 25) // ~55–80
+  const fallbackCount = [
+    signals.usedFallback?.water,
+    signals.usedFallback?.settlement,
+    signals.usedFallback?.grid,
+  ].filter(Boolean).length
+  let confidencePct = Math.round(55 + (resolved / 7) * 25) // ~55–80
+  confidencePct = Math.max(45, confidencePct - fallbackCount * 5)
 
   return {
     finalScore: Number(finalScore.toFixed(2)),
@@ -296,6 +451,9 @@ export interface SuitabilitySuggestions {
   pointsToAccepted: number
   items: ImprovementSuggestion[]
   summary: string
+  /** Where to place / how to tap existing towers — with accuracy notes */
+  placementTips?: Array<{ title: string; detail: string; accuracy: string }>
+  interconnectEase?: 'easy' | 'moderate' | 'hard'
 }
 
 const IMPROVE_COPY: Record<
@@ -342,13 +500,58 @@ const IMPROVE_COPY: Record<
     how: () =>
       'Increase setback from settlements, negotiate ROW, or pick an alternate angle tower location with more open buffer.',
   },
-  corridor: {
+  power_connectivity: {
+    why: (f, s) => {
+      if (!s.nearbyPower?.dataAvailable) {
+        return 'Power data unavailable — connectivity cannot be scored from open APIs yet.'
+      }
+      const pole = s.nearbyPower?.nearestPole
+      const p = s.nearbyPower?.nearest
+      const tw = s.nearbyPower?.nearestTower
+      if (pole && pole.distanceKm <= 0.35)
+        return `Existing distribution poles along your corridor (~${Math.round(pole.distanceKm * 1000)} m).`
+      if (tw && tw.distanceKm <= 2)
+        return `Existing tower only ${tw.distanceKm.toFixed(2)} km away — power take-off is comparatively simple.`
+      if (f.score >= 8 && p)
+        return `Strong tie-in option: ${p.name} (${p.distanceKm.toFixed(1)} km) on live maps.`
+      if (!p) return 'No mapped tower/pole/line/SS nearby — long greenfield extension to grid.'
+      return `Nearest "${p.name}" is ${p.distanceKm.toFixed(1)} km — ${s.nearbyPower?.suggestedVoltageKv ?? 'unknown'} kV on map.`
+    },
+    how: (_f, s) => {
+      const tip = s.nearbyPower?.placementTips?.[0]
+      if (tip) return tip.detail
+      return 'Route corridor toward the nearest tower/pole/substation, match voltage class, confirm bay with STU/DISCOM.'
+    },
+  },
+  voltage_suitability: {
+    why: (f, s) =>
+      !s.nearbyPower?.dataAvailable
+        ? 'Voltage unknown — power data unavailable.'
+        : f.score >= 8
+          ? `Voltage on nearby assets (${s.nearbyPower?.suggestedVoltageKv ?? '?'} kV) is a suitable planning tier.`
+          : s.nearbyPower?.availableVoltageKv?.length
+            ? `Available voltages: ${s.nearbyPower.availableVoltageKv.slice(0, 3).join('/')} kV.`
+            : 'No voltage tags found nearby — utility nameplate verification required.',
+    how: () =>
+      'Check OSM/TAMS voltage tags on nearby lines; verify with utility drawing or nameplate. Never invent kV.',
+  },
+  connection_distance: {
+    why: (f, s) =>
+      !s.nearbyPower?.dataAvailable
+        ? 'Connection distance unknown — power data unavailable.'
+        : f.score >= 8
+          ? 'Estimated connection run is short — low corridor cost.'
+          : `Connection distance score ${f.score.toFixed(1)}/10 (${f.rawLabel}) — longer routes increase ROW cost.`,
+    how: () =>
+      'Move the proposed tower closer to the existing grid corridor, or route toward a nearer tap point / angle tower.',
+  },
+  corridor_feasibility: {
     why: (f) =>
       f.score >= 8
-        ? 'Grid proximity supports corridor connection.'
-        : `Corridor score ${f.score.toFixed(1)}/10 (${f.rawLabel}) — far from lines/substations raises greenfield cost.`,
+        ? 'No major route obstruction detected on open data.'
+        : `Route feasibility score ${f.score.toFixed(1)}/10 (${f.rawLabel}) — detected obstacles may increase cost or risk.`,
     how: () =>
-      'Align toward existing transmission corridors or substations, or plan a shorter spur/tap instead of a long isolated spur.',
+      'Avoid crossing water bodies and settlements; prefer open barren land. Survey imagery to verify gaps in OSM data.',
   },
   wind: {
     why: (f) =>
@@ -362,7 +565,7 @@ const IMPROVE_COPY: Record<
     why: (f) =>
       f.score >= 8
         ? 'Land cover hint favours open / buildable ground.'
-        : `Land cover is “${f.rawLabel}” (score ${f.score.toFixed(1)}) — vegetation/built/water reduces pad readiness.`,
+        : `Land cover is "${f.rawLabel}" (score ${f.score.toFixed(1)}) — vegetation/built/water reduces pad readiness.`,
     how: () =>
       'Clear/permit vegetation legally, avoid built-up parcels, or relocate to barren/open land with clear ownership.',
   },
@@ -395,7 +598,13 @@ export function buildSuitabilitySuggestions(result: SuitabilityResult): Suitabil
     .sort((a, b) => b.gapPoints - a.gapPoints)
 
   let summary: string
-  if (remainingToPerfect < 0.15) {
+  const ease = result.signals.nearbyPower?.interconnectEase
+  const nearTw = result.signals.nearbyPower?.nearestTower
+  if (nearTw && nearTw.distanceKm <= 2) {
+    summary = `Existing tower ~${nearTw.distanceKm.toFixed(2)} km away — power take-off is simpler. Use placement tips below to align new towers along that corridor${
+      remainingToPerfect >= 0.15 ? `; score still ${remainingToPerfect.toFixed(1)} pts below 10` : ''
+    }.`
+  } else if (remainingToPerfect < 0.15) {
     summary = 'Score is essentially at the screening ceiling (10/10). Focus next on field geotech (BH, SBC, resistivity).'
   } else if (currentScore >= targetAccepted) {
     summary = `Accepted on screening, but ${remainingToPerfect.toFixed(1)} points short of a perfect 10. Closing the gaps below improves robustness.`
@@ -411,6 +620,8 @@ export function buildSuitabilitySuggestions(result: SuitabilityResult): Suitabil
     pointsToAccepted,
     items,
     summary,
+    placementTips: result.signals.nearbyPower?.placementTips,
+    interconnectEase: ease,
   }
 }
 

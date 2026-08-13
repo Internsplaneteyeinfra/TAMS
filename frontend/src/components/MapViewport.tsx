@@ -4,11 +4,12 @@ import dynamic from 'next/dynamic'
 import AIAssistantFab from '@/components/map/AIAssistantFab'
 import CorridorFocusOverlay from '@/components/map/CorridorFocusOverlay'
 import MapIntelPanel from '@/components/map/MapIntelPanel'
+import MapRegionLoader from '@/components/map/MapRegionLoader'
 import MapTopChrome from '@/components/map/MapTopChrome'
 import { type HeatMapMode } from '@/components/map/HeatMapModeToggle'
 import MapOverlaysPanel from '@/components/map/MapOverlaysPanel'
 import MapControlRail, { type MapZoomHandlers } from '@/components/map/MapControlRail'
-import { mapRightInset } from '@/components/map/mapLayout'
+import { mapOverlayRight } from '@/components/map/mapLayout'
 import { type MapBasemap } from '@/components/map/MapViewModeBar'
 import TimeRangeSlider, { type TimeRange } from '@/components/map/TimeRangeSlider'
 import WeatherLayerBar, { type WeatherOverlay } from '@/components/map/WeatherLayerBar'
@@ -19,8 +20,22 @@ import type { Alert, Asset, RegionAssetStats } from '@/lib/api'
 import { computeRegionStats, filterAssetsByPlace } from '@/lib/placeFilter'
 import type { MapStatusSnapshot } from '@/types/mapStatus'
 
-const GISMap = dynamic(() => import('@/components/GISMap'), { ssr: false })
-const GISMap3D = dynamic(() => import('@/components/GISMap3D'), { ssr: false })
+const GISMap = dynamic(() => import('@/components/GISMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="absolute inset-0 flex items-center justify-center bg-[#060B17] text-slate-400 text-sm">
+      Loading map…
+    </div>
+  ),
+})
+const GISMap3D = dynamic(() => import('@/components/GISMap3D'), {
+  ssr: false,
+  loading: () => (
+    <div className="absolute inset-0 flex items-center justify-center bg-[#060B17] text-slate-400 text-sm">
+      Loading 3D map…
+    </div>
+  ),
+})
 
 type ViewMode = '2d' | '3d'
 type AssetType = Asset['asset_type']
@@ -40,6 +55,10 @@ interface MapViewportProps {
   focusTarget?: { id: string; latitude: number; longitude: number } | null
   onFocusConsumed?: () => void
   highlightAssetId?: string | null
+  regionLoading?: boolean
+  showOpsReopen?: boolean
+  rightPanelOpen?: boolean
+  onOpenOpsPanel?: () => void
 }
 
 export default function MapViewport({
@@ -57,6 +76,10 @@ export default function MapViewport({
   focusTarget = null,
   onFocusConsumed,
   highlightAssetId = null,
+  regionLoading = false,
+  showOpsReopen = false,
+  rightPanelOpen = false,
+  onOpenOpsPanel,
 }: MapViewportProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('2d')
   const [internalPlaceId, setInternalPlaceId] = useState(DEFAULT_PLACE_ID)
@@ -92,6 +115,20 @@ export default function MapViewport({
   const [labelsOn, setLabelsOn] = useState(true)
   const [intelPanelCollapsed, setIntelPanelCollapsed] = useState(false)
   const [controlRailCollapsed, setControlRailCollapsed] = useState(false)
+  const placesHidRailRef = React.useRef(false)
+  const handlePlacesOpenChange = React.useCallback((open: boolean) => {
+    if (open) {
+      if (!controlRailCollapsed) {
+        placesHidRailRef.current = true
+        setControlRailCollapsed(true)
+      }
+      return
+    }
+    if (placesHidRailRef.current) {
+      placesHidRailRef.current = false
+      setControlRailCollapsed(false)
+    }
+  }, [controlRailCollapsed])
   const [showWildfireRisk, setShowWildfireRisk] = useState(false)
   const [showFloodRisk, setShowFloodRisk] = useState(false)
   const [corridorBrief, setCorridorBrief] = useState<ReturnType<typeof buildCorridorDirectionBrief>>(null)
@@ -281,8 +318,17 @@ export default function MapViewport({
           timeRangeSlot={<TimeRangeSlider embedded value={timeRange} onChange={setTimeRange} />}
           intelPanelCollapsed={intelPanelCollapsed}
           controlRailCollapsed={controlRailCollapsed}
+          showOpsReopen={showOpsReopen}
+          onOpenOpsPanel={onOpenOpsPanel}
+          onExpandMapTools={() => setControlRailCollapsed(false)}
+          onPlacesOpenChange={handlePlacesOpenChange}
         />
       )}
+
+      <MapRegionLoader
+        loading={regionLoading}
+        intelPanelCollapsed={intelPanelCollapsed}
+      />
 
       <MapIntelPanel
         stats={regionStats}
@@ -321,7 +367,9 @@ export default function MapViewport({
         onFullscreen={handleFullscreen}
         basemapMode={basemapMode}
         onBasemapMode={setBasemapMode}
+        collapsed={controlRailCollapsed}
         onCollapsedChange={setControlRailCollapsed}
+        rightPanelOpen={rightPanelOpen}
         onLocate={() => {
           if (typeof navigator !== 'undefined' && navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(() => { })
@@ -330,13 +378,16 @@ export default function MapViewport({
       />
 
       {layers.weather && (
-        <div className="absolute bottom-20 z-[1100]" style={{ right: mapRightInset(controlRailCollapsed) }}>
+        <div
+          className="absolute bottom-20 z-[1150]"
+          style={{ right: mapOverlayRight(controlRailCollapsed) }}
+        >
           <WeatherLayerBar active={weatherLayers} onToggle={toggleWeather} />
         </div>
       )}
 
       <AIAssistantFab
-        rightOffset={mapRightInset(controlRailCollapsed)}
+        rightOffset={mapOverlayRight(controlRailCollapsed)}
         onPrompt={(text) => {
           if (text.toLowerCase().includes('maharashtra')) onSelectPlace('maharashtra')
           if (text.toLowerCase().includes('critical')) {

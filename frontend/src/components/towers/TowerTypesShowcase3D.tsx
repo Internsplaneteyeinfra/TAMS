@@ -225,7 +225,7 @@ export default function TowerTypesShowcase3D() {
     <div className="fixed inset-0 flex flex-col bg-[#060B17] text-slate-200">
       <header className="shrink-0 h-12 border-b border-slate-800/80 bg-[#070b14] flex items-center gap-3 px-3 z-20">
         <Link
-          href="/"
+          href="/analyzer"
           className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-white transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" />

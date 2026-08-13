@@ -14,15 +14,21 @@ function inBounds(asset: Asset, bounds: [[number, number], [number, number]]): b
 function matchesPlaceNode(asset: Asset, node: PlaceNode): boolean {
   if (node.stateOrCountry) {
     const state = metaString(asset, 'country_or_state')
-    if (state?.toLowerCase() === node.stateOrCountry.toLowerCase()) return true
-    if (node.bounds && inBounds(asset, node.bounds)) return true
+    // Strict: tagged assets must match the place state (no overlapping bbox leak)
+    if (state && state.toLowerCase() !== 'unknown') {
+      return state.toLowerCase() === node.stateOrCountry.toLowerCase()
+    }
+    // Untagged only — city/region bounds fallback
+    if (node.bounds) return inBounds(asset, node.bounds)
     return false
   }
 
   if (node.region) {
     const region = metaString(asset, 'region')
     if (region?.toLowerCase() === node.region.toLowerCase()) return true
-    if (node.bounds && inBounds(asset, node.bounds)) return true
+    // India region: accept any asset already in the catalog (state packs)
+    if (node.id === 'india') return true
+    if (node.bounds && !metaString(asset, 'country_or_state')) return inBounds(asset, node.bounds)
     return false
   }
 

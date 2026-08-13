@@ -4,8 +4,6 @@ import {
   Camera,
   Crosshair,
   Layers,
-  Map as MapIcon,
-  Mountain,
   Ruler,
   Zap,
 } from 'lucide-react'
@@ -48,13 +46,14 @@ function QuickBtn({
       type="button"
       title={title}
       onClick={onClick}
-      className={`w-11 h-11 flex flex-col items-center justify-center gap-0.5 rounded-xl border transition-all duration-200 ${active
-        ? 'bg-blue-600/30 border-blue-500/50 text-blue-200 shadow-lg shadow-blue-500/20'
-        : 'bg-slate-950/50 border-slate-700/60 text-slate-400 hover:text-white hover:bg-slate-800 hover:border-slate-500'
-        }`}
+      className={`flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-xl border transition-all duration-200 ${
+        active
+          ? 'border-blue-500/50 bg-blue-600/30 text-blue-200 shadow-lg shadow-blue-500/20'
+          : 'border-slate-700/60 bg-slate-950/50 text-slate-400 hover:border-slate-500 hover:bg-slate-800 hover:text-white'
+      }`}
     >
       {children}
-      <span className="text-[7px] font-bold uppercase tracking-wide leading-none">{label}</span>
+      <span className="text-[7px] font-bold uppercase leading-none tracking-wide">{label}</span>
     </button>
   )
 }
@@ -66,31 +65,35 @@ export default function FloatingMapToolbar({
   embedded = false,
 }: FloatingMapToolbarProps) {
   return (
-    <div className={`flex flex-col items-end gap-1.5 select-none ${embedded ? '' : 'absolute top-4 right-4 z-[2000]'}`}>
-      <div className={`flex flex-col gap-1 ${embedded ? '' : 'p-1.5 rounded-2xl bg-[#0e172a]/90 backdrop-blur-xl border border-white/10 shadow-2xl'}`}>
+    <div
+      className={`flex select-none flex-col items-center gap-1.5 ${
+        embedded ? 'relative z-0 w-full' : 'absolute top-4 right-4 z-[2000] items-end'
+      }`}
+    >
+      <div
+        className={`flex flex-col gap-1 ${
+          embedded
+            ? 'items-center'
+            : 'rounded-2xl border border-white/10 bg-[#0e172a]/90 p-1.5 shadow-2xl backdrop-blur-xl'
+        }`}
+      >
         <QuickBtn title="Locate me" label="Locate" onClick={() => onLocate?.()}>
-          <Crosshair className="w-4 h-4" />
-        </QuickBtn>
-        <QuickBtn active={layers.terrain} title="Terrain basemap" label="Terrain" onClick={() => onToggle('terrain')}>
-          <Mountain className="w-4 h-4" />
+          <Crosshair className="h-4 w-4" />
         </QuickBtn>
         <QuickBtn active={layers.corridors} title="Live corridors feed" label="Feeds" onClick={() => onToggle('corridors')}>
-          <Zap className="w-4 h-4" />
+          <Zap className="h-4 w-4" />
         </QuickBtn>
         <QuickBtn active={layers.riskOverlay} title="AI detection" label="AI" onClick={() => onToggle('riskOverlay')}>
-          <Camera className="w-4 h-4" />
+          <Camera className="h-4 w-4" />
         </QuickBtn>
-        <QuickBtn title="Measure distance" label="Measure" onClick={() => { }}>
-          <Ruler className="w-4 h-4" />
+        <QuickBtn title="Measure distance" label="Measure" onClick={() => {}}>
+          <Ruler className="h-4 w-4" />
         </QuickBtn>
         <QuickBtn active={layers.heatmap} title="Layer stack" label="Layers" onClick={() => onToggle('heatmap')}>
-          <Layers className="w-4 h-4" />
+          <Layers className="h-4 w-4" />
         </QuickBtn>
         <QuickBtn active={!!layers.weather} title="Weather overlay" label="Weather" onClick={() => onToggle('weather')}>
-          <Activity className="w-4 h-4" />
-        </QuickBtn>
-        <QuickBtn title="Map style" label="Map" onClick={() => onToggle('terrain')}>
-          <MapIcon className="w-4 h-4" />
+          <Activity className="h-4 w-4" />
         </QuickBtn>
       </div>
     </div>

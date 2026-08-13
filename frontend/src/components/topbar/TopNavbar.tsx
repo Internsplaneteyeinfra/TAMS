@@ -6,14 +6,13 @@ import DashboardKpiStrip from '@/components/topbar/DashboardKpiStrip'
 import NavbarNotifications from '@/components/topbar/NavbarNotifications'
 import NavbarProfile from '@/components/topbar/NavbarProfile'
 import NavbarSearch from '@/components/topbar/NavbarSearch'
-import SiteSuitabilityButton from '@/components/topbar/SiteSuitabilityButton'
-import TowerImportButton from '@/components/topbar/TowerImportButton'
 import { KpiStripSkeleton } from '@/components/ui/Skeleton'
-import type { Alert, Asset } from '@/lib/api'
+import type { Alert, Asset, WorkOrder } from '@/lib/api'
 
 interface TopNavbarProps {
   assets: Asset[]
   alerts: Alert[]
+  workOrders?: WorkOrder[]
   activeAlertsCount: number
   criticalAlertsCount: number
   openWorkOrders?: number
@@ -26,15 +25,13 @@ interface TopNavbarProps {
   aiDetections24h?: number
   runs24h?: number
   kmlHint?: string
-  onOpenAlerts?: () => void
   onOpenMission?: () => void
-  onOpenWorkOrders?: () => void
-  onCheckImportedTowers?: (placeId?: string) => void
 }
 
 export default function TopNavbar({
   assets,
   alerts,
+  workOrders = [],
   activeAlertsCount,
   criticalAlertsCount,
   openWorkOrders,
@@ -47,15 +44,12 @@ export default function TopNavbar({
   aiDetections24h,
   runs24h,
   kmlHint,
-  onOpenAlerts,
   onOpenMission,
-  onOpenWorkOrders,
-  onCheckImportedTowers,
 }: TopNavbarProps) {
   const gridStatus = criticalAlertsCount > 0 ? 'warning' : 'ok'
 
   return (
-    <header className="shrink-0 bg-[#0e172a] border-b border-white/10 select-none">
+    <header className="relative z-[80] shrink-0 bg-[#0e172a] border-b border-white/10 select-none">
       {/* Toolbar row */}
       <div className="h-10 flex items-center gap-3 px-4 border-b border-white/5">
         <div className="flex flex-col min-w-[120px] shrink-0">
@@ -71,7 +65,7 @@ export default function TopNavbar({
 
         <NavbarSearch assets={assets} onSelectAsset={onSelectAsset} />
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="ml-auto flex items-center gap-2 shrink-0">
           {onOpenCommandPalette && (
             <button
               type="button"
@@ -85,7 +79,6 @@ export default function TopNavbar({
             </button>
           )}
           <NavbarNotifications alerts={alerts} assets={assets} onSelectAsset={onSelectAsset} />
-          <NavbarProfile />
 
           <div
             className={`hidden md:flex items-center gap-2 border px-2.5 py-1 rounded-lg ${gridStatus === 'ok'
@@ -102,8 +95,9 @@ export default function TopNavbar({
             </span>
           </div>
 
-          <SiteSuitabilityButton />
-          <TowerImportButton onCheckTowers={onCheckImportedTowers} />
+          <div className="ml-2 pl-2 border-l border-white/10">
+            <NavbarProfile />
+          </div>
         </div>
       </div>
 
@@ -122,9 +116,10 @@ export default function TopNavbar({
             aiDetections24h={aiDetections24h}
             runs24h={runs24h}
             kmlHint={kmlHint}
-            onOpenAlerts={onOpenAlerts}
+            alerts={alerts}
+            workOrders={workOrders}
+            onSelectAsset={onSelectAsset}
             onOpenMission={onOpenMission}
-            onOpenWorkOrders={onOpenWorkOrders}
           />
         )}
       </div>

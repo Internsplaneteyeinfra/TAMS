@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronRight, Search, Tag, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Maximize2, Search, Tag, X } from 'lucide-react'
 
-import { MAP_CHROME_TOP, MAP_EDGE, mapLeftInset, mapRightInset } from '@/components/map/mapLayout'
+import { MAP_CHROME_TOP, MAP_EDGE, mapLeftInset, mapOverlayRight } from '@/components/map/mapLayout'
 import PlacesMenu from '@/components/map/PlacesMenu'
 import { getPlacePath } from '@/config/places'
 import type { Asset } from '@/lib/api'
@@ -19,6 +19,10 @@ interface MapTopChromeProps {
   timeRangeSlot?: React.ReactNode
   intelPanelCollapsed?: boolean
   controlRailCollapsed?: boolean
+  showOpsReopen?: boolean
+  onOpenOpsPanel?: () => void
+  onExpandMapTools?: () => void
+  onPlacesOpenChange?: (open: boolean) => void
 }
 
 function loadRecent(): string[] {
@@ -35,6 +39,10 @@ export default function MapTopChrome({
   assets, selectedPlaceId, onSelectPlace, placeAssetCounts, onSelectAsset,
   labelsOn, onToggleLabels, timeRangeSlot,
   intelPanelCollapsed = false, controlRailCollapsed = false,
+  showOpsReopen = false,
+  onOpenOpsPanel,
+  onExpandMapTools,
+  onPlacesOpenChange,
 }: MapTopChromeProps) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
@@ -66,7 +74,7 @@ export default function MapTopChrome({
     <div
       ref={ref}
       className="absolute z-[1200] flex flex-col gap-2 select-none pointer-events-none"
-      style={{ top: MAP_CHROME_TOP, left: MAP_EDGE, right: MAP_EDGE, paddingLeft: mapLeftInset(intelPanelCollapsed), paddingRight: mapRightInset(controlRailCollapsed) }}
+      style={{ top: MAP_CHROME_TOP, left: MAP_EDGE, right: MAP_EDGE, paddingLeft: mapLeftInset(intelPanelCollapsed), paddingRight: mapOverlayRight(controlRailCollapsed) }}
     >
       <div className="flex items-center gap-2 pointer-events-auto min-w-0">
         <div className="flex-1 min-w-0 flex items-center gap-2 rounded-xl bg-[#0a1020]/95 border border-slate-700/80 shadow-lg px-3 py-2 backdrop-blur-sm">
@@ -74,10 +82,39 @@ export default function MapTopChrome({
           <input value={query} onChange={(e) => { setQuery(e.target.value); setOpen(true) }} onFocus={() => setOpen(true)} placeholder="Search asset, state, city, line..." className="flex-1 min-w-0 bg-transparent text-xs text-slate-100 placeholder:text-slate-500 outline-none" aria-label="Map asset search" />
           {query && <button type="button" onClick={() => setQuery('')} className="text-slate-500 hover:text-slate-200" aria-label="Clear"><X className="w-3.5 h-3.5" /></button>}
         </div>
-        <PlacesMenu variant="toolbar" selectedPlaceId={selectedPlaceId} onSelectPlace={onSelectPlace} assetCounts={placeAssetCounts} />
+        <PlacesMenu
+          variant="toolbar"
+          selectedPlaceId={selectedPlaceId}
+          onSelectPlace={onSelectPlace}
+          assetCounts={placeAssetCounts}
+          onOpenChange={onPlacesOpenChange}
+        />
         <button type="button" onClick={onToggleLabels} title="Toggle asset name labels" className={`h-9 px-2.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 shrink-0 transition ${labelsOn ? 'bg-blue-600/20 border-blue-500/40 text-blue-200' : 'bg-slate-950/80 border-slate-700 text-slate-400 hover:text-white'}`}>
           <Tag className="w-3.5 h-3.5" /><span className="hidden md:inline">Labels</span>
         </button>
+        {showOpsReopen && onOpenOpsPanel && (
+          <button
+            type="button"
+            onClick={onOpenOpsPanel}
+            title="Show Operations Center"
+            aria-label="Show Operations Center"
+            className="flex h-9 w-9 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-slate-600 bg-slate-950 text-slate-200 shadow-lg transition hover:border-cyan-500/50 hover:bg-slate-800 hover:text-white"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2.5} />
+            <span className="text-[6px] font-bold uppercase leading-none tracking-wide">Ops</span>
+          </button>
+        )}
+        {controlRailCollapsed && onExpandMapTools && (
+          <button
+            type="button"
+            onClick={onExpandMapTools}
+            title="Show map tools"
+            aria-label="Show map tools"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-600 bg-slate-950 text-slate-200 shadow-lg transition hover:border-blue-400/50 hover:bg-slate-800 hover:text-white"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 pointer-events-auto min-w-0">

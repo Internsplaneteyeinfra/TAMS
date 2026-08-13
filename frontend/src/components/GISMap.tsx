@@ -556,17 +556,29 @@ export default function GISMap({
       return
     }
     const zoom = map.getZoom()
+    const bounds = map.getBounds()
+    const west = bounds.getWest()
+    const east = bounds.getEast()
+    const south = bounds.getSouth()
+    const north = bounds.getNorth()
+    // Skip world-size / country-zoom requests — they hang cold KML and cause 502s
+    if (east - west > 12 || north - south > 10 || zoom < 7) {
+      setViewportTowers([])
+      setTowersLoading(false)
+      return
+    }
     // Keep tower counts interactive — denser only when tightly zoomed
     const limit = zoom >= 13 ? 2200 : zoom >= 11 ? 1600 : zoom >= 9 ? 1000 : 600
-    const bounds = map.getBounds()
-    const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`
+    const bbox = `${west},${south},${east},${north}`
     const state = getStateFilterForPlace(selectedPlaceId)
 
     towerRequestIdRef.current += 1
     const requestId = towerRequestIdRef.current
 
     setTowersLoading(true)
-    fetchGisTowers(bbox, state, limit)
+    const controller = new AbortController()
+    const abortTimer = window.setTimeout(() => controller.abort(), 45_000)
+    fetchGisTowers(bbox, state, limit, controller.signal)
       .then((res) => {
         if (requestId !== towerRequestIdRef.current) return
         setViewportTowers(res.assets)
@@ -576,6 +588,7 @@ export default function GISMap({
         setViewportTowers([])
       })
       .finally(() => {
+        window.clearTimeout(abortTimer)
         if (requestId !== towerRequestIdRef.current) return
         setTowersLoading(false)
       })
@@ -620,10 +633,19 @@ export default function GISMap({
 
       const place = getPlaceById(placeId)
       if (place?.bounds) {
-        const [[south, west], [north, east]] = place.bounds
+        const [[south0, west0], [north0, east0]] = place.bounds
+        // Pad ~4% so north/south/east/west edges of the state stay in view
+        const padLat = Math.max((north0 - south0) * 0.04, 0.05)
+        const padLon = Math.max((east0 - west0) * 0.04, 0.05)
+        const south = south0 - padLat
+        const north = north0 + padLat
+        const west = west0 - padLon
+        const east = east0 + padLon
+        // States: keep zoomed out enough to see full boundary; cities can go closer
+        const maxZoom = placeId === 'india' ? 6 : place.stateOrCountry ? 8 : 12
         map.flyToBounds(
           L.latLngBounds([south, west], [north, east]),
-          { padding: [50, 50], maxZoom: placeId === 'india' ? 6 : placeId === 'gujarat' ? 8 : 11, duration: 1.4 }
+          { padding: [56, 56], maxZoom, duration: 1.4 }
         )
         return
       }
@@ -631,7 +653,7 @@ export default function GISMap({
       if (assetList.length === 0) return
       const bounds = collectBounds(assetList)
       if (!bounds) return
-      map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 6, duration: 1.4 })
+      map.flyToBounds(bounds, { padding: [56, 56], maxZoom: 8, duration: 1.4 })
     },
     []
   )
@@ -795,12 +817,13 @@ export default function GISMap({
         coordinates: cursorPoint,
         zoom: mapRef.current?.getZoom() ?? null,
         viewMode: '2d',
+        regionLoading: towersLoading,
       })
     }, 120)
     return () => {
       if (statusThrottleRef.current) clearTimeout(statusThrottleRef.current)
     }
-  }, [cursorPoint, zoomVersion, mapStatus, onMapStatusChange])
+  }, [cursorPoint, zoomVersion, mapStatus, onMapStatusChange, towersLoading])
 
   useEffect(() => {
     const map = mapRef.current

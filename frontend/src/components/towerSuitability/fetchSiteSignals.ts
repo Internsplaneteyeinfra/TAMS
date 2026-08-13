@@ -1,4 +1,4 @@
-import { fetchGisTowers } from '@/lib/api'
+import { findNearbyPowerSupply } from './nearbyPowerSupply'
 import type { SiteSignals } from './scoring'
 
 const haversineKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -102,9 +102,14 @@ async function overpassJson(query: string): Promise<{ elements?: OverpassEl[] } 
         body: JSON.stringify({ query }),
       })
       if (!res.ok) return null
-      return (await res.json()) as { elements?: OverpassEl[] }
+      const json = (await res.json()) as {
+        elements?: OverpassEl[]
+        overpassUnavailable?: boolean
+      }
+      if (json.overpassUnavailable) return null
+      return json
     })(),
-    22000,
+    48000,
     null
   )
 }
@@ -289,27 +294,6 @@ async function landCoverLive(lat: number, lon: number): Promise<SiteSignals['lan
   return 'unknown'
 }
 
-async function nearestTamsTowerKm(lat: number, lon: number): Promise<number | null> {
-  try {
-    const pad = 0.75
-    const bbox = `${lon - pad},${lat - pad},${lon + pad},${lat + pad}`
-    const towers = await withTimeout(fetchGisTowers(bbox, undefined, 1200), 7000, {
-      assets: [],
-      truncated: false,
-      total: 0,
-      limit: 1200,
-    })
-    let best: number | null = null
-    for (const t of towers.assets) {
-      const d = haversineKm(lat, lon, t.latitude, t.longitude)
-      if (best == null || d < best) best = d
-    }
-    return best
-  } catch {
-    return null
-  }
-}
-
 export type ProgressFn = (message: string, percent: number) => void
 
 /**
@@ -318,7 +302,8 @@ export type ProgressFn = (message: string, percent: number) => void
 export async function collectSiteSignals(
   lat: number,
   lon: number,
-  onProgress?: ProgressFn
+  onProgress?: ProgressFn,
+  options?: { corridor?: Array<{ lat: number; lon: number }>; searchRadiusKm?: number }
 ): Promise<SiteSignals> {
   onProgress?.('Fetching live DEM, OSM, roads & weather…', 18)
 
@@ -331,8 +316,9 @@ export async function collectSiteSignals(
     { lat, lon: lon - offset },
   ]
 
-  const [elevations, windMs, roadKm, waterLive, settleLive, powerLive, land, tamsTowerKm] =
-    await Promise.all([
+  // Do NOT call TAMS towers here — findNearbyPowerSupply does that once.
+  // Parallel TAMS bbox scans pile up and cause 120s proxy 502s.
+  const [elevations, windMs, roadKm, waterLive, settleLive, land] = await Promise.all([
       fetchElevations(grid),
       fetchWind(lat, lon),
       nearestRoadOsrm(lat, lon),
@@ -349,37 +335,32 @@ export async function collectSiteSignals(
         'node["place"~"city|town|village|hamlet|suburb"]',
         'way["landuse"="residential"]',
       ]),
-      liveOsmDistanceKm(lat, lon, 25000, [
-        'node["power"="tower"]',
-        'node["power"="pole"]',
-        'way["power"="line"]',
-        'node["power"="substation"]',
-        'way["power"="substation"]',
-      ]),
       landCoverLive(lat, lon),
-      nearestTamsTowerKm(lat, lon),
     ])
 
   onProgress?.('Merging live grid + OSM power assets…', 78)
 
   let waterKm = waterLive.live || waterLive.found ? waterLive.km : null
   let buildingKm = settleLive.live || settleLive.found ? settleLive.km : null
-  let osmPowerKm = powerLive.live || powerLive.found ? powerLive.km : null
+  let osmPowerKm: number | null = null
+  const usedFallback: { water?: boolean; settlement?: boolean; grid?: boolean } = {}
 
   if (waterKm == null) {
     const fallback = await photonFallbackKm(lat, lon, 'lake river reservoir', 'natural:water')
-    if (fallback != null) waterKm = fallback
+    if (fallback != null) {
+      waterKm = fallback
+      usedFallback.water = true
+    }
   }
   if (buildingKm == null) {
     const fallback = await photonFallbackKm(lat, lon, 'village town', 'place:village')
-    if (fallback != null) buildingKm = fallback
-  }
-  if (osmPowerKm == null) {
-    const fallback = await photonFallbackKm(lat, lon, 'power tower', 'power:tower')
-    if (fallback != null) osmPowerKm = fallback
+    if (fallback != null) {
+      buildingKm = fallback
+      usedFallback.settlement = true
+    }
   }
 
-  onProgress?.('Computing screening score…', 92)
+  onProgress?.('Computing slope & screening signals…', 88)
 
   const centerElev = elevations[0]
   let slopeDeg: number | null = null
@@ -397,10 +378,35 @@ export async function collectSiteSignals(
     slopeDeg = maxSlope
   }
 
-  const towerKm =
-    tamsTowerKm != null && osmPowerKm != null
-      ? Math.min(tamsTowerKm, osmPowerKm)
-      : tamsTowerKm ?? osmPowerKm
+  onProgress?.('Searching existing power (TAMS + OSM, up to ~45s)…', 92)
+  const nearbyPower = await findNearbyPowerSupply(lat, lon, options?.searchRadiusKm ?? 8, {
+    waterKm,
+    buildingKm,
+    slopeDeg,
+    landCover: land,
+    corridor: options?.corridor,
+  })
+
+  // Tower / power distances only from the dedicated search (avoids duplicate API load)
+  const nearbyTowerKm = nearbyPower.nearestTower?.distanceKm ?? null
+  const nearbyLineKm = nearbyPower.nearestLine?.distanceKm ?? null
+  const nearbyPoleKm = nearbyPower.nearestPole?.distanceKm ?? null
+  osmPowerKm =
+    nearbyPower.nearest?.distanceKm ??
+    nearbyTowerKm ??
+    nearbyLineKm ??
+    nearbyPoleKm ??
+    null
+  if (!nearbyPower.dataAvailable) {
+    usedFallback.grid = true
+  }
+
+  const towerKmCandidates = [nearbyTowerKm, osmPowerKm].filter(
+    (v): v is number => v != null
+  )
+  const towerKm = towerKmCandidates.length ? Math.min(...towerKmCandidates) : null
+
+  const nearbySsKm = nearbyPower.nearestSubstation?.distanceKm ?? null
 
   return {
     lat,
@@ -411,19 +417,27 @@ export async function collectSiteSignals(
     waterKm,
     buildingKm,
     towerKm,
-    substationKm: osmPowerKm,
+    substationKm: nearbySsKm ?? osmPowerKm,
     windMs,
     landCoverHint: land,
     fetchedAt: new Date().toISOString(),
     liveOk: {
       dem: centerElev != null,
       road: roadKm != null,
-      water: waterLive.live || waterKm != null,
-      settlement: settleLive.live || buildingKm != null,
-      grid: tamsTowerKm != null || osmPowerKm != null,
+      water: (waterLive.live && !usedFallback.water) || (waterKm != null && !usedFallback.water),
+      settlement:
+        (settleLive.live && !usedFallback.settlement) ||
+        (buildingKm != null && !usedFallback.settlement),
+      grid:
+        nearbyPower.assets.length > 0 ||
+        tamsTowerKm != null ||
+        ((powerLive.live && !usedFallback.grid) || (osmPowerKm != null && !usedFallback.grid)),
       wind: windMs != null,
       landcover: land !== 'unknown',
     },
+    usedFallback:
+      usedFallback.water || usedFallback.settlement || usedFallback.grid ? usedFallback : undefined,
+    nearbyPower,
   }
 }
 

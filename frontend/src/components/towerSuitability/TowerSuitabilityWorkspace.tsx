@@ -8,18 +8,22 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import {
-  ArrowLeft,
   CheckCircle2,
+  Crosshair,
   Download,
-  FileUp,
   Lightbulb,
   Loader2,
+  LogOut,
   MapPinned,
+  Navigation,
+  Save,
   ShieldAlert,
+  Sparkles,
   X,
   XCircle,
 } from 'lucide-react'
 
+import { fetchGisTowers } from '@/lib/api'
 import {
   collectSiteSignals,
   DEMO_NIRONA,
@@ -28,15 +32,35 @@ import {
   resolveCityStateLabel,
   type KmlFeature,
 } from './fetchSiteSignals'
-import { fetchGisTowers } from '@/lib/api'
 import { downloadSuitabilityReport } from './downloadSuitabilityReport'
-import { planTowersFromKml, voltageLabel } from './lineTowers'
+import { downloadKmlFile } from './kmlExport'
+import {
+  estimateTowerBand,
+  planTowersFromKml,
+  spanForVoltageKv,
+  standardForVoltageKv,
+  towerPredictionNote,
+  voltageLabel,
+  voltageSourceLabel,
+  VOLTAGE_OPTIONS_KV,
+  type SpanPolicy,
+} from './lineTowers'
+import SuitabilityHub, { type SuitabilityEntryMode } from './SuitabilityHub'
+import LiveDataProvenancePanel from './LiveDataProvenancePanel'
+import PowerNetworkAnalysisPanel from './PowerNetworkAnalysisPanel'
+import {
+  DEFAULT_SEARCH_RADIUS_KM,
+  SEARCH_RADIUS_OPTIONS_KM,
+} from './nearbyPowerSupply'
+import CorridorPlacementPanel from './CorridorPlacementPanel'
+import { analyzeCorridorPlacement } from './corridorPlacementAdvice'
 import {
   buildSuitabilitySuggestions,
   scoreSiteSignals,
   type SuitabilityResult,
   type SuitabilityVerdict,
 } from './scoring'
+import type { DrawMode } from './TowerSuitabilityMap'
 
 const MapPane = dynamic(() => import('./TowerSuitabilityMap'), { ssr: false })
 
@@ -44,7 +68,9 @@ function isGenericSiteLabel(label: string): boolean {
   const value = label.trim().toLowerCase()
   if (!value) return true
   if (value.startsWith('pad ')) return true
+  if (value === 'draw on map or upload kml') return true
   if (value === 'click map or upload kml') return true
+  if (value === 'drawn line' || value === 'drawn polygon' || value === 'drawn site') return true
   if (value === 'untitled' || value === 'untitled map' || value === 'my places') return true
   if (value === 'land' || value === 'polygon' || value === 'placemark') return true
   return false
@@ -53,6 +79,40 @@ function isGenericSiteLabel(label: string): boolean {
 /** Shown in UI. Files up to HARD_MAX still parse reliably. */
 const KML_MAX_SIZE_LABEL_MB = 5
 const KML_HARD_MAX_BYTES = 7 * 1024 * 1024
+
+function SearchRadiusPicker({
+  value,
+  onChange,
+}: {
+  value: number
+  onChange: (km: number) => void
+}) {
+  return (
+    <div>
+      <p className="text-[10px] font-bold uppercase text-slate-400">Search radius</p>
+      <div className="mt-1 grid grid-cols-4 gap-1">
+        {SEARCH_RADIUS_OPTIONS_KM.map((km) => (
+          <button
+            key={km}
+            type="button"
+            title={`Search existing grid within ${km} km of the focus point`}
+            onClick={() => onChange(km)}
+            className={`h-8 rounded-lg text-[10px] font-black border ${
+              value === km
+                ? 'bg-cyan-400 text-slate-950 border-cyan-200'
+                : 'bg-slate-950 text-slate-300 border-slate-600 hover:border-cyan-400/40'
+            }`}
+          >
+            {km} km
+          </button>
+        ))}
+      </div>
+      <p className="mt-1 text-[10px] text-slate-500 leading-snug">
+        Live TAMS + OSM around the pad. Max 50 km (not 1000 km). Re-analyze after changing.
+      </p>
+    </div>
+  )
+}
 
 function decisionFromVerdict(v: SuitabilityVerdict): {
   label: 'Accepted' | 'Rejected' | 'Review'
@@ -87,7 +147,7 @@ function decisionFromVerdict(v: SuitabilityVerdict): {
 export default function TowerSuitabilityWorkspace() {
   const [lat, setLat] = useState(DEMO_NIRONA.lat)
   const [lon, setLon] = useState(DEMO_NIRONA.lon)
-  const [siteLabel, setSiteLabel] = useState('Click map or upload KML')
+  const [siteLabel, setSiteLabel] = useState('Set start, draw, or upload KML')
   const [analyzing, setAnalyzing] = useState(false)
   const [progress, setProgress] = useState({ message: '', percent: 0 })
   const [result, setResult] = useState<SuitabilityResult | null>(null)
@@ -97,10 +157,22 @@ export default function TowerSuitabilityWorkspace() {
   const [kmlFileName, setKmlFileName] = useState('')
   const [inferredVoltage, setInferredVoltage] = useState<{
     kv: number
-    source: 'tams' | 'osm'
+    source: 'tams' | 'osm' | 'substation'
   } | null>(null)
+  /** User-picked class — always wins over auto inference. */
+  const [manualVoltageKv, setManualVoltageKv] = useState<number | null>(null)
+  const [spanPolicy, setSpanPolicy] = useState<SpanPolicy>('ruling')
+  const [searchRadiusKm, setSearchRadiusKm] = useState(DEFAULT_SEARCH_RADIUS_KM)
+  const [drawMode, setDrawMode] = useState<DrawMode>('pin')
+  const [phase, setPhase] = useState<'hub' | 'work'>('hub')
+  const [entryMode, setEntryMode] = useState<SuitabilityEntryMode | null>(null)
+  const [pendingFocus, setPendingFocus] = useState<{ lat: number; lon: number } | null>(null)
+  const [latInput, setLatInput] = useState(String(DEMO_NIRONA.lat))
+  const [lonInput, setLonInput] = useState(String(DEMO_NIRONA.lon))
+  const [geoBusy, setGeoBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const analyzeSeq = useRef(0)
+  const uploadAfterHub = useRef(false)
 
   const runAnalyze = useCallback(async (nextLat: number, nextLon: number, label?: string) => {
     const seq = ++analyzeSeq.current
@@ -123,32 +195,178 @@ export default function TowerSuitabilityWorkspace() {
     }
     setProgress({ message: 'Fetching satellite & OSM signals…', percent: 8 })
     try {
-      const signals = await collectSiteSignals(nextLat, nextLon, (message, percent) => {
-        if (seq !== analyzeSeq.current) return
-        setProgress({ message, percent })
-      })
+      const corridor = kmlFeatures.flatMap((f) =>
+        f.latlngs.map(([la, lo]) => ({ lat: la, lon: lo }))
+      )
+      const signals = await collectSiteSignals(
+        nextLat,
+        nextLon,
+        (message, percent) => {
+          if (seq !== analyzeSeq.current) return
+          setProgress({ message, percent })
+        },
+        {
+          corridor: corridor.length >= 2 ? corridor : undefined,
+          searchRadiusKm,
+        }
+      )
       if (seq !== analyzeSeq.current) return
       const scored = scoreSiteSignals(signals)
       setProgress({ message: 'Finalizing weighted score…', percent: 100 })
       setResult(scored)
+      if (manualVoltageKv == null && scored.signals.nearbyPower?.suggestedVoltageKv != null) {
+        const src = scored.signals.nearbyPower.suggestedSource
+        setInferredVoltage({
+          kv: scored.signals.nearbyPower.suggestedVoltageKv,
+          source: src === 'tams' ? 'substation' : src === 'osm' ? 'osm' : 'substation',
+        })
+      }
       setSuggestionsOpen(false)
+      setPendingFocus(null)
     } catch (e) {
       if (seq !== analyzeSeq.current) return
       setError(e instanceof Error ? e.message : 'Analysis failed')
     } finally {
       if (seq === analyzeSeq.current) setAnalyzing(false)
     }
-  }, [])
+  }, [manualVoltageKv, kmlFeatures, searchRadiusKm])
 
   const onMapPick = useCallback(
     (nextLat: number, nextLon: number) => {
-      setKmlFeatures([])
-      setKmlFileName('')
-      setInferredVoltage(null)
-      const label = `Pad ${nextLat.toFixed(5)}, ${nextLon.toFixed(5)}`
-      void runAnalyze(nextLat, nextLon, label)
+      if (drawMode === 'point') {
+        setKmlFeatures([])
+        setKmlFileName('')
+        setInferredVoltage(null)
+        setPendingFocus(null)
+        const label = `Pad ${nextLat.toFixed(5)}, ${nextLon.toFixed(5)}`
+        void runAnalyze(nextLat, nextLon, label)
+        return
+      }
+      // pin / set start — move projection only
+      setLat(nextLat)
+      setLon(nextLon)
+      setLatInput(nextLat.toFixed(6))
+      setLonInput(nextLon.toFixed(6))
+      setSiteLabel(`Start ${nextLat.toFixed(5)}, ${nextLon.toFixed(5)}`)
+      setResult(null)
+      setPendingFocus(null)
     },
-    [runAnalyze]
+    [drawMode, runAnalyze]
+  )
+
+  const onGeometryDrawn = useCallback(
+    (feature: KmlFeature, focus: { lat: number; lon: number }) => {
+      setKmlFeatures([feature])
+      setKmlFileName(feature.name || (feature.type === 'LineString' ? 'Drawn line' : 'Drawn polygon'))
+      setInferredVoltage(null)
+      setPendingFocus(focus)
+      setLat(focus.lat)
+      setLon(focus.lon)
+      setLatInput(focus.lat.toFixed(6))
+      setLonInput(focus.lon.toFixed(6))
+      setResult(null)
+      setSiteLabel(
+        feature.type === 'LineString'
+          ? 'Drawn line · save KML or analyze'
+          : 'Drawn polygon · save KML or analyze'
+      )
+      setDrawMode('pin')
+    },
+    []
+  )
+
+  const applyLatLon = useCallback(() => {
+    const nextLat = Number(latInput)
+    const nextLon = Number(lonInput)
+    if (!Number.isFinite(nextLat) || !Number.isFinite(nextLon)) {
+      setError('Enter valid latitude and longitude numbers.')
+      return
+    }
+    if (nextLat < -90 || nextLat > 90 || nextLon < -180 || nextLon > 180) {
+      setError('Latitude must be −90…90 and longitude −180…180.')
+      return
+    }
+    setError(null)
+    setLat(nextLat)
+    setLon(nextLon)
+    setSiteLabel(`Start ${nextLat.toFixed(5)}, ${nextLon.toFixed(5)}`)
+    setResult(null)
+    setPendingFocus(null)
+    setDrawMode('pin')
+  }, [latInput, lonInput])
+
+  const goLiveLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      setError('Geolocation is not available in this browser.')
+      return
+    }
+    setGeoBusy(true)
+    setError(null)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const nextLat = pos.coords.latitude
+        const nextLon = pos.coords.longitude
+        setLat(nextLat)
+        setLon(nextLon)
+        setLatInput(nextLat.toFixed(6))
+        setLonInput(nextLon.toFixed(6))
+        setSiteLabel(`Live location ${nextLat.toFixed(5)}, ${nextLon.toFixed(5)}`)
+        setResult(null)
+        setPendingFocus(null)
+        setKmlFeatures([])
+        setDrawMode('line')
+        setGeoBusy(false)
+      },
+      (err) => {
+        setGeoBusy(false)
+        setError(err.message || 'Could not read live location. Allow location access and retry.')
+      },
+      { enableHighAccuracy: true, timeout: 20000 }
+    )
+  }, [])
+
+  const analyzePendingGeometry = useCallback(() => {
+    if (!kmlFeatures.length || !pendingFocus) return
+    const label =
+      kmlFeatures[0]?.type === 'LineString'
+        ? 'Drawn line corridor'
+        : kmlFeatures[0]?.type === 'Polygon'
+          ? 'Drawn polygon site'
+          : 'Drawn site'
+    void runAnalyze(pendingFocus.lat, pendingFocus.lon, label)
+  }, [kmlFeatures, pendingFocus, runAnalyze])
+
+  const saveDrawnKml = useCallback(() => {
+    if (!kmlFeatures.length) return
+    downloadKmlFile(kmlFeatures, `${kmlFileName || 'tams-drawn-site'}.kml`)
+  }, [kmlFeatures, kmlFileName])
+
+  const onHubChoose = useCallback(
+    (mode: SuitabilityEntryMode) => {
+      setEntryMode(mode)
+      setPhase('work')
+      setError(null)
+      setResult(null)
+      setKmlFeatures([])
+      setPendingFocus(null)
+      setManualVoltageKv(null)
+      setInferredVoltage(null)
+      if (mode === 'draw') {
+        setDrawMode('pin')
+        setSiteLabel('Set start with lat/lon or map click, then draw')
+      } else if (mode === 'live') {
+        setDrawMode('line')
+        setSiteLabel('Getting live location…')
+        // defer GPS until mounted map
+        window.setTimeout(() => goLiveLocation(), 200)
+      } else {
+        setDrawMode('pin')
+        setSiteLabel('Upload a KML to analyze')
+        uploadAfterHub.current = true
+        window.setTimeout(() => fileRef.current?.click(), 250)
+      }
+    },
+    [goLiveLocation]
   )
 
   const onKml = async (file: File) => {
@@ -171,6 +389,7 @@ export default function TowerSuitabilityWorkspace() {
       setKmlFeatures(parsed.features)
       const label = file.name.replace(/\.kml$/i, '')
       setKmlFileName(label)
+      setPendingFocus(null)
       await runAnalyze(parsed.focus.lat, parsed.focus.lon, label)
     } catch (e) {
       setAnalyzing(false)
@@ -190,19 +409,48 @@ export default function TowerSuitabilityWorkspace() {
   const lineTowerPlan = useMemo(
     () =>
       planTowersFromKml(kmlFeatures, {
-        voltageKv: inferredVoltage?.kv ?? null,
-        voltageSource: inferredVoltage?.source,
+        voltageKv: manualVoltageKv ?? inferredVoltage?.kv ?? null,
+        voltageSource: manualVoltageKv != null ? 'manual' : inferredVoltage?.source,
+        spanPolicy,
         extraText: kmlFileName,
         focus: { lat, lon },
       }),
-    [kmlFeatures, inferredVoltage, kmlFileName, lat, lon]
+    [kmlFeatures, inferredVoltage, manualVoltageKv, spanPolicy, kmlFileName, lat, lon]
   )
+
+  const voltageStandard = useMemo(
+    () => standardForVoltageKv(manualVoltageKv ?? lineTowerPlan?.voltageKv ?? null),
+    [manualVoltageKv, lineTowerPlan?.voltageKv]
+  )
+
+  const towerBand = useMemo(() => {
+    if (!lineTowerPlan || !voltageStandard) return null
+    return estimateTowerBand(lineTowerPlan.lengthKm, voltageStandard)
+  }, [lineTowerPlan, voltageStandard])
+
+  const corridorAdvice = useMemo(() => {
+    if (!lineTowerPlan?.towers?.length) return null
+    const pathFeat =
+      kmlFeatures.find((f) => f.type === 'LineString' && f.latlngs.length >= 2) ||
+      kmlFeatures.find((f) => f.type === 'Polygon' && f.latlngs.length >= 3)
+    const corridorPath = pathFeat?.latlngs ?? lineTowerPlan.towers.map((t) => [t.lat, t.lon] as [number, number])
+    const existing = result?.signals.nearbyPower?.assets ?? []
+    return analyzeCorridorPlacement({
+      plannedTowers: lineTowerPlan.towers,
+      corridorPath,
+      existingAssets: existing,
+      std: voltageStandard,
+      spanM: lineTowerPlan.spanM,
+      voltageKv: lineTowerPlan.voltageKv,
+    })
+  }, [lineTowerPlan, kmlFeatures, result?.signals.nearbyPower?.assets, voltageStandard])
 
   useEffect(() => {
     if (!kmlFeatures.length) {
       setInferredVoltage(null)
       return
     }
+    if (manualVoltageKv != null) return
     let cancelled = false
     const pathFeat =
       kmlFeatures.find((f) => f.type === 'LineString' && f.latlngs.length >= 2) ||
@@ -246,7 +494,7 @@ export default function TowerSuitabilityWorkspace() {
     return () => {
       cancelled = true
     }
-  }, [kmlFeatures, lat, lon])
+  }, [kmlFeatures, lat, lon, manualVoltageKv])
 
   const onDownloadReport = useCallback(() => {
     if (!result || !suggestions) return
@@ -265,15 +513,18 @@ export default function TowerSuitabilityWorkspace() {
 
   return (
     <div className="fixed inset-0 z-[200] flex flex-col bg-[#060B17] text-slate-200">
+      {phase === 'hub' && (
+        <SuitabilityHub
+          onChoose={onHubChoose}
+          onBack={() => {
+            window.location.href = '/'
+          }}
+        />
+      )}
+
+      {phase === 'work' && (
+      <>
       <header className="shrink-0 h-12 border-b border-slate-800/80 bg-[#0e172a] flex items-center gap-3 px-4 z-30">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Grid Command
-        </Link>
-        <div className="h-5 w-px bg-slate-700" />
         <div className="flex items-center gap-2 min-w-0">
           <MapPinned className="w-4 h-4 text-cyan-300 shrink-0" />
           <h1 className="text-base font-semibold text-white tracking-tight truncate">
@@ -281,29 +532,37 @@ export default function TowerSuitabilityWorkspace() {
           </h1>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          {kmlFeatures.length > 0 && (
-            <span className="hidden sm:inline text-xs text-cyan-300/90 font-semibold">
-              KML · {kmlFeatures.length} outline{kmlFeatures.length === 1 ? '' : 's'}
-              {lineTowerPlan
-                ? ` · ${lineTowerPlan.towerCount} towers · ${voltageLabel(lineTowerPlan.voltageKv)}`
-                : ''}
+          {kmlFeatures.length > 0 && lineTowerPlan && (
+            <span className="hidden md:inline text-xs text-amber-300/90 font-semibold">
+              Planning · {lineTowerPlan.towerCount} towers · {voltageLabel(lineTowerPlan.voltageKv)} ·{' '}
+              {lineTowerPlan.spanM} m
             </span>
           )}
-          <div className="flex items-center gap-2">
-            <span className="hidden sm:inline text-[10px] font-semibold text-slate-500 whitespace-nowrap">
-              Max size {KML_MAX_SIZE_LABEL_MB} MB
-            </span>
-            <button
-              type="button"
-              disabled={analyzing}
-              onClick={() => fileRef.current?.click()}
-              title={`Upload KML · max ${KML_MAX_SIZE_LABEL_MB} MB`}
-              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-white/10 bg-slate-950/60 text-xs font-bold text-slate-200 hover:border-cyan-500/40 disabled:opacity-50"
-            >
-              <FileUp className="w-3.5 h-3.5" />
-              Upload KML
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setPhase('hub')
+              setEntryMode(null)
+              setResult(null)
+              setKmlFeatures([])
+              setPendingFocus(null)
+              setError(null)
+              setManualVoltageKv(null)
+              setInferredVoltage(null)
+            }}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-600 bg-slate-950/60 text-xs font-bold text-slate-200 hover:border-cyan-500/40"
+            title="Back to start options"
+          >
+            Start over
+          </button>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-rose-500/35 bg-rose-500/10 text-xs font-bold text-rose-100 hover:bg-rose-500/20 transition-colors"
+            title="Back to module selection"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            Logout
+          </Link>
           <input
             ref={fileRef}
             type="file"
@@ -313,6 +572,7 @@ export default function TowerSuitabilityWorkspace() {
               const f = e.target.files?.[0]
               if (f) void onKml(f)
               e.target.value = ''
+              uploadAfterHub.current = false
             }}
           />
         </div>
@@ -351,10 +611,152 @@ export default function TowerSuitabilityWorkspace() {
             result={result}
             kmlFeatures={kmlFeatures}
             plannedTowers={lineTowerPlan?.towers ?? []}
+            nearbyAssets={result?.signals.nearbyPower?.assets?.slice(0, 80) ?? []}
+            searchRadiusKm={searchRadiusKm}
+            placementAdvice={corridorAdvice?.items ?? []}
             voltageKv={lineTowerPlan?.voltageKv ?? null}
             spanM={lineTowerPlan?.spanM}
+            drawMode={drawMode}
+            onDrawModeChange={setDrawMode}
             onPick={onMapPick}
+            onGeometryDrawn={onGeometryDrawn}
           />
+
+          {/* Lat/lon + live location controls */}
+          <div className="absolute bottom-3 left-3 z-[1150] pointer-events-auto w-[min(360px,calc(100%-1.5rem))] rounded-xl border border-slate-600/80 bg-slate-950/92 p-3 shadow-xl backdrop-blur-md">
+            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">
+              Start projection · lat / lon
+            </p>
+            <div className="mb-2">
+              <SearchRadiusPicker value={searchRadiusKm} onChange={setSearchRadiusKm} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-[10px] text-slate-500 font-bold">
+                Latitude
+                <input
+                  value={latInput}
+                  onChange={(e) => setLatInput(e.target.value)}
+                  className="mt-1 w-full h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-xs font-mono text-white"
+                />
+              </label>
+              <label className="text-[10px] text-slate-500 font-bold">
+                Longitude
+                <input
+                  value={lonInput}
+                  onChange={(e) => setLonInput(e.target.value)}
+                  className="mt-1 w-full h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-xs font-mono text-white"
+                />
+              </label>
+            </div>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={applyLatLon}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-cyan-500/40 bg-cyan-500/15 text-xs font-bold text-cyan-100 hover:bg-cyan-500/25"
+              >
+                <Crosshair className="w-3.5 h-3.5" />
+                Go to lat/lon
+              </button>
+              <button
+                type="button"
+                disabled={geoBusy}
+                onClick={goLiveLocation}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-xs font-bold text-emerald-100 hover:bg-emerald-500/25 disabled:opacity-50"
+              >
+                <Navigation className="w-3.5 h-3.5" />
+                {geoBusy ? 'Locating…' : 'Live location'}
+              </button>
+            </div>
+          </div>
+
+          {pendingFocus && kmlFeatures.length > 0 && !analyzing && !result && (
+            <div className="absolute bottom-3 right-3 z-[1150] pointer-events-auto w-[min(360px,calc(100%-1.5rem))] rounded-xl border-2 border-amber-400/60 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-md max-h-[min(70vh,420px)] overflow-y-auto">
+              <p className="text-xs font-black text-amber-200 uppercase tracking-wider">Drawn shape ready</p>
+              <p className="text-sm text-slate-300 mt-1 leading-snug">
+                Pick voltage class (CEA planning bands) — then Save KML or Analyze live suitability.
+              </p>
+              <label className="mt-2 block text-[10px] font-bold uppercase text-slate-400">
+                Line voltage
+                <select
+                  value={manualVoltageKv ?? lineTowerPlan?.voltageKv ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value ? Number(e.target.value) : null
+                    setManualVoltageKv(v)
+                  }}
+                  className="mt-1 w-full h-9 rounded-lg border border-amber-400/40 bg-slate-900 px-2 text-sm font-bold text-amber-100"
+                >
+                  <option value="">Select kV class…</option>
+                  {VOLTAGE_OPTIONS_KV.map((kv) => {
+                    const std = standardForVoltageKv(kv)
+                    return (
+                      <option key={kv} value={kv}>
+                        {kv} kV · ruling {std?.rulingSpanM ?? spanForVoltageKv(kv)} m
+                      </option>
+                    )
+                  })}
+                </select>
+              </label>
+              <div className="mt-2 grid grid-cols-3 gap-1">
+                {(
+                  [
+                    { id: 'dense' as const, label: 'Dense' },
+                    { id: 'ruling' as const, label: 'Ruling' },
+                    { id: 'long' as const, label: 'Long' },
+                  ] as const
+                ).map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setSpanPolicy(p.id)}
+                    className={`h-8 rounded-lg text-[10px] font-black border ${
+                      spanPolicy === p.id
+                        ? 'bg-amber-400 text-slate-950 border-amber-200'
+                        : 'bg-slate-900 text-slate-300 border-slate-600'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2">
+                <SearchRadiusPicker value={searchRadiusKm} onChange={setSearchRadiusKm} />
+              </div>
+              {lineTowerPlan && (
+                <p className="mt-2 text-[11px] text-slate-400 leading-snug">
+                  {towerPredictionNote(
+                    lineTowerPlan.lengthKm,
+                    lineTowerPlan.spanM,
+                    lineTowerPlan.towerCount,
+                    voltageStandard
+                  )}
+                </p>
+              )}
+              {towerBand && voltageStandard && (
+                <p className="mt-1 text-[10px] text-slate-500 leading-snug">
+                  Band for {voltageStandard.label}: {towerBand.dense} (dense) – {towerBand.ruling}{' '}
+                  (ruling) – {towerBand.long} (long) towers · ROW ~{voltageStandard.rowWidthM} m
+                </p>
+              )}
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={saveDrawnKml}
+                  className="inline-flex items-center justify-center gap-1.5 h-10 rounded-xl border border-slate-500 bg-slate-900 text-xs font-bold text-white hover:bg-slate-800"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  Save KML
+                </button>
+                <button
+                  type="button"
+                  onClick={analyzePendingGeometry}
+                  className="inline-flex items-center justify-center gap-1.5 h-10 rounded-xl border border-cyan-400/50 bg-cyan-500 text-xs font-black text-slate-950 hover:bg-cyan-400"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Analyze
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Left: Suggestions beside +/- zoom, then Download + factor cards below */}
           {result && suggestions && (
@@ -406,6 +808,46 @@ export default function TowerSuitabilityWorkspace() {
                       <X className="w-4 h-4" />
                     </button>
                   </div>
+
+                  {corridorAdvice && (
+                    <div className="px-4 py-3 border-b border-slate-800/80 shrink-0 space-y-2 max-h-[35%] overflow-y-auto">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-amber-300">
+                        Can / cannot place · {corridorAdvice.voltageLabel} · {corridorAdvice.minSpanM}–
+                        {corridorAdvice.maxSpanM} m
+                      </p>
+                      <p className="text-xs text-slate-300 leading-snug">{corridorAdvice.summary}</p>
+                      <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                        <p className="text-emerald-300 font-bold">
+                          Can place: {corridorAdvice.canPlaceCount}
+                        </p>
+                        <p className="text-rose-300 font-bold">
+                          Cannot place:{' '}
+                          {corridorAdvice.skipExistingCount + corridorAdvice.tooCloseCount}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {suggestions.placementTips && suggestions.placementTips.length > 0 && (
+                    <div className="px-4 py-3 border-b border-slate-800/80 shrink-0 space-y-2 max-h-[40%] overflow-y-auto">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-cyan-300">
+                        Where to place towers · accuracy noted
+                        {suggestions.interconnectEase === 'easy' ? ' · Easy power tap' : ''}
+                      </p>
+                      {suggestions.placementTips.map((tip, idx) => (
+                        <div
+                          key={`place-${idx}`}
+                          className="rounded-lg border border-cyan-500/25 bg-cyan-950/20 px-3 py-2 text-sm"
+                        >
+                          <p className="font-bold text-cyan-100">
+                            {idx + 1}. {tip.title}
+                          </p>
+                          <p className="text-slate-300 mt-1 leading-snug text-xs">{tip.detail}</p>
+                          <p className="text-[10px] text-amber-300/90 mt-1 font-semibold">{tip.accuracy}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   <div className="px-4 py-3 grid grid-cols-3 gap-2 text-xs border-b border-slate-800/80 shrink-0">
                     <div className="rounded-lg bg-slate-950/70 border border-slate-800 px-2.5 py-2">
@@ -521,9 +963,11 @@ export default function TowerSuitabilityWorkspace() {
             </div>
           )}
 
-          {!result && !analyzing && (
-            <div className="absolute bottom-3 left-3 z-10 pointer-events-none rounded-lg border border-slate-700/70 bg-[#0e172a]/90 px-3 py-2 text-sm text-slate-300">
-              Click map or upload KML — outlines draw on the satellite map
+          {!result && !analyzing && !pendingFocus && (
+            <div className="absolute bottom-[7.5rem] left-3 z-10 pointer-events-none rounded-lg border border-slate-700/70 bg-[#0e172a]/90 px-3 py-2 text-sm text-slate-300 max-w-sm">
+              {entryMode === 'live'
+                ? 'Live location set — draw a line or polygon, then Save KML or Analyze'
+                : 'Set start (lat/lon or map click) → Draw line / polygon → Save KML or Analyze'}
             </div>
           )}
         </div>
@@ -533,7 +977,7 @@ export default function TowerSuitabilityWorkspace() {
             <div className="flex items-stretch gap-2">
               <div className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-950/50 px-3.5 py-3">
                 <p className="text-xs uppercase tracking-wider text-slate-500 font-bold">
-                  Analysis report
+                  Site suitability · live open data
                 </p>
                 <p className="text-base font-semibold text-white truncate mt-1">{siteLabel}</p>
                 <p className="text-sm text-slate-400 font-mono mt-1">
@@ -541,12 +985,12 @@ export default function TowerSuitabilityWorkspace() {
                 </p>
                 {result?.fetchedAt && (
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400/90 mt-1.5">
-                    Live data · {new Date(result.fetchedAt).toLocaleTimeString()}
+                    Live fetch · {new Date(result.fetchedAt).toLocaleTimeString()} · not a govt certificate
                   </p>
                 )}
                 {lineTowerPlan && (
                   <p className="text-xs font-black text-amber-200 mt-2">
-                    {lineTowerPlan.towerCount} towers · {voltageLabel(lineTowerPlan.voltageKv)} ·{' '}
+                    Planning ref · {lineTowerPlan.towerCount} towers · {voltageLabel(lineTowerPlan.voltageKv)} ·{' '}
                     {lineTowerPlan.spanM} m
                   </p>
                 )}
@@ -554,42 +998,150 @@ export default function TowerSuitabilityWorkspace() {
 
               {decision && result ? (
                 <div
-                  className="shrink-0 w-[132px] rounded-xl border px-3 py-3 flex flex-col justify-center text-right"
+                  className="shrink-0 w-[148px] rounded-xl border px-3 py-3 flex flex-col justify-center text-right"
                   style={{
-                    color: decision.color,
-                    background: decision.bg,
-                    borderColor: decision.border,
+                    color:
+                      result.signals.nearbyPower?.powerNetworkVerdict === 'unknown'
+                        ? '#fbbf24'
+                        : result.signals.nearbyPower?.powerNetworkVerdict === 'no'
+                          ? '#f87171'
+                          : decision.color,
+                    background:
+                      result.signals.nearbyPower?.powerNetworkVerdict === 'unknown'
+                        ? 'rgba(251,191,36,0.14)'
+                        : result.signals.nearbyPower?.powerNetworkVerdict === 'no'
+                          ? 'rgba(248,113,113,0.14)'
+                          : decision.bg,
+                    borderColor:
+                      result.signals.nearbyPower?.powerNetworkVerdict === 'unknown'
+                        ? 'rgba(251,191,36,0.5)'
+                        : result.signals.nearbyPower?.powerNetworkVerdict === 'no'
+                          ? 'rgba(248,113,113,0.5)'
+                          : decision.border,
                   }}
                 >
                   <div className="flex items-center justify-end gap-1.5">
-                    {decision.label === 'Accepted' ? (
-                      <CheckCircle2 className="w-4 h-4" />
-                    ) : decision.label === 'Rejected' ? (
-                      <XCircle className="w-4 h-4" />
-                    ) : null}
-                    <span className="text-sm font-black tracking-wide">{decision.label}</span>
+                    {result.signals.nearbyPower?.powerNetworkVerdict === 'unknown' ? (
+                      <span className="text-[11px] font-black tracking-wide leading-tight">
+                        UNKNOWN — DATA UNAVAILABLE
+                      </span>
+                    ) : result.signals.nearbyPower?.powerNetworkVerdict === 'no' ? (
+                      <>
+                        <XCircle className="w-4 h-4" />
+                        <span className="text-sm font-black tracking-wide">NO — NOT SUITABLE</span>
+                      </>
+                    ) : result.signals.nearbyPower?.powerNetworkVerdict === 'yes' ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span className="text-sm font-black tracking-wide">YES — SUITABLE</span>
+                      </>
+                    ) : (
+                      <>
+                        {decision.label === 'Accepted' ? (
+                          <CheckCircle2 className="w-4 h-4" />
+                        ) : decision.label === 'Rejected' ? (
+                          <XCircle className="w-4 h-4" />
+                        ) : null}
+                        <span className="text-sm font-black tracking-wide">{decision.label}</span>
+                      </>
+                    )}
                   </div>
                   <p className="text-3xl font-black tabular-nums text-white mt-1.5 leading-none">
                     {result.finalScore.toFixed(1)}
                     <span className="text-sm text-slate-400 font-bold"> / 10</span>
                   </p>
+                  {result.signals.nearbyPower?.suggestedVoltageKv != null && (
+                    <p className="text-[11px] font-bold text-slate-300 mt-1.5 text-right">
+                      {result.signals.nearbyPower.suggestedVoltageKv} kV
+                    </p>
+                  )}
+                  {result.signals.nearbyPower?.estimatedPracticalConnectionDistanceKm != null && (
+                    <p className="text-[10px] text-slate-400 mt-0.5 text-right">
+                      ~
+                      {result.signals.nearbyPower.estimatedPracticalConnectionDistanceKm < 1
+                        ? `${Math.round(
+                            result.signals.nearbyPower.estimatedPracticalConnectionDistanceKm * 1000
+                          )} m`
+                        : `${result.signals.nearbyPower.estimatedPracticalConnectionDistanceKm.toFixed(1)} km`}{' '}
+                      connection
+                    </p>
+                  )}
                 </div>
               ) : analyzing ? (
-                <div className="shrink-0 w-[132px] rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-3 text-sm text-cyan-200 font-semibold flex items-center justify-center text-center">
+                <div className="shrink-0 w-[148px] rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-3 text-sm text-cyan-200 font-semibold flex items-center justify-center text-center">
                   Calculating…
                 </div>
               ) : (
-                <div className="shrink-0 w-[132px] rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-3 text-sm text-slate-500 flex items-center justify-center text-center">
+                <div className="shrink-0 w-[148px] rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-3 text-sm text-slate-500 flex items-center justify-center text-center">
                   No result yet
                 </div>
               )}
             </div>
 
+            <LiveDataProvenancePanel signals={result?.signals ?? null} hasTowerPlan={!!lineTowerPlan} />
+
+            {result?.signals.nearbyPower && (
+              <PowerNetworkAnalysisPanel supply={result.signals.nearbyPower} result={result} />
+            )}
+
+            {corridorAdvice && <CorridorPlacementPanel advice={corridorAdvice} />}
+
             {lineTowerPlan && (
               <div className="rounded-xl border-2 border-amber-400 bg-amber-500/15 px-3.5 py-3">
                 <p className="text-xs uppercase tracking-wider text-amber-100 font-black">
-                  Towers · voltage · span
+                  Tower planning · CEA / utility reference (not live satellite)
                 </p>
+                <p className="text-[10px] text-amber-200/80 mt-1 leading-snug">
+                  {voltageSourceLabel(lineTowerPlan.voltageSource)}
+                </p>
+                <label className="mt-2 block text-[10px] font-bold uppercase text-slate-400">
+                  Voltage class
+                  <select
+                    value={manualVoltageKv ?? lineTowerPlan.voltageKv ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value ? Number(e.target.value) : null
+                      setManualVoltageKv(v)
+                    }}
+                    className="mt-1 w-full h-10 rounded-lg border border-amber-400/50 bg-slate-950 px-2.5 text-sm font-black text-amber-100"
+                  >
+                    <option value="">Select kV…</option>
+                    {VOLTAGE_OPTIONS_KV.map((kv) => {
+                      const std = standardForVoltageKv(kv)
+                      return (
+                        <option key={kv} value={kv}>
+                          {kv} kV · {std?.minSpanM}–{std?.maxSpanM} m (ruling {std?.rulingSpanM} m)
+                        </option>
+                      )
+                    })}
+                  </select>
+                </label>
+                <p className="mt-2 text-[10px] font-bold uppercase text-slate-400">Span policy</p>
+                <div className="mt-1 grid grid-cols-3 gap-1.5">
+                  {(
+                    [
+                      { id: 'dense' as const, label: 'Dense', tip: 'min span · more towers' },
+                      { id: 'ruling' as const, label: 'Ruling', tip: 'typical planning' },
+                      { id: 'long' as const, label: 'Long', tip: 'max span · fewer towers' },
+                    ] as const
+                  ).map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      title={p.tip}
+                      onClick={() => setSpanPolicy(p.id)}
+                      className={`h-9 rounded-lg text-[11px] font-black border ${
+                        spanPolicy === p.id
+                          ? 'bg-amber-400 text-slate-950 border-amber-200'
+                          : 'bg-slate-950 text-slate-300 border-slate-600 hover:border-amber-400/40'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2">
+                  <SearchRadiusPicker value={searchRadiusKm} onChange={setSearchRadiusKm} />
+                </div>
                 <div className="mt-2 grid grid-cols-3 gap-2 text-center">
                   <div>
                     <p className="text-[10px] text-slate-400 font-bold uppercase">Towers</p>
@@ -606,16 +1158,32 @@ export default function TowerSuitabilityWorkspace() {
                     <p className="text-base font-black text-white mt-1 tabular-nums">{lineTowerPlan.spanM} m</p>
                   </div>
                 </div>
+                {towerBand && voltageStandard && (
+                  <div className="mt-2 rounded-lg border border-slate-700/80 bg-slate-950/60 px-2.5 py-2 text-[11px] text-slate-300 leading-snug">
+                    <p className="font-bold text-amber-100/90">{voltageStandard.label} planning band</p>
+                    <p className="mt-0.5">
+                      Towers if dense / ruling / long: <span className="text-white font-black">{towerBand.dense}</span> /{' '}
+                      <span className="text-white font-black">{towerBand.ruling}</span> /{' '}
+                      <span className="text-white font-black">{towerBand.long}</span>
+                    </p>
+                    <p className="mt-0.5 text-slate-400">
+                      Span {voltageStandard.minSpanM}–{voltageStandard.maxSpanM} m · indicative ROW ~
+                      {voltageStandard.rowWidthM} m
+                    </p>
+                    <p className="mt-1 text-slate-500">{voltageStandard.note}</p>
+                  </div>
+                )}
                 <p className="text-[11px] text-slate-300 mt-2 leading-snug">
-                  {lineTowerPlan.lengthKm.toFixed(2)} km corridor. Orange dots on the map are T1…T
-                  {lineTowerPlan.towerCount}.
-                  {lineTowerPlan.voltageSource === 'tams'
-                    ? ' Voltage from nearby TAMS grid.'
-                    : lineTowerPlan.voltageSource === 'osm'
-                      ? ' Voltage from nearby OSM power line.'
-                      : lineTowerPlan.voltageSource === 'kml'
-                        ? ' Voltage read from KML / file name.'
-                        : ' Voltage not in this KML — 350 m default span.'}
+                  {towerPredictionNote(
+                    lineTowerPlan.lengthKm,
+                    lineTowerPlan.spanM,
+                    lineTowerPlan.towerCount,
+                    voltageStandard
+                  )}
+                </p>
+                <p className="text-[10px] text-slate-500 mt-1.5 leading-snug">
+                  Screening estimate only — final design needs sag-tension, wind zone, IS 5613 / CEA
+                  clearances &amp; utility approval. Not a legal certificate.
                 </p>
               </div>
             )}
@@ -671,9 +1239,9 @@ export default function TowerSuitabilityWorkspace() {
           <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4">
             {!result && !analyzing && (
               <p className="text-sm text-slate-400 leading-relaxed">
-                Upload a KML (points, lines, or polygons). Max size {KML_MAX_SIZE_LABEL_MB} MB.
-                Outlines appear on the map, then the full score report with Accepted / Rejected
-                shows here.
+                Suitability score = live DEM, OSM, wind, roads at your coordinates. Tower count/voltage =
+                CEA planning reference on your drawn geometry — not auto-read from satellite pixels. Upload
+                from the start screen only.
               </p>
             )}
 
@@ -756,6 +1324,8 @@ export default function TowerSuitabilityWorkspace() {
           </div>
         </aside>
       </div>
+      </>
+      )}
     </div>
   )
 }
