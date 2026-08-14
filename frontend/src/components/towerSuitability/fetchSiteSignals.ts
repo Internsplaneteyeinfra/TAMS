@@ -430,8 +430,8 @@ export async function collectSiteSignals(
         (buildingKm != null && !usedFallback.settlement),
       grid:
         nearbyPower.assets.length > 0 ||
-        tamsTowerKm != null ||
-        ((powerLive.live && !usedFallback.grid) || (osmPowerKm != null && !usedFallback.grid)),
+        nearbyTowerKm != null ||
+        (osmPowerKm != null && !usedFallback.grid),
       wind: windMs != null,
       landcover: land !== 'unknown',
     },
