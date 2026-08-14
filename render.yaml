@@ -1,11 +1,9 @@
 # Render Blueprint — TAMS Frontend (Next.js Web Service)
 # Repo: https://github.com/vishalbhor-45/TAMS
-# Backend (Railway): https://github.com/planeteyeai/TAMS-Backend
+# Backend (Railway): https://tams-backend.up.railway.app
 #
 # IMPORTANT: This must be a Web Service (Node), NOT a Static Site.
-# Static Site looks for "Publish directory dist" and will fail with:
-#   ==> Publish directory dist does not exist!
-# Next.js uses `.next` + `npm start` (no dist folder).
+# Next.js here uses SSR + /api routes, so a Static Site returns 404 on every path.
 #
 # Dashboard settings if not using this blueprint:
 #   Type: Web Service
@@ -14,10 +12,8 @@
 #   Start Command: npm start
 #   Publish Directory: (leave EMPTY / not used)
 #
-# Env vars:
-#   BACKEND_URL = https://<your-service>.up.railway.app
-#   NEXT_PUBLIC_HOSTED_API_BASE_URL = https://<your-service>.up.railway.app/api/v1
-# CORS on Railway must include: https://tams-1-tgkn.onrender.com
+# CORS on Railway must allow: https://tams-txmr.onrender.com
+# (*.onrender.com already matches the backend CORS regex.)
 
 services:
   - type: web
@@ -28,10 +24,10 @@ services:
     buildCommand: npm install && npm run build
     startCommand: npm start
     # Free-tier tip: if deploy succeeds but site 502s, open Logs → look for
-    # "Ready in" / crash / "Error: listen". Env required: BACKEND_URL (Railway API).
+    # "Ready in" / crash / "Error: listen".
     envVars:
       - key: NODE_VERSION
-        value: "18.20.4"
+        value: "20.18.0"
       - key: NODE_ENV
         value: production
       - key: NEXT_PUBLIC_API_BASE_URL
@@ -41,6 +37,8 @@ services:
       - key: NEXT_PUBLIC_IMAGERY_TILE_URL
         value: https://mt1.google.com/vt/lyrs=s
       - key: BACKEND_URL
-        sync: false
+        value: https://tams-backend.up.railway.app
       - key: NEXT_PUBLIC_HOSTED_API_BASE_URL
-        sync: false
+        value: https://tams-backend.up.railway.app/api/v1
+      - key: NEXT_PUBLIC_APP_URL
+        value: https://tams-txmr.onrender.com
