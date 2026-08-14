@@ -8,8 +8,8 @@ const haversineKm = (lat1: number, lon1: number, lat2: number, lon2: number) => 
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) ** 2
   return 2 * R * Math.asin(Math.sqrt(a))
 }
 
@@ -319,24 +319,24 @@ export async function collectSiteSignals(
   // Do NOT call TAMS towers here — findNearbyPowerSupply does that once.
   // Parallel TAMS bbox scans pile up and cause 120s proxy 502s.
   const [elevations, windMs, roadKm, waterLive, settleLive, land] = await Promise.all([
-      fetchElevations(grid),
-      fetchWind(lat, lon),
-      nearestRoadOsrm(lat, lon),
-      liveOsmDistanceKm(lat, lon, 8000, [
-        'way["natural"="water"]',
-        'relation["natural"="water"]',
-        'way["waterway"]',
-        'way["landuse"="reservoir"]',
-        'way["landuse"="basin"]',
-        'way["water"]',
-      ]),
-      liveOsmDistanceKm(lat, lon, 4000, [
-        'way["building"]',
-        'node["place"~"city|town|village|hamlet|suburb"]',
-        'way["landuse"="residential"]',
-      ]),
-      landCoverLive(lat, lon),
-    ])
+    fetchElevations(grid),
+    fetchWind(lat, lon),
+    nearestRoadOsrm(lat, lon),
+    liveOsmDistanceKm(lat, lon, 8000, [
+      'way["natural"="water"]',
+      'relation["natural"="water"]',
+      'way["waterway"]',
+      'way["landuse"="reservoir"]',
+      'way["landuse"="basin"]',
+      'way["water"]',
+    ]),
+    liveOsmDistanceKm(lat, lon, 4000, [
+      'way["building"]',
+      'node["place"~"city|town|village|hamlet|suburb"]',
+      'way["landuse"="residential"]',
+    ]),
+    landCoverLive(lat, lon),
+  ])
 
   onProgress?.('Merging live grid + OSM power assets…', 78)
 
@@ -430,8 +430,8 @@ export async function collectSiteSignals(
         (buildingKm != null && !usedFallback.settlement),
       grid:
         nearbyPower.assets.length > 0 ||
-        tamsTowerKm != null ||
-        ((powerLive.live && !usedFallback.grid) || (osmPowerKm != null && !usedFallback.grid)),
+        nearbyTowerKm != null ||
+        (osmPowerKm != null && !usedFallback.grid),
       wind: windMs != null,
       landcover: land !== 'unknown',
     },

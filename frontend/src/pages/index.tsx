@@ -1,96 +1,280 @@
 /**
- * TAMS entry landing — pick Tower Suitability, Analyzer, or Performance.
+ * TAMS entry landing — 3D transmission network intro (towers → lines →
+ * transformer → energy → scan) → centered module cards over the live network.
  */
 
-import React, { useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import Head from 'next/head'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 import { Activity, ArrowLeft, MapPinned, RadioTower, X } from 'lucide-react'
+import type { LandingModuleId, NetworkMode } from '@/components/TransmissionNetwork'
+
+const TransmissionNetwork = dynamic(() => import('@/components/TransmissionNetwork'), {
+  ssr: false,
+  // Feedback while the 3D chunk itself downloads/evaluates
+  loading: () => (
+    <div className="pointer-events-none absolute inset-0 z-0" aria-hidden>
+      <p className="absolute left-1/2 top-[10%] -translate-x-1/2 text-[10px] font-bold tracking-[0.3em] text-cyan-400/70">
+        INITIALIZING NETWORK...
+      </p>
+    </div>
+  ),
+})
+
+const INTRO_SEEN_KEY = 'tamsIntroSeen'
 
 const MODULES = [
   {
-    id: 'suitability',
+    id: 'suitability' as const,
     title: 'Tower Suitability',
     subtitle: 'Upload KML · score site fit',
     href: '/tower-suitability',
     icon: MapPinned,
-    accent: 'from-cyan-500/20 to-blue-600/10 border-cyan-400/40 hover:border-cyan-300',
+    accent:
+      'from-cyan-400/[0.17] to-transparent border-cyan-300/30 hover:border-cyan-300/65 hover:shadow-[0_22px_48px_-20px_rgba(34,211,238,0.35)]',
     iconClass: 'text-cyan-300',
   },
   {
-    id: 'analyzer',
+    id: 'analyzer' as const,
     title: 'Tower Analyzer',
     subtitle: 'TAMS Grid Command',
     href: '/analyzer',
     icon: RadioTower,
-    accent: 'from-emerald-500/20 to-teal-600/10 border-emerald-400/40 hover:border-emerald-300',
+    accent:
+      'from-emerald-400/[0.16] to-transparent border-emerald-300/30 hover:border-emerald-300/65 hover:shadow-[0_22px_48px_-20px_rgba(52,211,153,0.32)]',
     iconClass: 'text-emerald-300',
   },
   {
-    id: 'performance',
+    id: 'performance' as const,
     title: 'Tower Performance',
     subtitle: 'Coming soon',
     href: null as string | null,
     icon: Activity,
-    accent: 'from-amber-500/20 to-orange-600/10 border-amber-400/40 hover:border-amber-300',
+    accent:
+      'from-amber-400/[0.15] to-transparent border-amber-300/30 hover:border-amber-300/65 hover:shadow-[0_22px_48px_-20px_rgba(251,191,36,0.28)]',
     iconClass: 'text-amber-300',
   },
-] as const
+]
+
+/** Module-click transition: network reacts and the camera pushes in, then route. */
+const DEPART_MS = 420
 
 export default function LandingPage() {
   const router = useRouter()
   const [performanceOpen, setPerformanceOpen] = useState(false)
+  const [activeModule, setActiveModule] = useState<LandingModuleId | null>(null)
+  const [departing, setDeparting] = useState(false)
+
+  // Intro flow: mode decided on mount → network builds → 'initialized' reveals cards
+  const [mode, setMode] = useState<NetworkMode | null>(null)
+  const [revealed, setRevealed] = useState(false)
+  const [skipRequested, setSkipRequested] = useState(false)
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    // ?intro=1 forces a full replay of the network build-up (demo / preview)
+    const forceIntro = new URLSearchParams(window.location.search).get('intro') === '1'
+    let introSeen = false
+    try {
+      introSeen = window.localStorage.getItem(INTRO_SEEN_KEY) === '1'
+    } catch {
+      introSeen = true
+    }
+
+    if (reducedMotion) setMode('instant')
+    else if (forceIntro) setMode('full')
+    else if (introSeen) setMode('fast')
+    else setMode('full')
+  }, [])
+
+  const handleInitialized = useCallback(() => {
+    try {
+      window.localStorage.setItem(INTRO_SEEN_KEY, '1')
+    } catch {
+      /* storage unavailable — intro will replay next visit */
+    }
+    setRevealed(true)
+  }, [])
+
+  const handleSkip = useCallback(() => setSkipRequested(true), [])
+
+  /**
+   * Hold the selected module highlighted while the camera pushes into the
+   * network, then navigate. Kept short so it never feels like a delay.
+   */
+  const handleSelect = useCallback(
+    (id: LandingModuleId, href: string | null) => {
+      if (departing) return
+      setActiveModule(id)
+      if (!href) {
+        setPerformanceOpen(true)
+        return
+      }
+      setDeparting(true)
+      window.setTimeout(() => void router.push(href), DEPART_MS)
+    },
+    [departing, router]
+  )
+
+  // Clear stagger delays once the reveal finishes so hover transitions stay instant
+  const [settled, setSettled] = useState(false)
+  useEffect(() => {
+    if (!revealed) return
+    const t = window.setTimeout(() => setSettled(true), 1400)
+    return () => window.clearTimeout(t)
+  }, [revealed])
+
+  const revealClass = () =>
+    `${settled ? 'transition-all' : 'transition-all duration-700 ease-out'} ${revealed ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0 pointer-events-none'
+    }`
+
+  const revealDelay = (delayMs: number): React.CSSProperties =>
+    settled ? {} : { transitionDelay: `${delayMs}ms` }
+
+  // Cards: fade + rise from below (24px), scale 0.98 → 1, staggered 0 / 100 / 200 ms
+  const cardClass = () =>
+    settled
+      ? 'transition-all duration-300 ease-out opacity-100 translate-y-0 scale-100'
+      : `transition-all duration-[650ms] ease-out ${revealed
+        ? 'opacity-100 translate-y-0 scale-100'
+        : 'pointer-events-none opacity-0 translate-y-6 scale-[0.98]'
+      }`
+
+  const cardDelay = (idx: number): React.CSSProperties =>
+    settled ? {} : { transitionDelay: `${200 + idx * 100}ms` }
 
   return (
     <>
       <Head>
         <title>TAMS · Choose module</title>
       </Head>
-      <div className="min-h-full flex flex-col bg-[#060B17] text-slate-200 relative overflow-hidden">
+      <div className="min-h-full flex flex-col text-slate-200 relative overflow-hidden bg-[#07111D]">
+        {/* Layer 1 — deep-navy atmospheric base */}
         <div
-          className="pointer-events-none absolute inset-0 opacity-60"
+          className="pointer-events-none absolute inset-0"
           style={{
             background:
-              'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(34,211,238,0.12), transparent), radial-gradient(ellipse 60% 40% at 80% 80%, rgba(16,185,129,0.08), transparent)',
+              'radial-gradient(circle at 50% 42%, rgba(0,110,150,0.10) 0%, rgba(0,60,100,0.05) 30%, transparent 60%), linear-gradient(180deg, #081522 0%, #07111D 45%, #050D17 100%)',
           }}
         />
 
-        <header className="relative z-10 shrink-0 h-14 flex items-center px-6 border-b border-white/5">
+        {/* Layer 2 — atmospheric glow behind the network (reaches into the upper sky) */}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(ellipse 62% 50% at 50% 28%, rgba(46,150,190,0.11), transparent 74%), radial-gradient(ellipse 42% 34% at 74% 46%, rgba(34,211,238,0.05), transparent 70%)',
+          }}
+        />
+
+        {/* Layer 2 — engineering grid (fine + coarse) */}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage:
+              'linear-gradient(rgba(90,150,180,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(90,150,180,0.03) 1px, transparent 1px), linear-gradient(rgba(90,150,180,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(90,150,180,0.045) 1px, transparent 1px)',
+            backgroundSize: '48px 48px, 48px 48px, 240px 240px, 240px 240px',
+            // Fades out behind the centered heading/cards so the grid never competes with text
+            maskImage:
+              'radial-gradient(ellipse 75% 65% at 50% 42%, black 30%, transparent 100%), radial-gradient(ellipse 34% 30% at 50% 46%, transparent 30%, black 100%)',
+            WebkitMaskImage:
+              'radial-gradient(ellipse 75% 65% at 50% 42%, black 30%, transparent 100%), radial-gradient(ellipse 34% 30% at 50% 46%, transparent 30%, black 100%)',
+            maskComposite: 'intersect',
+            WebkitMaskComposite: 'source-in',
+          }}
+        />
+
+        {/* Vignette — corners recede gently; kept off the upper sky region */}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(ellipse 95% 92% at 50% 40%, transparent 58%, rgba(4,9,16,0.38) 100%)',
+          }}
+        />
+
+        {/* 3D transmission network — full-viewport ambient background */}
+        {mode && (
+          <TransmissionNetwork
+            activeModule={activeModule}
+            mode={mode}
+            skipRequested={skipRequested}
+            departing={departing}
+            onInitialized={handleInitialized}
+          />
+        )}
+
+        <header className="relative z-10 shrink-0 h-14 flex items-center px-6 border-b border-[#8fb3c9]/10 bg-[#081522]/40">
           <div>
-            <p className="text-[10px] font-black tracking-[0.2em] text-slate-500 uppercase">PlanetEye · TAMS</p>
-            <h1 className="text-sm font-black tracking-widest text-white">Transmission Asset Intelligence</h1>
+            <p className="text-[10px] font-bold tracking-[0.28em] text-[#7d94a8] uppercase">PlanetEye · TAMS</p>
+            <h1 className="text-sm font-black tracking-widest text-[#F4F7FA]">Transmission Asset Intelligence</h1>
           </div>
         </header>
 
-        <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 py-10">
-          <p className="text-xs font-bold uppercase tracking-[0.25em] text-slate-500 mb-3">Select a module</p>
-          <h2 className="text-2xl sm:text-3xl font-black text-white text-center mb-10 tracking-tight">
-            Where do you want to work?
-          </h2>
+        {/* Centered composition: the network sits behind, cards in the middle (lifted slightly) */}
+        {/* Content sits above the corridor silhouette: the heading lands in clear
+            sky and the cards cover the mid-span wires, leaving a quiet centre */}
+        <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 pt-6 pb-24 sm:pb-32">
+          <div className="relative w-full max-w-4xl flex flex-col items-center">
+            {/* Subtle glow connecting the card group with the network behind */}
+            <div
+              className="pointer-events-none absolute left-1/2 top-1/2 h-[130%] w-[110%] -translate-x-1/2 -translate-y-1/2"
+              style={{
+                background:
+                  'radial-gradient(ellipse 60% 55% at 50% 55%, rgba(46,170,210,0.06), transparent 75%)',
+              }}
+            />
+            <p
+              className={`text-[11px] font-bold uppercase tracking-[0.4em] text-[#7d94a8] mb-3 text-center drop-shadow-[0_1px_8px_rgba(5,13,23,0.9)] ${revealClass()}`}
+              style={revealDelay(80)}
+            >
+              Select a module
+            </p>
+            <h2
+              className={`text-2xl sm:text-3xl font-black text-[#F4F7FA] text-center mb-10 tracking-tight drop-shadow-[0_2px_14px_rgba(5,13,23,0.95)] ${revealClass()}`}
+              style={revealDelay(160)}
+            >
+              Where do you want to work?
+            </h2>
 
-          <div className="grid w-full max-w-4xl grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
-            {MODULES.map((mod) => {
-              const Icon = mod.icon
-              return (
-                <button
-                  key={mod.id}
-                  type="button"
-                  onClick={() => {
-                    if (mod.href) void router.push(mod.href)
-                    else setPerformanceOpen(true)
-                  }}
-                  className={`group flex flex-col items-center text-center rounded-2xl border bg-gradient-to-b ${mod.accent} bg-[#0e172a]/80 px-5 py-8 shadow-xl transition-all hover:-translate-y-0.5 hover:shadow-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60`}
-                >
-                  <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-slate-950/70">
-                    <Icon className={`h-7 w-7 ${mod.iconClass}`} />
-                  </span>
-                  <span className="text-lg font-black text-white tracking-tight">{mod.title}</span>
-                  <span className="mt-1.5 text-xs font-semibold text-slate-400">{mod.subtitle}</span>
-                </button>
-              )
-            })}
+            <div className="grid w-full grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 justify-items-center">
+              {MODULES.map((mod, idx) => {
+                const Icon = mod.icon
+                return (
+                  <button
+                    key={mod.id}
+                    type="button"
+                    onMouseEnter={() => !departing && setActiveModule(mod.id)}
+                    onMouseLeave={() => !departing && setActiveModule(null)}
+                    onFocus={() => !departing && setActiveModule(mod.id)}
+                    onBlur={() => !departing && setActiveModule(null)}
+                    onClick={() => handleSelect(mod.id, mod.href)}
+                    className={`group flex w-full flex-col items-center text-center rounded-2xl border bg-[#051423]/[0.78] bg-gradient-to-b ${mod.accent} px-5 py-8 shadow-[0_18px_40px_-18px_rgba(3,10,20,0.85),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-md hover:-translate-y-1 hover:scale-[1.015] hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${cardClass()}`}
+                    style={cardDelay(idx)}
+                  >
+                    <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-[#081522]/70">
+                      <Icon className={`h-7 w-7 ${mod.iconClass}`} />
+                    </span>
+                    <span className="text-lg font-black text-[#F4F7FA] tracking-tight">{mod.title}</span>
+                    <span className="mt-1.5 text-xs font-semibold text-slate-300/80">{mod.subtitle}</span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </main>
+
+        {/* Skip intro — visible while the network is still building */}
+        {!revealed && mode === 'full' && (
+          <button
+            type="button"
+            onClick={handleSkip}
+            className="fixed bottom-6 right-6 z-20 rounded-lg border border-white/10 bg-[#0e172a]/80 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400 backdrop-blur-sm transition-colors hover:border-cyan-400/40 hover:text-cyan-200"
+          >
+            Skip intro →
+          </button>
+        )}
 
         {performanceOpen && (
           <div

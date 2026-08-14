@@ -20,7 +20,15 @@ const config = {
   reactStrictMode: true,
   swcMinify: true,
   allowedDevOrigins: ['127.0.0.1', 'localhost', ...extraDevOrigins],
-  transpilePackages: ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
+  transpilePackages: [
+    '@mui/material',
+    '@mui/icons-material',
+    '@emotion/react',
+    '@emotion/styled',
+    'three',
+    '@react-three/fiber',
+    '@react-three/drei',
+  ],
   typescript: {
     tsconfigPath: './tsconfig.json',
   },
