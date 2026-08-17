@@ -18,7 +18,7 @@ import * as THREE from 'three'
 // Deep three imports keep drei/three-stdlib out of the chunk (same pattern
 // as the landing network scene).
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
+import { MeshoptDecoder } from 'meshoptimizer'
 import type { MutableRefObject } from 'react'
 
 const MODEL_PATH = '/models/transmission_tower.glb'
