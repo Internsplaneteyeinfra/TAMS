@@ -1,5 +1,4 @@
 import React, { useMemo } from 'react'
-import { Box, Card, CardContent, LinearProgress, Typography } from '@mui/material'
 import { useQuery } from '@tanstack/react-query'
 import {
   Bar,
@@ -12,6 +11,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { Box, Card, CardContent, LinearProgress, Typography } from '@/components/mui'
 import AppLayout from '@/components/layout/AppLayout'
 import { fetchApi } from '@/lib/api'
 

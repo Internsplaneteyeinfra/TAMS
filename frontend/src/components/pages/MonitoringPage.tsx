@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Box, Card, CardContent, Typography } from '@mui/material'
+import { Box, Card, CardContent, Typography } from '@/components/mui'
 import AppLayout from '@/components/layout/AppLayout'
 import MonitoringWorkflow from '@/components/MonitoringWorkflow'
 

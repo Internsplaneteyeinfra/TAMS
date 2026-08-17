@@ -31,8 +31,6 @@ const config = {
   ],
   typescript: {
     tsconfigPath: './tsconfig.json',
-    // three.js CSS renderer types explode MUI `sx` unions ("too complex to represent").
-    ignoreBuildErrors: true,
   },
   env: {
     NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1',

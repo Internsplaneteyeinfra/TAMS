@@ -1,4 +1,5 @@
 import React from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Box,
   Button,
@@ -11,8 +12,7 @@ import {
   TableHead,
   TableRow,
   Typography,
-} from '@mui/material'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+} from '@/components/mui'
 import AppLayout from '@/components/layout/AppLayout'
 import { fetchApi, acknowledgeAlarm, type Alert } from '@/lib/api'
 import { severityColor } from '@/theme/tamsTheme'

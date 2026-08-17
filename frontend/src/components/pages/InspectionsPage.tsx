@@ -1,4 +1,5 @@
 import React from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   Card,
   Chip,
@@ -9,8 +10,7 @@ import {
   TableHead,
   TableRow,
   Typography,
-} from '@mui/material'
-import { useQuery } from '@tanstack/react-query'
+} from '@/components/mui'
 import AppLayout from '@/components/layout/AppLayout'
 import { fetchApi } from '@/lib/api'
 

@@ -1,4 +1,6 @@
 import React, { useState } from 'react'
+import AddIcon from '@mui/icons-material/Add'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Box,
   Button,
@@ -16,9 +18,7 @@ import {
   TableRow,
   TextField,
   Typography,
-} from '@mui/material'
-import AddIcon from '@mui/icons-material/Add'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+} from '@/components/mui'
 import AppLayout from '@/components/layout/AppLayout'
 import { fetchApi, createAsset, type Asset } from '@/lib/api'
 
