@@ -17,7 +17,7 @@ import type { MapToolbarLayers } from '@/components/map/FloatingMapToolbar'
 import { DEFAULT_PLACE_ID, flattenPlaces } from '@/config/places'
 import { buildCorridorDirectionBrief } from '@/lib/corridorDirection'
 import type { Alert, Asset, RegionAssetStats } from '@/lib/api'
-import { computeRegionStats, filterAssetsByPlace } from '@/lib/placeFilter'
+import { computeRegionStats, filterAlertsByPlace, filterAssetsByPlace } from '@/lib/placeFilter'
 import type { MapStatusSnapshot } from '@/types/mapStatus'
 
 const GISMap = dynamic(() => import('@/components/GISMap'), {
@@ -296,6 +296,14 @@ export default function MapViewport({
     [layers.heatmap, layers.riskOverlay, layers.satellite, layers.terrain, layers.corridors]
   )
 
+  const resolvedCount = useMemo(
+    () =>
+      filterAlertsByPlace(alerts, assets, selectedPlaceId).filter((a) => {
+        const status = (a.status || '').toLowerCase()
+        return status === 'closed' || status === 'resolved'
+      }).length,
+    [alerts, assets, selectedPlaceId]
+  )
   const offlineTowers = regionStats.towers > 0 ? Math.min(2, regionStats.criticalAlerts) : 0
 
   return (
@@ -346,7 +354,7 @@ export default function MapViewport({
         onToggleLabels={() => setLabelsOn((v) => !v)}
         selectedPlaceId={selectedPlaceId}
         onSelectPlace={onSelectPlace}
-        resolvedToday={12}
+        resolvedToday={resolvedCount}
         offlineTowers={offlineTowers}
         collapsed={intelPanelCollapsed}
         onToggleCollapse={() => setIntelPanelCollapsed((v) => !v)}
@@ -437,6 +445,7 @@ export default function MapViewport({
           selectedAssetId={selectedAssetId}
           alertAssetIds={alertAssetIds}
           onSelectAsset={handleSelectAsset}
+          selectedPlaceId={selectedPlaceId}
           _activeLayers={activeLayers}
         />
       )}

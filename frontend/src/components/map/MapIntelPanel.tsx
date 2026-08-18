@@ -98,7 +98,7 @@ export default function MapIntelPanel({
   onToggleLabels,
   selectedPlaceId,
   onSelectPlace,
-  resolvedToday = 12,
+  resolvedToday = 0,
   offlineTowers = 0,
   collapsed = false,
   onToggleCollapse,

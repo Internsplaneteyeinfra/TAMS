@@ -100,28 +100,59 @@ export default function Home() {
   useCommandPaletteShortcut(() => setCommandPaletteOpen((open) => !open))
 
   const stateFilter = getStateFilterForPlace(selectedPlaceId)
+  const assetQueryKey = stateFilter ?? 'india'
 
-  const { data: assets = [], isLoading: assetsLoading, isFetching: assetsFetching, isError: assetsError, refetch: refetchAssets } = useQuery({
-    queryKey: ['assets', stateFilter ?? 'india'],
-    queryFn: ({ signal }) => {
-      // Larger page once state filter is strict — all rows belong to one state pack
-      const params = new URLSearchParams({ page_size: '8000' })
-      if (stateFilter) params.set('state', stateFilter)
-      return fetchApi<Asset[]>(`/assets?${params}`, { signal })
-    },
+  const fetchAssetsPage = (pageSize: number, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ page_size: String(pageSize) })
+    if (stateFilter) params.set('state', stateFilter)
+    return fetchApi<Asset[]>(`/assets?${params}`, { signal })
+  }
+
+  const {
+    data: assetsFast,
+    isLoading: assetsFastLoading,
+    isFetching: assetsFastFetching,
+    isError: assetsFastError,
+    refetch: refetchAssetsFast,
+  } = useQuery({
+    queryKey: ['assets', assetQueryKey, 'fast'],
+    queryFn: ({ signal }) => fetchAssetsPage(4000, signal),
     enabled: isClient,
-    // Do not keep previous state's assets on screen (caused Gujarat flash on Rajasthan)
     placeholderData: undefined,
     staleTime: 5 * 60 * 1000,
     retry: 2,
     retryDelay: (n) => Math.min(1200 * (n + 1), 4000),
-    // Keep trying after cold backend start until corridor data arrives
     refetchInterval: (query) => {
+      if (query.state.error) return false
       const data = query.state.data
       if (!data || data.length === 0) return 5000
       return false
     },
   })
+
+  const {
+    data: assetsFull,
+    isFetching: assetsFullFetching,
+    isError: assetsFullError,
+    refetch: refetchAssetsFull,
+  } = useQuery({
+    queryKey: ['assets', assetQueryKey, 'full'],
+    queryFn: ({ signal }) => fetchAssetsPage(8000, signal),
+    enabled: isClient && Boolean(assetsFast && assetsFast.length > 0),
+    placeholderData: undefined,
+    staleTime: 5 * 60 * 1000,
+    retry: 2,
+    retryDelay: (n) => Math.min(1200 * (n + 1), 4000),
+  })
+
+  const assets = assetsFull ?? assetsFast ?? []
+  const assetsLoading = assetsFastLoading && assets.length === 0
+  const assetsFetching = assetsFastFetching || assetsFullFetching
+  const assetsError = assets.length === 0 && (assetsFastError || assetsFullError)
+  const refetchAssets = () => {
+    void refetchAssetsFast()
+    if (assetsFast && assetsFast.length > 0) void refetchAssetsFull()
+  }
 
   const assetsReady = assets.length > 0
 
@@ -258,7 +289,32 @@ export default function Home() {
 
   const nearbyDockAssets = useMemo(() => {
     if (!selectedAsset) return []
-    return assets.filter((a) => a.id !== selectedAsset.id).slice(0, 5)
+    const originLat = selectedAsset.latitude
+    const originLon = selectedAsset.longitude
+    if (!Number.isFinite(originLat) || !Number.isFinite(originLon)) return []
+
+    const toRad = (deg: number) => (deg * Math.PI) / 180
+    const distanceKm = (lat: number, lon: number) => {
+      const dLat = toRad(lat - originLat)
+      const dLon = toRad(lon - originLon)
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(originLat)) * Math.cos(toRad(lat)) * Math.sin(dLon / 2) ** 2
+      return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    }
+
+    return assets
+      .filter(
+        (a) =>
+          a.id !== selectedAsset.id &&
+          Number.isFinite(a.latitude) &&
+          Number.isFinite(a.longitude)
+      )
+      .sort(
+        (a, b) =>
+          distanceKm(a.latitude, a.longitude) - distanceKm(b.latitude, b.longitude)
+      )
+      .slice(0, 5)
   }, [assets, selectedAsset])
 
   const assetDockOpen = Boolean(selectedAsset)

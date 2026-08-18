@@ -18,6 +18,7 @@ import {
 } from '@/config/towerTypeCatalog'
 import { CESIUM_EOX_SENTINEL_URL, CESIUM_GOOGLE_SATELLITE_URL, HIGH_ZOOM } from '@/lib/basemapTiles'
 import { withTowerNeOffset } from '@/lib/towerPosition'
+import { getPlaceById, getStateFilterForPlace, INDIA_MAP_BOUNDS } from '@/config/places'
 
 const HEALTH_CSS: Record<string, string> = {
   healthy: '#06a77d',
@@ -176,11 +177,13 @@ export default function GISMap3D({
   selectedAssetId,
   alertAssetIds = [],
   onSelectAsset,
+  selectedPlaceId,
 }: {
   assets: Asset[]
   selectedAssetId?: string | null
   alertAssetIds?: string[]
   onSelectAsset?: (id: string) => void
+  selectedPlaceId?: string
   _activeLayers?: {
     heatmap: boolean
     riskOverlay: boolean
@@ -341,15 +344,27 @@ export default function GISMap3D({
     return map
   }, [displayAssets])
 
+  const towerState = getStateFilterForPlace(selectedPlaceId || '')
+
+  const seedTowerQuery = useMemo(() => {
+    const place = selectedPlaceId ? getPlaceById(selectedPlaceId) : undefined
+    const bounds = place?.bounds ?? INDIA_MAP_BOUNDS
+    const [[south, west], [north, east]] = bounds
+    return {
+      bbox: `${west},${south},${east},${north}`,
+      state: towerState,
+    }
+  }, [selectedPlaceId, towerState])
+
   // Always load DB towers for the camera viewport and merge with any passed assets.
   // (Do not skip when assets already include a few towers — that hid most DB towers.)
   useEffect(() => {
     const viewer = viewerRef.current
     const Cesium = cesiumRef.current
     if (!viewer || !Cesium || mapStatus !== 'ready') {
-      // Initial seed until camera is ready
+      // Initial seed until camera is ready — selected place bounds, not Gujarat-only
       let cancelled = false
-      fetchGisTowers('72.0,21.5,73.2,23.5', 'Gujarat', 800)
+      fetchGisTowers(seedTowerQuery.bbox, seedTowerQuery.state, 800)
         .then((res) => {
           if (!cancelled) {
             setTowers(res.assets)
@@ -383,7 +398,7 @@ export default function GISMap3D({
 
       inFlight?.abort()
       inFlight = new AbortController()
-      fetchGisTowers(bbox, 'Gujarat', 5000, inFlight.signal)
+      fetchGisTowers(bbox, seedTowerQuery.state, 5000, inFlight.signal)
         .then((res) => {
           if (!cancelled) {
             setTowers(res.assets)
@@ -416,7 +431,7 @@ export default function GISMap3D({
         /* ignore */
       }
     }
-  }, [mapStatus])
+  }, [mapStatus, seedTowerQuery.bbox, seedTowerQuery.state])
 
   // After towers arrive, zoom into a tight corridor so ideal-sized structures are visible.
   useEffect(() => {
