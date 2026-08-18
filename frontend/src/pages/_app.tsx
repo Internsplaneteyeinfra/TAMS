@@ -12,8 +12,8 @@ export default function App({ Component, pageProps }: AppProps) {
     <QueryClientProvider client={queryClient}>
       <Provider store={store}>
         <Head>
-          <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-          <link rel="alternate icon" href="/favicon.ico" />
+          <link rel="icon" href="/favicon.png?v=2" type="image/png" />
+          <link rel="apple-touch-icon" href="/favicon.png?v=2" />
         </Head>
         <Component {...pageProps} />
       </Provider>
