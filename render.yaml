@@ -23,7 +23,7 @@ services:
     runtime: node
     rootDir: frontend
     plan: free
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
     # Free-tier tip: if deploy succeeds but site 502s, open Logs → look for
     # "Ready in" / crash / "Error: listen".
