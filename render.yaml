@@ -4,6 +4,8 @@
 #
 # IMPORTANT: This must be a Web Service (Node), NOT a Static Site.
 # Next.js here uses SSR + /api routes, so a Static Site returns 404 on every path.
+# Deploy branch: main. If the build log still mentions meshopt_decoder.module.js,
+# Render is building an old commit — use Manual Deploy → Clear build cache.
 #
 # Dashboard settings if not using this blueprint:
 #   Type: Web Service

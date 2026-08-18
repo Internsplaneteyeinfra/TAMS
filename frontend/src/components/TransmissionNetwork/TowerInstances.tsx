@@ -3,6 +3,7 @@ import { useFrame, useLoader } from '@react-three/fiber'
 // Loading straight from three keeps drei + three-stdlib out of the bundle,
 // which measurably speeds up first paint.
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+// Do not import MeshoptDecoder from three/examples — Next.js cannot bundle that file.
 import { MeshoptDecoder } from 'meshoptimizer'
 import * as THREE from 'three'
 import type { MutableRefObject } from 'react'
