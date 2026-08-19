@@ -427,3 +427,151 @@ body {
   border: none !important;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
 }
+
+/* =========================================================
+   Tower Site Suitability — Map Intelligence Workspace
+   ========================================================= */
+.ts-workspace {
+  --ts-page: #d9ded4;
+  --ts-surface: rgba(244, 242, 234, 0.88);
+  --ts-surface-strong: rgba(248, 247, 241, 0.96);
+  --ts-text: #263238;
+  --ts-muted: #66727a;
+  --ts-border: rgba(51, 65, 85, 0.16);
+  --ts-teal: #17879a;
+  --ts-teal-dark: #126b79;
+  --ts-green: #27856b;
+  --ts-green-soft: #dff0e8;
+  --ts-amber: #b97816;
+  --ts-amber-soft: #f6ead1;
+  --ts-red: #c75b50;
+  --ts-shadow:
+    0 12px 32px rgba(15, 23, 42, 0.12),
+    0 2px 8px rgba(15, 23, 42, 0.06);
+  background: var(--ts-page);
+  color: var(--ts-text);
+}
+
+.ts-glass {
+  background: var(--ts-surface);
+  backdrop-filter: blur(18px) saturate(135%);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  border: 1px solid var(--ts-border);
+  box-shadow: var(--ts-shadow);
+  border-radius: 14px;
+}
+
+.ts-glass-see {
+  background: rgba(244, 242, 234, 0.5);
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+}
+
+.ts-rail-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  width: 4.35rem;
+  min-height: 3.65rem;
+  padding: 0.45rem 0.25rem;
+  border-radius: 12px;
+  border: 1px solid var(--ts-border);
+  background: var(--ts-surface);
+  color: #263238;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  box-shadow: var(--ts-shadow);
+  transition: transform 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+.ts-rail-btn:hover {
+  transform: translateX(-4px) scale(1.02);
+}
+
+.ts-rail-btn:focus-visible,
+.ts-workspace button:focus-visible,
+.ts-workspace a:focus-visible,
+.ts-workspace input:focus-visible,
+.ts-workspace select:focus-visible {
+  outline: 2px solid var(--ts-teal);
+  outline-offset: 2px;
+}
+
+.ts-rail-btn-active {
+  background: var(--ts-surface-strong);
+  color: var(--ts-teal-dark);
+  border-color: rgba(23, 135, 154, 0.45);
+  box-shadow:
+    0 10px 22px rgba(23, 135, 154, 0.16),
+    0 2px 6px rgba(15, 23, 42, 0.08);
+}
+
+.ts-card-in {
+  animation: tsCardIn 220ms ease-out;
+}
+
+.ts-drawer-in {
+  animation: tsDrawerIn 220ms ease-out;
+}
+
+.ts-rail-in {
+  animation: tsRailIn 280ms ease-out;
+}
+
+@keyframes tsDrawerIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes tsCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tsRailIn {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 767px) {
+  .ts-drawer-in {
+    width: 100% !important;
+    max-height: min(62vh, calc(100vh - 8.5rem)) !important;
+    animation-name: tsCardIn;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ts-card-in,
+  .ts-drawer-in,
+  .ts-rail-in,
+  .ts-rail-btn {
+    animation: none !important;
+    transition: none !important;
+  }
+  .ts-rail-btn:hover {
+    transform: none;
+  }
+}

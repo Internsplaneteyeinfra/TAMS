@@ -40,9 +40,9 @@ function suitabilityForAsset(asset: NearbyPowerAsset): {
   dot: string
 } {
   const d = asset.distanceKm
-  if (d <= 2) return { label: 'High', color: 'text-emerald-400', dot: '🟢' }
-  if (d <= 8) return { label: 'Medium', color: 'text-amber-400', dot: '🟡' }
-  return { label: 'Low', color: 'text-red-400', dot: '🔴' }
+  if (d <= 2) return { label: 'High', color: 'text-[#126b79]', dot: '🟢' }
+  if (d <= 8) return { label: 'Medium', color: 'text-[#b97816]', dot: '🟡' }
+  return { label: 'Low', color: 'text-[#c75b50]', dot: '🔴' }
 }
 
 function distLabel(km: number): string {
@@ -59,26 +59,26 @@ function verdictMeta(v: PowerNetworkVerdict): {
   if (v === 'yes') {
     return {
       title: 'YES — SUITABLE',
-      border: 'border-emerald-500/60',
-      bg: 'bg-emerald-950/30',
-      text: 'text-emerald-300',
+      border: 'border-[#27856b]/50',
+      bg: 'bg-[#dff0e8]',
+      text: 'text-[#126b79]',
       Icon: CheckCircle2,
     }
   }
   if (v === 'no') {
     return {
       title: 'NO — NOT SUITABLE',
-      border: 'border-red-500/60',
-      bg: 'bg-red-950/30',
-      text: 'text-red-300',
+      border: 'border-[#c75b50]/50',
+      bg: 'bg-[#f8e4e1]',
+      text: 'text-[#c75b50]',
       Icon: XCircle,
     }
   }
   return {
     title: 'UNKNOWN — POWER DATA UNAVAILABLE',
-    border: 'border-amber-500/60',
-    bg: 'bg-amber-950/30',
-    text: 'text-amber-300',
+    border: 'border-[#b97816]/50',
+    bg: 'bg-[#f6ead1]',
+    text: 'text-[#b97816]',
     Icon: HelpCircle,
   }
 }
@@ -118,9 +118,9 @@ function WhyChecklist({ result, supply }: WhyChecklistProps) {
             <div key={f.id} className="flex items-start gap-2 text-sm">
               <span className="shrink-0 mt-0.5">{dot}</span>
               <div className="min-w-0">
-                <span className="font-semibold text-slate-200">{f.label}</span>
-                <span className="text-slate-400 ml-1.5 text-xs">({f.score.toFixed(1)}/10)</span>
-                <p className="text-xs text-slate-400 leading-snug mt-0.5">{f.note}</p>
+                <span className="font-semibold text-[#263238]">{f.label}</span>
+                <span className="text-[#263238] ml-1.5 text-xs">({f.score.toFixed(1)}/10)</span>
+                <p className="text-xs text-[#263238] leading-snug mt-0.5">{f.note}</p>
               </div>
             </div>
           )
@@ -153,10 +153,10 @@ export default function PowerNetworkAnalysisPanel({ supply, result }: PowerNetwo
 
   const routeDifficultyColor =
     supply.routeDifficulty === 'low'
-      ? 'text-emerald-400'
+      ? 'text-[#126b79]'
       : supply.routeDifficulty === 'moderate'
-        ? 'text-amber-400'
-        : 'text-red-400'
+        ? 'text-[#b97816]'
+        : 'text-[#c75b50]'
 
   const powerNetworkScore = supply.dataAvailable
     ? result.factors
@@ -186,69 +186,67 @@ export default function PowerNetworkAnalysisPanel({ supply, result }: PowerNetwo
   const directKm = supply.directDistanceKm ?? supply.nearest?.distanceKm ?? null
 
   return (
-    <div className="rounded-xl border border-blue-500/30 bg-blue-950/20 overflow-hidden">
+    <div className="rounded-xl border border-[rgba(51,65,85,0.16)] bg-[rgba(248,247,241,0.96)] overflow-hidden text-[#263238]">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2 px-3.5 py-3 hover:bg-blue-950/30 transition-colors"
+        className="w-full flex items-center gap-2 px-3.5 py-3 hover:bg-white/60 transition-colors"
       >
-        <Zap className="w-4 h-4 text-blue-300 shrink-0" />
-        <span className="flex-1 text-left text-sm font-black text-blue-100 uppercase tracking-wide">
+        <Zap className="w-4 h-4 text-[#17879a] shrink-0" />
+        <span className="flex-1 text-left text-sm font-black text-[#263238] uppercase tracking-wide">
           Power Network Analysis
         </span>
         {supply.nearest && supply.dataAvailable && (
-          <span className="text-xs font-bold text-blue-300 tabular-nums">
+          <span className="text-xs font-bold text-[#263238] tabular-nums">
             {distLabel(supply.nearest.distanceKm)}
           </span>
         )}
         {open ? (
-          <ChevronUp className="w-4 h-4 text-blue-400 shrink-0" />
+          <ChevronUp className="w-4 h-4 text-[#263238] shrink-0" />
         ) : (
-          <ChevronDown className="w-4 h-4 text-blue-400 shrink-0" />
+          <ChevronDown className="w-4 h-4 text-[#263238] shrink-0" />
         )}
       </button>
 
       {open && (
-        <div className="px-3.5 pb-3.5 space-y-3 border-t border-blue-500/20">
-          {/* Verdict */}
+        <div className="px-3.5 pb-3.5 space-y-3 border-t border-[rgba(51,65,85,0.12)]">
           <div className={`mt-3 rounded-xl border-2 px-4 py-3 ${meta.border} ${meta.bg}`}>
             <div className="flex items-center gap-2">
               <Icon className={`w-5 h-5 shrink-0 ${meta.text}`} />
               <p className={`text-base font-black tracking-wide ${meta.text}`}>{meta.title}</p>
             </div>
             {verdict === 'unknown' && (
-              <p className="text-sm text-slate-300 mt-1.5 leading-snug">
-                API / open-data failure is <span className="font-bold text-white">not</span> an
+              <p className="text-sm text-[#263238] mt-1.5 leading-snug">
+                API / open-data failure is <span className="font-bold">not</span> an
                 engineering rejection. Re-analyze when TAMS GIS or OSM responds.
               </p>
             )}
             {verdict !== 'unknown' && supply.suggestedVoltageKv != null && (
-              <p className="text-sm text-slate-300 mt-1.5">
+              <p className="text-sm text-[#263238] mt-1.5">
                 Recommended connection:{' '}
-                <span className="font-bold text-white">{supply.suggestedVoltageKv} kV network</span>
-                <span className="text-slate-400">
+                <span className="font-bold">{supply.suggestedVoltageKv} kV network</span>
+                <span>
                   {' '}
                   · {supply.recommendedVoltageSource} · {supply.recommendedVoltageConfidence} confidence
                 </span>
               </p>
             )}
             {verdict !== 'unknown' && practicalKm != null && (
-              <p className="text-sm text-slate-300 mt-0.5">
+              <p className="text-sm text-[#263238] mt-0.5">
                 Estimated practical connection:{' '}
-                <span className="font-bold text-white">~{distLabel(practicalKm)}</span>
-                <span className="text-slate-500"> (screening: direct × 1.2)</span>
+                <span className="font-bold">~{distLabel(practicalKm)}</span>
+                <span> (screening: direct × 1.2)</span>
               </p>
             )}
-            <p className="text-xs text-slate-400 mt-1">
-              Site score: <span className="font-bold text-white">{result.finalScore.toFixed(1)}/10</span>
+            <p className="text-xs text-[#263238] mt-1">
+              Site score: <span className="font-bold">{result.finalScore.toFixed(1)}/10</span>
               {' · '}
-              Confidence: <span className="font-bold text-white">~{confidence}%</span>
+              Confidence: <span className="font-bold">~{confidence}%</span>
             </p>
           </div>
 
-          {/* Diagnostics */}
           {supply.diagnostics && (
-            <p className="text-[10px] text-slate-500 font-mono leading-snug">
+            <p className="text-[10px] text-[#263238] font-mono leading-snug">
               Search {supply.diagnostics.searchRadiusKm} km · TAMS towers{' '}
               {supply.diagnostics.tamsTowerCount}
               {supply.diagnostics.tamsOk ? '' : ' (fail)'} · TAMS SS{' '}
@@ -260,15 +258,14 @@ export default function PowerNetworkAnalysisPanel({ supply, result }: PowerNetwo
             </p>
           )}
 
-          {/* Infrastructure table — existing only */}
           {tableAssets.length > 0 && (
             <div>
-              <p className="text-[10px] font-black uppercase tracking-wider text-blue-300 mb-1.5">
+              <p className="text-[10px] font-black uppercase tracking-wider text-[#263238] mb-1.5">
                 Existing power infrastructure (not planned T1…Tn)
               </p>
-              <div className="rounded-lg border border-slate-800 overflow-x-auto">
+              <div className="rounded-lg border border-[rgba(51,65,85,0.16)] overflow-x-auto bg-white/70">
                 <table className="w-full text-xs">
-                  <thead className="bg-slate-950 text-slate-400">
+                  <thead className="bg-white text-[#263238]">
                     <tr>
                       <th className="text-left px-2.5 py-2 font-bold">Infrastructure</th>
                       <th className="text-right px-2.5 py-2 font-bold">Distance</th>
@@ -280,17 +277,17 @@ export default function PowerNetworkAnalysisPanel({ supply, result }: PowerNetwo
                     {tableAssets.map((asset) => {
                       const suit = suitabilityForAsset(asset)
                       return (
-                        <tr key={asset.id} className="border-t border-slate-800/80">
-                          <td className="px-2.5 py-2 text-slate-200">
+                        <tr key={asset.id} className="border-t border-[rgba(51,65,85,0.12)]">
+                          <td className="px-2.5 py-2 text-[#263238]">
                             <div className="font-semibold truncate max-w-[120px]">{asset.name}</div>
-                            <div className="text-slate-500 text-[10px]">
+                            <div className="text-[10px]">
                               {kindLabel(asset.kind)} · {asset.source.toUpperCase()}
                             </div>
                           </td>
-                          <td className="px-2.5 py-2 text-right font-mono text-slate-300 tabular-nums">
+                          <td className="px-2.5 py-2 text-right font-mono text-[#263238] tabular-nums">
                             {distLabel(asset.distanceKm)}
                           </td>
-                          <td className="px-2.5 py-2 text-right text-slate-300">
+                          <td className="px-2.5 py-2 text-right text-[#263238]">
                             {asset.voltageKv != null ? `${asset.voltageKv} kV` : 'Unknown'}
                           </td>
                           <td className={`px-2.5 py-2 text-right font-bold ${suit.color}`}>
@@ -305,85 +302,82 @@ export default function PowerNetworkAnalysisPanel({ supply, result }: PowerNetwo
             </div>
           )}
 
-          {/* Connection card */}
           {supply.dataAvailable && supply.nearest && (
-            <div className="rounded-lg border border-slate-700 bg-slate-950/50 px-3 py-2.5 space-y-1.5">
-              <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">
+            <div className="rounded-lg border border-[rgba(51,65,85,0.16)] bg-white/80 px-3 py-2.5 space-y-1.5">
+              <p className="text-[10px] font-black uppercase tracking-wider text-[#263238] mb-2">
                 Proposed tower connection
               </p>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-                <span className="text-slate-400">Voltage</span>
-                <span className="font-bold text-white text-right">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-[#263238]">
+                <span>Voltage</span>
+                <span className="font-bold text-right">
                   {supply.suggestedVoltageKv != null
                     ? `${supply.suggestedVoltageKv} kV`
                     : 'Unknown'}
                 </span>
-                <span className="text-slate-400">Voltage source</span>
-                <span className="font-bold text-slate-300 text-right text-[10px]">
+                <span>Voltage source</span>
+                <span className="font-bold text-right text-[10px]">
                   {supply.recommendedVoltageSource}
                 </span>
                 {supply.nearestTower && (
                   <>
-                    <span className="text-slate-400">Nearest existing tower</span>
-                    <span className="font-bold text-white text-right truncate">
+                    <span>Nearest existing tower</span>
+                    <span className="font-bold text-right truncate">
                       {supply.nearestTower.name} · {distLabel(supply.nearestTower.distanceKm)}
                     </span>
                   </>
                 )}
                 {supply.nearestLine && (
                   <>
-                    <span className="text-slate-400">Nearest existing line</span>
-                    <span className="font-bold text-white text-right truncate">
+                    <span>Nearest existing line</span>
+                    <span className="font-bold text-right truncate">
                       {supply.nearestLine.name} · {distLabel(supply.nearestLine.distanceKm)}
                     </span>
                   </>
                 )}
                 {directKm != null && (
                   <>
-                    <span className="text-slate-400">Direct distance</span>
-                    <span className="font-bold text-white text-right">{distLabel(directKm)}</span>
+                    <span>Direct distance</span>
+                    <span className="font-bold text-right">{distLabel(directKm)}</span>
                   </>
                 )}
                 {practicalKm != null && (
                   <>
-                    <span className="text-slate-400">Practical route (×1.2)</span>
-                    <span className="font-bold text-white text-right">~{distLabel(practicalKm)}</span>
+                    <span>Practical route (×1.2)</span>
+                    <span className="font-bold text-right">~{distLabel(practicalKm)}</span>
                   </>
                 )}
-                <span className="text-slate-400">Route difficulty</span>
+                <span>Route difficulty</span>
                 <span className={`font-bold text-right capitalize ${routeDifficultyColor}`}>
                   {supply.routeDifficulty}
                 </span>
-                <span className="text-slate-400">Network score</span>
-                <span className="font-bold text-white text-right">
+                <span>Network score</span>
+                <span className="font-bold text-right">
                   {powerNetworkScore != null ? `${powerNetworkScore.toFixed(1)} / 10` : 'n/a'}
                 </span>
-                <span className="text-slate-400">Network capacity</span>
-                <span className="font-bold text-amber-300 text-right text-[10px]">
+                <span>Network capacity</span>
+                <span className="font-bold text-[#b97816] text-right text-[10px]">
                   Unknown — utility verification required
                 </span>
               </div>
             </div>
           )}
 
-          {/* Why */}
           <div>
-            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">Why?</p>
+            <p className="text-[10px] font-black uppercase tracking-wider text-[#263238] mb-2">Why?</p>
             <WhyChecklist result={result} supply={supply} />
           </div>
 
-          {/* Alternative — only when NO with real infrastructure */}
           {verdict === 'no' && supply.alternativeSiteHint && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-950/20 px-3 py-2.5">
+            <div className="rounded-lg border border-[#b97816]/40 bg-[#f6ead1] px-3 py-2.5">
               <div className="flex items-start gap-2">
-                <Navigation className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <Navigation className="w-4 h-4 text-[#b97816] shrink-0 mt-0.5" />
                 <div className="min-w-0">
-                  <p className="text-xs font-bold text-amber-200">
+                  <p className="text-xs font-bold text-[#263238]">
                     Alternative: Move ~{supply.alternativeSiteHint.distanceKm} km{' '}
                     {directionLabel(supply.alternativeSiteHint.directionDeg)} (
                     {supply.alternativeSiteHint.directionDeg}°)
                   </p>
-                  <p className="text-xs text-slate-400 mt-0.5 leading-snug">
+                  <p className="text-xs text-[#263238] mt-0.5 leading-snug">
                     {supply.alternativeSiteHint.reason}
                   </p>
                 </div>
@@ -392,15 +386,15 @@ export default function PowerNetworkAnalysisPanel({ supply, result }: PowerNetwo
           )}
 
           {supply.note && (
-            <p className="text-xs text-slate-400 leading-snug border-t border-slate-800 pt-2">
+            <p className="text-xs text-[#263238] leading-snug border-t border-[rgba(51,65,85,0.12)] pt-2">
               {supply.note}
             </p>
           )}
 
           {!supply.osmQueryOk && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-950/20 px-2.5 py-2">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-              <p className="text-[11px] text-amber-200 leading-snug">
+            <div className="flex items-start gap-2 rounded-lg border border-[#b97816]/30 bg-[#f6ead1] px-2.5 py-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-[#b97816] shrink-0 mt-0.5" />
+              <p className="text-[11px] text-[#263238] leading-snug">
                 OSM Overpass did not respond — pole/line data may be incomplete.
                 {supply.diagnostics?.tamsOk
                   ? ' TAMS GIS towers still used when available.'

@@ -14,6 +14,24 @@ import { verdictColor } from './scoring'
 
 export type DrawMode = 'pin' | 'line' | 'polygon' | 'point'
 
+/** Full country extent — empty planning view, no site pre-selected. */
+const INDIA_BOUNDS: L.LatLngBoundsExpression = [
+  [6.75, 68.1],
+  [35.5, 97.4],
+]
+
+function isMapAlive(map: L.Map | null): map is L.Map {
+  if (!map) return false
+  const pane = map.getPane('mapPane')
+  const el = map.getContainer()
+  return !!pane && !!el && el.isConnected && el.offsetWidth > 0 && el.offsetHeight > 0
+}
+
+function fitIndia(map: L.Map, animate = false) {
+  if (!isMapAlive(map)) return
+  map.fitBounds(INDIA_BOUNDS, { padding: [28, 28], animate, maxZoom: 6 })
+}
+
 function centroidOf(pts: KmlLatLng[]): { lat: number; lon: number } {
   let lat = 0
   let lon = 0
@@ -37,12 +55,16 @@ export default function TowerSuitabilityMap({
   spanM,
   searchRadiusKm = 8,
   drawMode,
+  drawingEnabled = true,
+  focusTick = 0,
+  undoDraftTick = 0,
+  onDraftCountChange,
   onDrawModeChange,
   onPick,
   onGeometryDrawn,
 }: {
-  lat: number
-  lon: number
+  lat: number | null
+  lon: number | null
   result: SuitabilityResult | null
   kmlFeatures: KmlFeature[]
   plannedTowers?: PlannedTower[]
@@ -52,6 +74,10 @@ export default function TowerSuitabilityMap({
   spanM?: number
   searchRadiusKm?: number
   drawMode: DrawMode
+  drawingEnabled?: boolean
+  focusTick?: number
+  undoDraftTick?: number
+  onDraftCountChange?: (count: number) => void
   onDrawModeChange: (mode: DrawMode) => void
   onPick: (lat: number, lon: number) => void
   onGeometryDrawn: (feature: KmlFeature, focus: { lat: number; lon: number }) => void
@@ -66,12 +92,15 @@ export default function TowerSuitabilityMap({
   const draftLayerRef = useRef<L.LayerGroup | null>(null)
   const draftPtsRef = useRef<KmlLatLng[]>([])
   const drawModeRef = useRef(drawMode)
+  const drawingEnabledRef = useRef(drawingEnabled)
   const onPickRef = useRef(onPick)
   const onDrawnRef = useRef(onGeometryDrawn)
+  const hadStartRef = useRef(false)
   const [mapReady, setMapReady] = useState(0)
   const [draftCount, setDraftCount] = useState(0)
 
   drawModeRef.current = drawMode
+  drawingEnabledRef.current = drawingEnabled
   onPickRef.current = onPick
   onDrawnRef.current = onGeometryDrawn
 
@@ -164,11 +193,15 @@ export default function TowerSuitabilityMap({
       clearLeafletContainer(container)
     }
 
+    let cancelled = false
     const map = L.map(container, {
-      center: [lat, lon],
-      zoom: 14,
+      center: [22.97, 78.66],
+      zoom: 5,
+      minZoom: 4,
       zoomControl: true,
       preferCanvas: true,
+      fadeAnimation: false,
+      zoomAnimation: false,
     })
     mapRef.current = map
 
@@ -179,6 +212,7 @@ export default function TowerSuitabilityMap({
     }).addTo(map)
 
     map.on('click', (e: L.LeafletMouseEvent) => {
+      if (!drawingEnabledRef.current) return
       const mode = drawModeRef.current
       const { lat: la, lng: lo } = e.latlng
       if (mode === 'pin' || mode === 'point') {
@@ -192,6 +226,7 @@ export default function TowerSuitabilityMap({
     })
 
     map.on('dblclick', (e: L.LeafletMouseEvent) => {
+      if (!drawingEnabledRef.current) return
       if (drawModeRef.current === 'pin' || drawModeRef.current === 'point') return
       L.DomEvent.stopPropagation(e as unknown as Event)
       L.DomEvent.preventDefault(e as unknown as Event)
@@ -207,12 +242,18 @@ export default function TowerSuitabilityMap({
       finishDraftRef.current()
     })
 
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
     const attachLayers = () => {
-      if (!mapRef.current) return
+      if (cancelled || mapRef.current !== map) return
+      if (!isMapAlive(map)) {
+        retryTimer = setTimeout(attachLayers, 60)
+        return
+      }
       kmlLayerRef.current = L.layerGroup().addTo(map)
       draftLayerRef.current = L.layerGroup().addTo(map)
+      map.invalidateSize({ animate: false })
+      fitIndia(map, false)
       setMapReady((n) => n + 1)
-      map.invalidateSize()
     }
 
     map.whenReady(() => {
@@ -220,6 +261,9 @@ export default function TowerSuitabilityMap({
     })
 
     return () => {
+      cancelled = true
+      if (retryTimer != null) clearTimeout(retryTimer)
+      map.stop()
       map.off()
       map.remove()
       mapRef.current = null
@@ -228,6 +272,7 @@ export default function TowerSuitabilityMap({
       draftLayerRef.current = null
       markerRef.current = null
       ringRef.current = null
+      searchRingRef.current = null
       clearLeafletContainer(containerRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -236,22 +281,37 @@ export default function TowerSuitabilityMap({
   useEffect(() => {
     clearDraftRef.current()
     const map = mapRef.current
-    if (!map) return
+    if (!isMapAlive(map)) return
     if (drawMode === 'pin' || drawMode === 'point') map.doubleClickZoom.enable()
     else map.doubleClickZoom.disable()
   }, [drawMode])
 
   useEffect(() => {
+    onDraftCountChange?.(draftCount)
+  }, [draftCount, onDraftCountChange])
+
+  useEffect(() => {
+    if (!undoDraftTick) return
+    const pts = draftPtsRef.current
+    if (!pts.length) return
+    draftPtsRef.current = pts.slice(0, -1)
+    setDraftCount(draftPtsRef.current.length)
+    redrawDraftRef.current()
+  }, [undoDraftTick])
+
+  useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    const t = window.setTimeout(() => map.invalidateSize(), 80)
+    const t = window.setTimeout(() => {
+      if (isMapAlive(map)) map.invalidateSize({ animate: false })
+    }, 80)
     return () => window.clearTimeout(t)
   }, [result, plannedTowers.length, kmlFeatures.length])
 
   useEffect(() => {
     const map = mapRef.current
     const layer = kmlLayerRef.current
-    if (!map || !layer || !mapReady) return
+    if (!isMapAlive(map) || !layer || !mapReady) return
     layer.clearLayers()
 
     if (!kmlFeatures.length && !plannedTowers.length) return
@@ -364,14 +424,15 @@ export default function TowerSuitabilityMap({
       bounds.extend([tower.lat, tower.lon])
     })
 
-    if (bounds.isValid()) {
-      map.fitBounds(bounds.pad(0.2), { animate: true, maxZoom: 16 })
+    if (bounds.isValid() && isMapAlive(map)) {
+      map.fitBounds(bounds.pad(0.2), { animate: false, maxZoom: 16 })
     }
   }, [kmlFeatures, plannedTowers, voltageKv, spanM, placementAdvice, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !mapReady) return
+    if (!isMapAlive(map) || !mapReady) return
+    const hasStart = lat != null && lon != null && Number.isFinite(lat) && Number.isFinite(lon)
 
     if (!nearbyLayerRef.current) {
       nearbyLayerRef.current = L.layerGroup().addTo(map)
@@ -446,7 +507,7 @@ export default function TowerSuitabilityMap({
     // Cyan dashed proposed connection from site to nearest existing asset
     const nearest =
       [...nearbyAssets].sort((a, b) => a.distanceKm - b.distanceKm)[0] ?? null
-    if (nearest && Number.isFinite(nearest.lat) && Number.isFinite(nearest.lon)) {
+    if (hasStart && nearest && Number.isFinite(nearest.lat) && Number.isFinite(nearest.lon)) {
       L.polyline(
         [
           [lat, lon],
@@ -473,7 +534,23 @@ export default function TowerSuitabilityMap({
 
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !mapReady) return
+    if (!isMapAlive(map) || !mapReady) return
+    const hasStart = lat != null && lon != null && Number.isFinite(lat) && Number.isFinite(lon)
+
+    if (!hasStart) {
+      markerRef.current?.remove()
+      ringRef.current?.remove()
+      searchRingRef.current?.remove()
+      markerRef.current = null
+      ringRef.current = null
+      searchRingRef.current = null
+      if (hadStartRef.current) {
+        fitIndia(map, true)
+      }
+      hadStartRef.current = false
+      return
+    }
+
     const color = result ? verdictColor(result.verdict) : '#22d3ee'
     const hidePad = plannedTowers.length > 0 || kmlFeatures.some((f) => f.type !== 'Point')
 
@@ -526,23 +603,24 @@ export default function TowerSuitabilityMap({
       ringRef.current.setStyle({ opacity: 1, fillOpacity: 0.14 })
     }
 
-    if (!kmlFeatures.length) {
+    if (!kmlFeatures.length && isMapAlive(map)) {
       if (searchRadiusKm >= 15 && searchRingRef.current) {
-        map.fitBounds(searchRingRef.current.getBounds(), { padding: [28, 28], maxZoom: 11, animate: true })
+        map.fitBounds(searchRingRef.current.getBounds(), { padding: [28, 28], maxZoom: 11, animate: false })
       } else {
-        map.panTo([lat, lon], { animate: true })
+        map.setView([lat, lon], Math.max(map.getZoom(), 14), { animate: false })
       }
     }
-  }, [lat, lon, result, kmlFeatures, plannedTowers.length, mapReady, searchRadiusKm])
+    hadStartRef.current = true
+  }, [lat, lon, result, kmlFeatures, plannedTowers.length, mapReady, searchRadiusKm, focusTick])
 
   const canFinish =
     (drawMode === 'line' && draftCount >= 2) || (drawMode === 'polygon' && draftCount >= 3)
 
   const hint =
     drawMode === 'pin'
-      ? 'Set start · click map (or use lat/lon) to fix projection — clear & click again to move'
+      ? 'Set Start · click the map to pin the origin only. Then draw or click Analyze.'
       : drawMode === 'point'
-        ? 'Point pad · click map to analyze that pad now'
+        ? 'Analyze Pad · click the map to run live suitability on that point now'
         : drawMode === 'line'
           ? `Line mode · click vertices (${draftCount}) · Finish when done`
           : `Polygon mode · click corners (${draftCount}) · Finish when done`
@@ -551,25 +629,37 @@ export default function TowerSuitabilityMap({
     <div className="absolute inset-0">
       <div ref={containerRef} className="absolute inset-0 w-full h-full ts-suitability-map" />
 
+      {drawingEnabled && (
       <div className="absolute top-3 left-1/2 z-[1200] -translate-x-1/2 w-[min(640px,calc(100%-1.5rem))] pointer-events-auto">
-        <div className="rounded-2xl border border-slate-600/80 bg-slate-950/92 px-3 py-2.5 shadow-2xl backdrop-blur-md">
+        <div className="ts-glass px-3 py-2.5">
           <div className="flex flex-wrap items-center justify-center gap-1.5">
             {(
               [
-                { id: 'pin' as const, label: 'Set start' },
-                { id: 'line' as const, label: 'Draw line' },
-                { id: 'polygon' as const, label: 'Draw polygon' },
-                { id: 'point' as const, label: 'Pad point' },
+                {
+                  id: 'pin' as const,
+                  label: 'Set Start',
+                  title: 'Click the map to place the start. Does not run analysis.',
+                },
+                { id: 'line' as const, label: 'Draw Line', title: 'Click vertices to draw a corridor, then Finish.' },
+                { id: 'polygon' as const, label: 'Draw Polygon', title: 'Click corners to draw a site, then Finish.' },
+                {
+                  id: 'point' as const,
+                  label: 'Analyze Pad',
+                  title: 'Click the map to run live analysis on that pad immediately.',
+                },
               ] as const
             ).map((m) => (
               <button
                 key={m.id}
                 type="button"
+                aria-label={m.title}
+                title={m.title}
+                aria-pressed={drawMode === m.id}
                 onClick={() => onDrawModeChange(m.id)}
                 className={`h-9 px-3 rounded-xl text-xs font-black border transition-colors ${
                   drawMode === m.id
-                    ? 'bg-cyan-500 text-slate-950 border-cyan-300'
-                    : 'bg-slate-900/80 text-slate-300 border-slate-700 hover:border-cyan-500/40'
+                    ? 'bg-[#17879a] text-white border-[#126b79]'
+                    : 'bg-white/55 text-[#263238] border-[rgba(51,65,85,0.16)] hover:border-[#17879a]'
                 }`}
               >
                 {m.label}
@@ -581,7 +671,7 @@ export default function TowerSuitabilityMap({
                   type="button"
                   disabled={!canFinish}
                   onClick={() => finishDraftRef.current()}
-                  className="h-9 px-3 rounded-xl text-xs font-black border border-emerald-400/50 bg-emerald-500/20 text-emerald-100 disabled:opacity-40 hover:bg-emerald-500/30"
+                  className="h-9 px-3 rounded-xl text-xs font-black border border-[#27856b]/50 bg-[#dff0e8] text-[#126b79] disabled:opacity-40"
                 >
                   Finish drawing
                 </button>
@@ -589,25 +679,28 @@ export default function TowerSuitabilityMap({
                   type="button"
                   disabled={draftCount === 0}
                   onClick={() => clearDraftRef.current()}
-                  className="h-9 px-3 rounded-xl text-xs font-bold border border-slate-600 text-slate-300 disabled:opacity-40 hover:bg-slate-800"
+                  className="h-9 px-3 rounded-xl text-xs font-bold border border-[rgba(51,65,85,0.16)] text-[#66727a] disabled:opacity-40 hover:bg-white/50"
                 >
                   Clear draft
                 </button>
               </>
             )}
           </div>
-          <p className="mt-1.5 text-center text-[11px] font-semibold text-slate-400">{hint}</p>
+          <p className="mt-1.5 text-center text-[11px] font-semibold text-[#263238]">{hint}</p>
           {plannedTowers.length > 0 && (
-            <p className="mt-1 text-center text-sm font-black text-amber-200 tabular-nums">
+            <p className="mt-1 text-center text-sm font-black text-[#b97816] tabular-nums">
               {plannedTowers.length} towers · {voltageLabel(voltageKv)}
               {spanM != null ? ` · ${spanM} m` : ''}
             </p>
           )}
-          <p className="mt-0.5 text-center text-[10px] font-bold text-cyan-300/80 tabular-nums">
-            Live search {searchRadiusKm} km (cyan ring)
-          </p>
+          {lat != null && lon != null && (
+            <p className="mt-0.5 text-center text-[10px] font-bold text-[#17879a] tabular-nums">
+              Live search {searchRadiusKm} km
+            </p>
+          )}
         </div>
       </div>
+      )}
     </div>
   )
 }
