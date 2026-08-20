@@ -29,16 +29,22 @@ export interface CorridorLayout {
 // The first two entries are LOCKED: they place the foreground towers whose
 // framing is final. Everything from index 2 on recedes faster so the corridor
 // silhouette drops below the centered heading and leaves it unobstructed.
+// Indices 0/1 are LOCKED — do not change. Indices 2+ follow a gentle arc (bowing
+// toward the camera at centre) so the corridor reads circular, not a straight line.
 const WAYPOINTS: [number, number, number][] = [
-  [-3.4, 0, 2.3],
-  [-1.85, 0, 1.05],
-  [-0.2, 0, -0.5],
-  [1.45, 0, -1.7],
-  [2.9, 0, -2.75],
-  [4.2, 0, -3.65],
-  [5.35, 0, -4.4],
-  [6.0, 0, -5.15],
+  [-3.4, 0, 2.3], // 1 — far-left foreground
+  [-4.7, 0, -2.85], // 2 — left of Suitability, mid-depth
+  [-2.55, 0, -7.55], // 3 — shifted right, between 2 and 4 on the arc
+  [-0.55, 0, -10.15], // 4 — deep, Suitability/Analyzer gap
+  [0.95, 0, -11.65], // 5 — deepest centre (below heading)
+  [3.75, 0, -9.15], // 6 — Performance gap
+  [6.35, 0, -6.25], // 7 — right wing toward substation
+  [8.45, 0, -6.55], // transformer slot
 ]
+
+const SCALE_JITTER = [1.0, 0.96, 1.1, 0.9, 0.76, 0.88, 1.06]
+const MID_TOWER_LIFT = [0, 0, 0.02, 0.02, 0.02, 0.02, 0.02]
+const ROT_JITTER = [0.12, -0.08, 0.04, 0.01, 0, -0.02, 0.03]
 
 const TOWER_COUNT: Record<ViewportTier, number> = {
   desktop: 7,
@@ -46,17 +52,11 @@ const TOWER_COUNT: Record<ViewportTier, number> = {
   mobile: 3,
 }
 
-// Larger transformer where it sits deeper in the corridor
 const TRANSFORMER_SCALE: Record<ViewportTier, number> = {
-  desktop: 1.85,
-  tablet: 1.3,
-  mobile: 1.05,
+  desktop: 1.55,
+  tablet: 1.2,
+  mobile: 1.0,
 }
-
-// Indices 0/1 are locked; 2+ fall off faster to build foreground → midground
-// → background depth
-const SCALE_JITTER = [1.0, 0.96, 0.84, 0.75, 0.68, 0.62, 0.57]
-const ROT_JITTER = [0.12, -0.08, 0.15, -0.12, 0.06, -0.05, 0.1]
 
 export function buildCorridor(viewport: ViewportTier): CorridorLayout {
   const count = TOWER_COUNT[viewport]
@@ -69,8 +69,9 @@ export function buildCorridor(viewport: ViewportTier): CorridorLayout {
     const next = pts[Math.min(i + 1, pts.length - 1)]
     const dir = next.clone().sub(p).setY(0).normalize()
     const facing = Math.atan2(dir.x, dir.z)
+    const lift = MID_TOWER_LIFT[i] ?? 0
     towers.push({
-      position: p,
+      position: p.clone().setY(p.y + lift),
       rotationY: facing + (ROT_JITTER[i] ?? 0),
       scale: SCALE_JITTER[i] ?? 0.9,
       corridorT: count > 1 ? i / count : 0,
@@ -84,7 +85,7 @@ export function buildCorridor(viewport: ViewportTier): CorridorLayout {
   const transformerScale = TRANSFORMER_SCALE[viewport]
 
   const groundPts = [...towers.map((t) => t.position.clone()), transformerPos.clone()]
-  const groundCurve = new THREE.CatmullRomCurve3(groundPts, false, 'catmullrom', 0.4)
+  const groundCurve = new THREE.CatmullRomCurve3(groundPts, false, 'catmullrom', 0.32)
 
   // Conductor paths: through each tower's arm attach points with mid-span sag,
   // ending at the transformer bushings.
@@ -136,4 +137,18 @@ export function buildCorridor(viewport: ViewportTier): CorridorLayout {
   }
 
   return { towers, transformerPos, transformerRotY, transformerScale, groundCurve, conductorCurves }
+}
+
+/**
+ * Mid-corridor wire sag so conductors frame the heading/cards in both themes.
+ * Towers 0–1 are locked; this only adjusts wire vertex height, not tower geometry.
+ */
+export function headingClearanceY(t: number, blend: number) {
+  const u = THREE.MathUtils.clamp(t, 0, 1)
+  // Soft sag only where wires would cross the heading/card band —
+  // keep conductors visible in the open space above the cards.
+  const bell = Math.exp(-((u - 0.4) / 0.15) * ((u - 0.4) / 0.15))
+  const base = 0.12
+  const lightExtra = blend * 0.12
+  return (base + lightExtra) * bell
 }

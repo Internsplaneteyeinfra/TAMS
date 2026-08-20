@@ -46,6 +46,8 @@ interface HubIntro3DProps {
   tier: HubTier
   skipRef: MutableRefObject<boolean>
   onEvent: (e: HubIntroEvent) => void
+  /** Light hub matches the Suitability start screen daylight look. */
+  appearance?: 'dark' | 'light'
 }
 
 // Timeline anchors (seconds) — ~6.9s total in full mode
@@ -120,7 +122,7 @@ function terrainHeight(x: number, z: number): number {
   return h
 }
 
-function stylizeTower(root: THREE.Object3D): THREE.MeshStandardMaterial[] {
+function stylizeTower(root: THREE.Object3D, light: boolean): THREE.MeshStandardMaterial[] {
   const mats: THREE.MeshStandardMaterial[] = []
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh
@@ -128,12 +130,19 @@ function stylizeTower(root: THREE.Object3D): THREE.MeshStandardMaterial[] {
     const apply = (mat: THREE.Material) => {
       const m = mat.clone() as THREE.MeshStandardMaterial
       if (m.isMeshStandardMaterial) {
-        // Hero object: lighter steel + a touch more contrast than before
-        m.color.set('#98a7ba')
-        m.metalness = 0.55
-        m.roughness = 0.38
-        m.emissive.set('#1b6d8c')
-        m.emissiveIntensity = 0.22
+        if (light) {
+          m.color.set('#5E7180')
+          m.metalness = 0.42
+          m.roughness = 0.48
+          m.emissive.set('#4a6a78')
+          m.emissiveIntensity = 0.06
+        } else {
+          m.color.set('#98a7ba')
+          m.metalness = 0.55
+          m.roughness = 0.38
+          m.emissive.set('#1b6d8c')
+          m.emissiveIntensity = 0.22
+        }
         mats.push(m)
       }
       return m
@@ -176,10 +185,11 @@ const ROCKS = [
   { x: 7.4, z: -10.8, s: 0.9 },
 ]
 
-function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
+function IntroScene({ mode, tier, skipRef, onEvent, appearance = 'dark' }: HubIntro3DProps) {
   const { camera } = useThree()
+  const light = appearance === 'light'
 
-  // --- terrain geometry: graphite/steel vertex colors + analysis wireframe ---
+  // --- terrain geometry: graphite/steel (dark) or olive grass (light) ---
   const { terrainGeo, wireGeo } = useMemo(() => {
     const segX = tier === 'desktop' ? 96 : tier === 'tablet' ? 72 : 48
     const segZ = tier === 'desktop' ? 64 : tier === 'tablet' ? 48 : 32
@@ -187,8 +197,8 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
     geo.rotateX(-Math.PI / 2)
     const pos = geo.attributes.position as THREE.BufferAttribute
     const colors = new Float32Array(pos.count * 3)
-    const cLow = new THREE.Color('#1f2d3f')
-    const cHigh = new THREE.Color('#54718f')
+    const cLow = new THREE.Color(light ? '#6A8258' : '#1f2d3f')
+    const cHigh = new THREE.Color(light ? '#9BB08A' : '#54718f')
     const tmp = new THREE.Color()
     let minH = Infinity
     let maxH = -Infinity
@@ -209,7 +219,6 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
     geo.computeVertexNormals()
-    // Coarser mesh for the analysis wireframe so it reads as a survey grid
     const wSegX = tier === 'desktop' ? 44 : tier === 'tablet' ? 34 : 24
     const wSegZ = tier === 'desktop' ? 30 : tier === 'tablet' ? 24 : 16
     const wire = new THREE.PlaneGeometry(TERRAIN_W, TERRAIN_D, wSegX, wSegZ)
@@ -219,7 +228,7 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
       wPos.setY(i, terrainHeight(wPos.getX(i), wPos.getZ(i)) + 0.03)
     }
     return { terrainGeo: geo, wireGeo: wire }
-  }, [tier])
+  }, [tier, light])
 
   // --- road ribbon draped on the terrain ---
   const roadGeo = useMemo(() => {
@@ -260,7 +269,7 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
       const curve = new THREE.QuadraticBezierCurve3(from, mid, to)
       const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(36))
       const mat = new THREE.LineBasicMaterial({
-        color: '#3b6a7d',
+        color: light ? '#6E8494' : '#3b6a7d',
         transparent: true,
         opacity: 0,
       })
@@ -270,7 +279,7 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
       mk(5.7, new THREE.Vector3(-TERRAIN_W / 2 + 2, 3.4, -7)),
       mk(5.7, new THREE.Vector3(TERRAIN_W / 2 - 2, 3.1, -5.5)),
     ]
-  }, [])
+  }, [light])
 
   useEffect(() => () => {
     terrainGeo.dispose()
@@ -295,17 +304,25 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
         color,
         roughness: rough,
         metalness: 0.05,
-        emissive: '#22d3ee',
+        emissive: light ? '#0891B2' : '#22d3ee',
         emissiveIntensity: 0,
       })
-    return {
-      tree: mk('#2d4a3e'),
-      trunk: mk('#3a3f46'),
-      building: mk('#253243'),
-      rock: mk('#2a3644'),
-      road: mk('#232f3d', 0.95),
-    }
-  }, [])
+    return light
+      ? {
+        tree: mk('#3F6A48'),
+        trunk: mk('#6A5A48'),
+        building: mk('#8A9AAA'),
+        rock: mk('#7A8690'),
+        road: mk('#8A9280', 0.95),
+      }
+      : {
+        tree: mk('#2d4a3e'),
+        trunk: mk('#3a3f46'),
+        building: mk('#253243'),
+        rock: mk('#2a3644'),
+        road: mk('#232f3d', 0.95),
+      }
+  }, [light])
   useEffect(() => () => Object.values(envMats).forEach((m) => m.dispose()), [envMats])
 
   // --- zone materials (clipped by the scan plane) ---
@@ -329,7 +346,7 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
   const gltf = useLoader(GLTFLoader, MODEL_PATH, configureLoader)
   const { towerHolder, towerMats } = useMemo(() => {
     const clone = gltf.scene.clone(true)
-    const mats = stylizeTower(clone)
+    const mats = stylizeTower(clone, light)
     const box = new THREE.Box3().setFromObject(clone)
     const size = new THREE.Vector3()
     const center = new THREE.Vector3()
@@ -341,7 +358,7 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
     const holder = new THREE.Group()
     holder.add(clone)
     return { towerHolder: holder, towerMats: mats }
-  }, [gltf])
+  }, [gltf, light])
 
   // --- animated refs ---
   const terrainGroupRef = useRef<THREE.Group>(null)
@@ -472,7 +489,7 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
     // --- conductors fade in once the tower is locked ---
     for (const line of conductors) {
       const m = line.material as THREE.LineBasicMaterial
-      const target = t >= LOCK_T ? (settled ? 0.28 : 0.4) : 0
+      const target = t >= LOCK_T ? (settled ? (light ? 0.35 : 0.28) : light ? 0.48 : 0.4) : 0
       m.opacity = THREE.MathUtils.damp(m.opacity, target, 4, dt)
     }
 
@@ -495,7 +512,7 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
     }
     clipPlane.constant = t >= introScanEnd ? TERRAIN_W : t >= T.scan ? scanX : -(TERRAIN_W / 2) - 2
     if (wireMatRef.current) {
-      const target = t >= T.scan ? (settled ? 0.018 : 0.04) : 0
+      const target = t >= T.scan ? (settled ? (light ? 0.028 : 0.018) : light ? 0.055 : 0.04) : 0
       wireMatRef.current.opacity = THREE.MathUtils.damp(wireMatRef.current.opacity, target, 5, dt)
     }
     if (scanRef.current && scanMatRef.current) {
@@ -508,7 +525,7 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
 
     // --- suitability zones fade in as the scanner reveals them ---
     for (const m of zoneMats) {
-      const target = t >= T.scan ? (settled ? 0.1 : 0.16) : 0
+      const target = t >= T.scan ? (settled ? (light ? 0.14 : 0.1) : light ? 0.2 : 0.16) : 0
       m.opacity = THREE.MathUtils.damp(m.opacity, target, 5, dt)
     }
 
@@ -540,9 +557,9 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
     // Tower edges glow whenever a scan line passes it (x ≈ 0); hero glow
     // eases down ~15% once settled
     const glow = scanActive ? Math.exp(-((scanX / 4) ** 2)) * (settled ? 0.3 : 0.5) : 0
-    const towerBase = settled ? 0.16 : 0.22
+    const towerBase = settled ? (light ? 0.045 : 0.16) : light ? 0.06 : 0.22
     for (const m of towerMats) {
-      m.emissiveIntensity = THREE.MathUtils.damp(m.emissiveIntensity, towerBase + glow, 6, dt)
+      m.emissiveIntensity = THREE.MathUtils.damp(m.emissiveIntensity, towerBase + glow * (light ? 0.45 : 1), 6, dt)
     }
 
     // --- camera: close → pull back → settle with subtle ambient drift ---
@@ -562,23 +579,50 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
 
   return (
     <>
-      {/* Digital-twin lighting: soft ambient + key + rim + low cyan accent */}
-      <ambientLight intensity={0.72} />
-      <hemisphereLight args={['#3d5470', '#0b1420', 0.45]} />
-      <directionalLight position={[12, 16, 8]} intensity={1.1} color="#e2e8f0" />
-      <directionalLight position={[-10, 8, -10]} intensity={0.5} color="#67e8f9" />
-      <pointLight position={[4, 9, 6]} intensity={0.55} color="#cfe6f5" distance={26} decay={2} />
-      <pointLight position={[-3, 2.5, 4.5]} intensity={0.3} color="#22d3ee" distance={14} decay={2} />
+      {/* Daylight / digital-twin lighting */}
+      <ambientLight intensity={light ? 0.78 : 0.72} />
+      <hemisphereLight
+        args={light ? ['#9ec8e8', '#6a8a58', 0.52] : ['#3d5470', '#0b1420', 0.45]}
+      />
+      <directionalLight
+        position={[12, 16, 8]}
+        intensity={light ? 1.15 : 1.1}
+        color={light ? '#fff8ee' : '#e2e8f0'}
+      />
+      <directionalLight
+        position={[-10, 8, -10]}
+        intensity={light ? 0.28 : 0.5}
+        color={light ? '#98b8c8' : '#67e8f9'}
+      />
+      <pointLight
+        position={[4, 9, 6]}
+        intensity={light ? 0.35 : 0.55}
+        color={light ? '#ffe8c8' : '#cfe6f5'}
+        distance={26}
+        decay={2}
+      />
+      <pointLight
+        position={[-3, 2.5, 4.5]}
+        intensity={light ? 0.12 : 0.3}
+        color={light ? '#0891B2' : '#22d3ee'}
+        distance={14}
+        decay={2}
+      />
 
       {/* Terrain + analysis-coverage wireframe (revealed by the scan) */}
       <group ref={terrainGroupRef} visible={false}>
         <mesh geometry={terrainGeo}>
-          <meshStandardMaterial vertexColors flatShading metalness={0.12} roughness={0.92} />
+          <meshStandardMaterial
+            vertexColors
+            flatShading
+            metalness={light ? 0.04 : 0.12}
+            roughness={light ? 0.95 : 0.92}
+          />
         </mesh>
         <mesh geometry={wireGeo}>
           <meshBasicMaterial
             ref={wireMatRef}
-            color="#22d3ee"
+            color={light ? '#0891B2' : '#22d3ee'}
             wireframe
             transparent
             opacity={0}
@@ -643,7 +687,7 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
           <ringGeometry args={[1.75, 1.95, 40]} />
           <meshBasicMaterial
             ref={markerMatRef}
-            color="#22d3ee"
+            color={light ? '#0891B2' : '#22d3ee'}
             transparent
             opacity={0}
             depthWrite={false}
@@ -655,14 +699,24 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
       {/* Lock-in pulse when the tower settles */}
       <mesh ref={lockPulseRef} visible={false} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.22, 0]}>
         <ringGeometry args={[1.5, 1.66, 40]} />
-        <meshBasicMaterial ref={lockPulseMatRef} color="#67e8f9" transparent opacity={0} depthWrite={false} />
+        <meshBasicMaterial
+          ref={lockPulseMatRef}
+          color={light ? '#22d3ee' : '#67e8f9'}
+          transparent
+          opacity={0}
+          depthWrite={false}
+        />
       </mesh>
 
       {/* Foundation — concrete slab, four pads, steel anchors */}
       <group ref={foundationRef} visible={false}>
         <mesh position={[0, 0.07, 0]}>
           <boxGeometry args={[2.6, 0.14, 2.6]} />
-          <meshStandardMaterial color="#4d5866" metalness={0.08} roughness={0.9} />
+          <meshStandardMaterial
+            color={light ? '#9AA3AE' : '#4d5866'}
+            metalness={0.08}
+            roughness={0.9}
+          />
         </mesh>
         {[
           [-0.95, -0.95],
@@ -673,11 +727,19 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
           <group key={i} position={[px, 0, pz]}>
             <mesh position={[0, 0.26, 0]}>
               <boxGeometry args={[0.5, 0.26, 0.5]} />
-              <meshStandardMaterial color="#5b6673" metalness={0.08} roughness={0.88} />
+              <meshStandardMaterial
+                color={light ? '#A8B0BA' : '#5b6673'}
+                metalness={0.08}
+                roughness={0.88}
+              />
             </mesh>
             <mesh position={[0, 0.5, 0]}>
               <cylinderGeometry args={[0.045, 0.045, 0.26, 8]} />
-              <meshStandardMaterial color="#8b98a8" metalness={0.7} roughness={0.35} />
+              <meshStandardMaterial
+                color={light ? '#6E7E8E' : '#8b98a8'}
+                metalness={0.7}
+                roughness={0.35}
+              />
             </mesh>
           </group>
         ))}
@@ -698,7 +760,7 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
         <cylinderGeometry args={[1.95, 1.95, 0.025, 24, 1, true]} />
         <meshBasicMaterial
           ref={towerScanMatRef}
-          color="#22d3ee"
+          color={light ? '#0891B2' : '#22d3ee'}
           transparent
           opacity={0}
           depthWrite={false}
@@ -711,7 +773,7 @@ function IntroScene({ mode, tier, skipRef, onEvent }: HubIntro3DProps) {
         <planeGeometry args={[TERRAIN_D, 4.8]} />
         <meshBasicMaterial
           ref={scanMatRef}
-          color="#22d3ee"
+          color={light ? '#0891B2' : '#22d3ee'}
           transparent
           opacity={0}
           depthWrite={false}
@@ -753,6 +815,8 @@ export default function HubIntro3D(props: HubIntro3DProps) {
     props.onEvent({ kind: 'status', text: null })
     props.onEvent({ kind: 'done' })
   }
+  const light = props.appearance === 'light'
+  const fogColor = light ? '#C8D8E4' : '#07111d'
 
   return (
     <SceneErrorBoundary onFail={handleFail}>
@@ -764,7 +828,7 @@ export default function HubIntro3D(props: HubIntro3DProps) {
           gl.localClippingEnabled = true
         }}
       >
-        <fog attach="fog" args={['#07111d', 34, 95]} />
+        <fog attach="fog" args={[fogColor, light ? 28 : 34, light ? 88 : 95]} />
         <Suspense fallback={null}>
           <IntroScene {...props} />
         </Suspense>

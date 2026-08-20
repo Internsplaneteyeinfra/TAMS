@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import NetworkScene from './NetworkScene'
 import type { LandingModuleId, NetworkEvent, NetworkMode, ViewportTier } from './types'
+import type { LandingAppearance } from '@/theme/landingTheme'
+import { useLandingTheme } from '@/theme/LandingThemeContext'
 
 export type { LandingModuleId, NetworkMode }
 
@@ -10,6 +12,7 @@ interface TransmissionNetworkProps {
   skipRequested: boolean
   /** true while a module click transition runs — camera pushes into the network */
   departing?: boolean
+  appearance?: LandingAppearance
   onInitialized?: () => void
 }
 
@@ -31,11 +34,9 @@ const PHASE_MESSAGES: Partial<Record<NetworkEvent, string>> = {
  * projected position instead of a fixed percentage, so they always read as
  * belonging to it.
  */
-const HOVER_HINTS: Record<
-  LandingModuleId,
-  { label: string; className?: string; atSubstation?: boolean }
+const HOVER_HINTS: Partial<
+  Record<LandingModuleId, { label: string; className?: string; atSubstation?: boolean }>
 > = {
-  suitability: { label: 'SITE ANALYSIS', className: 'left-[15%] top-[38%]' },
   analyzer: { label: 'NETWORK ANALYSIS', className: 'left-1/2 top-[26%] -translate-x-1/2' },
   performance: { label: 'POWER FLOW', atSubstation: true },
 }
@@ -44,7 +45,7 @@ const HOVER_HINTS: Record<
 function LoadingStatus({ show }: { show: boolean }) {
   if (!show) return null
   return (
-    <p className="tams-status-in text-[10px] font-bold tracking-[0.3em] text-cyan-400/70">
+    <p className="tams-status-in tams-status-copy text-[10px] font-bold tracking-[0.3em] text-cyan-400/70">
       INITIALIZING NETWORK...
     </p>
   )
@@ -55,8 +56,10 @@ export default function TransmissionNetwork({
   mode,
   skipRequested,
   departing = false,
+  appearance = 'dark',
   onInitialized,
 }: TransmissionNetworkProps) {
+  const { themeBlendRef, transitionLockRef, isTransitioning, celestial, dragArcURef } = useLandingTheme()
   const [viewport, setViewport] = useState<ViewportTier>('desktop')
   const [enableParallax, setEnableParallax] = useState(false)
   const [substationActive, setSubstationActive] = useState(false)
@@ -157,7 +160,8 @@ export default function TransmissionNetwork({
     }
   }
 
-  const hint = uiActive && viewport === 'desktop' && activeModule ? HOVER_HINTS[activeModule] : null
+  const hint =
+    uiActive && viewport === 'desktop' && activeModule ? HOVER_HINTS[activeModule] ?? null : null
 
   return (
     <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
@@ -171,6 +175,12 @@ export default function TransmissionNetwork({
           mouseRef={mouseRef}
           substationRef={substationRef}
           enableParallax={enableParallax}
+          appearance={appearance}
+          themeBlendRef={themeBlendRef}
+          transitionLockRef={transitionLockRef}
+          isTransitioning={isTransitioning}
+          celestial={celestial}
+          dragArcURef={dragArcURef}
           onEvent={handleEvent}
         />
       </div>
@@ -181,7 +191,7 @@ export default function TransmissionNetwork({
         {phaseMessage && (
           <p
             key={phaseMessage}
-            className={`tams-status-in text-[10px] font-bold tracking-[0.3em] ${phaseMessage.startsWith('✓') ? 'text-cyan-300/95' : 'text-cyan-400/70'
+            className={`tams-status-in tams-status-copy text-[10px] font-bold tracking-[0.3em] ${phaseMessage.startsWith('✓') ? 'text-cyan-300/95' : 'text-cyan-400/70'
               }`}
           >
             {phaseMessage}
@@ -205,10 +215,10 @@ export default function TransmissionNetwork({
             className="tams-status-in flex items-center gap-1.5 opacity-90"
           >
             <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400/40" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-cyan-400/90" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400/40 tams-status-dot-ring" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-cyan-400/90 tams-status-dot" />
             </span>
-            <p className="whitespace-nowrap text-[9px] font-bold tracking-[0.28em] text-cyan-200/75 drop-shadow-[0_1px_6px_rgba(5,13,23,0.95)]">
+            <p className="tams-status-copy whitespace-nowrap text-[9px] font-bold tracking-[0.28em] text-cyan-200/75 drop-shadow-[0_1px_6px_rgba(5,13,23,0.95)]">
               {verifying ? 'NETWORK VERIFIED' : 'GRID ONLINE'}
             </p>
           </div>
@@ -219,15 +229,15 @@ export default function TransmissionNetwork({
           the status unmistakably belongs to it (desktop only) */}
       {substationActive && viewport === 'desktop' && substationAnchor && (
         <div
-          className="absolute -translate-x-full -translate-y-1/2 pr-3"
-          style={{ left: `${substationAnchor.x * 100}%`, top: `${substationAnchor.y * 100}%` }}
+          className="absolute -translate-x-full -translate-y-1/2"
+          style={{ left: `${substationAnchor.x * 100}%`, top: `${substationAnchor.y * 100}%`, marginLeft: -10 }}
         >
-          <div className="tams-status-in flex items-center gap-1.5 opacity-85">
+          <div className="tams-substation-chip tams-status-in flex items-center gap-1.5 px-2.5 py-1.5 opacity-85">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400/50" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-cyan-400/90" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400/50 tams-status-dot-ring" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-cyan-400/90 tams-status-dot" />
             </span>
-            <p className="whitespace-nowrap text-[9px] font-bold tracking-[0.22em] text-cyan-200/80 drop-shadow-[0_1px_4px_rgba(5,13,23,0.9)]">
+            <p className="tams-status-copy whitespace-nowrap text-[9px] font-bold tracking-[0.22em] text-cyan-200/80 drop-shadow-[0_1px_4px_rgba(5,13,23,0.9)]">
               SUBSTATION ACTIVE
             </p>
           </div>
@@ -253,16 +263,18 @@ export default function TransmissionNetwork({
               : undefined
           }
         >
-          <p className="tams-status-in whitespace-nowrap text-[9px] font-bold tracking-[0.24em] text-cyan-200/70 drop-shadow-[0_1px_4px_rgba(5,13,23,0.9)]">
+          <p className="tams-status-in tams-status-copy whitespace-nowrap text-[9px] font-bold tracking-[0.24em] text-cyan-200/70 drop-shadow-[0_1px_4px_rgba(5,13,23,0.9)]">
             {hint.label}
           </p>
         </div>
       )}
 
       {/* Readability gradients — header top, card region center-bottom */}
-      <div className="absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-[#081522]/50 to-transparent" />
+      <div className="tams-net-atmosphere pointer-events-none absolute inset-0" />
+      <div className="tams-net-read-center pointer-events-none absolute inset-0" />
+      <div className="tams-net-read-top absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-[#081522]/50 to-transparent" />
       <div
-        className="absolute inset-x-0 bottom-0 h-[55%]"
+        className="tams-net-read-bottom absolute inset-x-0 bottom-0 h-[55%]"
         style={{
           background:
             'radial-gradient(ellipse 62% 85% at 50% 92%, rgba(5,13,23,0.85) 30%, rgba(5,13,23,0.4) 60%, transparent 100%)',

@@ -28,6 +28,8 @@ export interface NetProgress {
   dim: number // ambient dim after UI appears, 0..1
   initialized: boolean
   hoverTower: number // pointer-hovered tower index, -1 when none
+  /** 0..1 when an energy particle is at the substation end of a conductor */
+  arrivalPulse: number
 }
 
 export function createProgress(towerCount: number): NetProgress {
@@ -44,5 +46,6 @@ export function createProgress(towerCount: number): NetProgress {
     dim: 0,
     initialized: false,
     hoverTower: -1,
+    arrivalPulse: 0,
   }
 }

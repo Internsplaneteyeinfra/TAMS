@@ -41,7 +41,6 @@ export default function SuitabilityHub({
 }) {
   const [mode, setMode] = useState<HubIntroMode | null>(null)
   const [tier, setTier] = useState<HubTier>('desktop')
-  // Default narration shows immediately while the 3D chunk/model loads
   const [status, setStatus] = useState<string | null>('INITIALIZING SITE ANALYSIS…')
   const [markerShown, setMarkerShown] = useState(false)
   const [hudShown, setHudShown] = useState(false)
@@ -54,7 +53,6 @@ export default function SuitabilityHub({
     const w = window.innerWidth
     setTier(w < 768 ? 'mobile' : w < 1200 ? 'tablet' : 'desktop')
     try {
-      // Stale flag from the previous localStorage-based behavior
       window.localStorage.removeItem('towerSuitabilityIntroSeen')
     } catch {
       /* ignore */
@@ -63,9 +61,6 @@ export default function SuitabilityHub({
     setMode(introPlayedThisSession || reduced ? 'instant' : 'full')
   }, [])
 
-  // Safety net: never leave the page stuck on a dark screen if the 3D chunk,
-  // model, or WebGL context fails to come up. Re-armed on every scene event,
-  // so it only fires on a genuine stall.
   const fallbackRef = useRef<number | null>(null)
   const armFallback = (ms: number) => {
     if (fallbackRef.current != null) window.clearTimeout(fallbackRef.current)
@@ -83,8 +78,6 @@ export default function SuitabilityHub({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
 
-  // After the reveal transition finishes, drop the long durations so card
-  // hover states stay snappy.
   useEffect(() => {
     if (!revealed) return
     const id = window.setTimeout(() => setSettled(true), 1100)
@@ -94,7 +87,6 @@ export default function SuitabilityHub({
   const onEvent = (e: HubIntroEvent) => {
     if (e.kind === 'status') {
       setStatus(e.text)
-      // Scene is alive — the remaining timeline is ≤ 8s, so keep a margin
       if (e.text) armFallback(10000)
     } else if (e.kind === 'marker') setMarkerShown(true)
     else if (e.kind === 'scanStart') setHudShown(true)
@@ -117,33 +109,33 @@ export default function SuitabilityHub({
     settled || !revealed ? {} : { transitionDelay: `${idx * 100}ms` }
 
   return (
-    <div className="fixed inset-0 z-[210] flex flex-col text-slate-100 overflow-hidden bg-[#060B17]">
-      {/* Deep-navy atmospheric base */}
+    <div className="ts-suit-hub fixed inset-0 z-[210] flex flex-col overflow-hidden bg-[#F3F7FA] text-[#0B1726]">
+      {/* Soft daylight atmospheric base */}
       <div
-        className="absolute inset-0 pointer-events-none"
+        className="pointer-events-none absolute inset-0"
         style={{
           background:
-            'radial-gradient(ellipse 100% 80% at 50% 20%, #0c1a2c 0%, #07111d 55%, #050d17 100%)',
+            'radial-gradient(ellipse 100% 70% at 50% 18%, #E8F2F8 0%, #F3F7FA 48%, #E7EFF4 100%)',
         }}
       />
 
       {/* 3D site-analysis scene */}
       {mode && (
         <div className="absolute inset-0" aria-hidden>
-          <HubIntro3D mode={mode} tier={tier} skipRef={skipRef} onEvent={onEvent} />
+          <HubIntro3D mode={mode} tier={tier} skipRef={skipRef} onEvent={onEvent} appearance="light" />
         </div>
       )}
 
-      {/* Scene recedes into the background once the UI reveals (tower stays the hero) */}
+      {/* Soft veil so cards stay readable once revealed */}
       <div
-        className={`absolute inset-0 pointer-events-none bg-[#060B17] transition-opacity duration-1000 ${revealed ? 'opacity-30' : 'opacity-0'
+        className={`pointer-events-none absolute inset-0 bg-[#F3F7FA] transition-opacity duration-1000 ${revealed ? 'opacity-25' : 'opacity-0'
           }`}
       />
       <div
-        className="absolute inset-0 pointer-events-none"
+        className="pointer-events-none absolute inset-0"
         style={{
           background:
-            'radial-gradient(ellipse 70% 45% at 50% 46%, rgba(34,211,238,0.07), transparent 70%)',
+            'radial-gradient(ellipse 70% 45% at 50% 46%, rgba(8,145,178,0.05), transparent 70%)',
         }}
       />
 
@@ -152,67 +144,67 @@ export default function SuitabilityHub({
         <button
           type="button"
           onClick={onBack}
-          className="absolute right-5 top-4 z-20 h-9 px-3 rounded-lg border border-white/15 bg-black/35 text-xs font-bold text-slate-200 hover:bg-black/55"
+          className="absolute right-5 top-4 z-20 h-9 rounded-lg border border-[#C9D6DF] bg-white/85 px-3 text-xs font-bold text-[#526579] shadow-sm backdrop-blur-sm hover:bg-white hover:text-[#0B1726]"
         >
           Back
         </button>
       )}
 
       {/* Title + narration / heading */}
-      <div className="pointer-events-none absolute inset-x-0 top-[9%] z-10 text-center px-4">
-        <p className="text-[10px] font-black tracking-[0.3em] text-[#7d94a8] uppercase">
+      <div className="pointer-events-none absolute inset-x-0 top-[9%] z-10 px-4 text-center">
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#60788A]">
           Tower Site Suitability
         </p>
         {!revealed && status && (
           <p
             key={status}
-            className="ts-hub-in mt-2 text-[10px] font-bold tracking-[0.28em] text-cyan-300/85"
+            className="ts-hub-in mt-2 text-[10px] font-bold tracking-[0.28em] text-[#0891B2]"
           >
             {status}
           </p>
         )}
         <p
-          className={`mt-2 text-xl sm:text-2xl font-black text-[#F4F7FA] tracking-tight drop-shadow-[0_2px_12px_rgba(5,13,23,0.9)] ${settled
-            ? 'transition-all'
-            : `transition-all duration-[600ms] ease-out ${revealed ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-[25px]'
-            }`
+          className={`mt-2 text-xl font-black tracking-tight text-[#0B1726] drop-shadow-[0_1px_8px_rgba(255,255,255,0.85)] sm:text-2xl ${settled
+              ? 'transition-all'
+              : `transition-all duration-[600ms] ease-out ${revealed ? 'translate-y-0 opacity-100' : 'translate-y-[25px] opacity-0'
+              }`
             }`}
         >
           How do you want to start?
         </p>
       </div>
 
-      {/* Proposed-site label under the tower — stays as part of the digital twin */}
+      {/* Proposed-site label under the tower */}
       {markerShown && (
         <div
-          className={`pointer-events-none absolute left-1/2 top-[63%] z-10 -translate-x-1/2 transition-opacity duration-700 ${revealed ? 'opacity-55' : 'opacity-100'
+          className={`pointer-events-none absolute left-1/2 top-[63%] z-10 -translate-x-1/2 transition-opacity duration-700 ${revealed ? 'opacity-50' : 'opacity-100'
             }`}
           aria-hidden
         >
-          <p className="ts-hub-in text-[8.5px] font-bold tracking-[0.26em] text-cyan-200/80 drop-shadow-[0_1px_4px_rgba(5,13,23,0.9)]">
+          <p className="ts-hub-in text-[8.5px] font-bold tracking-[0.26em] text-[#0891B2] drop-shadow-[0_1px_4px_rgba(255,255,255,0.9)]">
             PROPOSED SITE
           </p>
         </div>
       )}
 
-      {/* Compact analysis HUD near the tower — categories only, no invented values */}
+      {/* Compact analysis HUD near the tower */}
       {hudShown && !revealed && (
         <div
-          className="ts-hub-in pointer-events-none absolute left-[58%] top-[30%] z-10 hidden sm:block rounded-lg border border-cyan-500/20 bg-[#081522]/70 px-3 py-2 backdrop-blur-sm"
+          className="ts-hub-in pointer-events-none absolute left-[58%] top-[30%] z-10 hidden rounded-lg border border-[#8BC9D7] bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm sm:block"
           aria-hidden
         >
-          <p className="text-[8.5px] font-black tracking-[0.24em] text-[#7d94a8]">SITE ANALYSIS</p>
+          <p className="text-[8.5px] font-black tracking-[0.24em] text-[#60788A]">SITE ANALYSIS</p>
           {!indicators ? (
-            <p className="mt-1 text-[9px] font-bold tracking-[0.2em] text-cyan-300/85">SCANNING…</p>
+            <p className="mt-1 text-[9px] font-bold tracking-[0.2em] text-[#0891B2]">SCANNING…</p>
           ) : (
             <div className="mt-1 space-y-0.5">
               {HUD_FACTORS.map((f, i) => (
                 <p
                   key={f}
-                  className="flex items-center gap-1.5 text-[8.5px] font-bold tracking-[0.18em] text-cyan-100/80"
+                  className="flex items-center gap-1.5 text-[8.5px] font-bold tracking-[0.18em] text-[#365467]"
                 >
                   <span
-                    className="ts-hub-in inline-block w-2.5 text-center text-cyan-300"
+                    className="ts-hub-in inline-block w-2.5 text-center text-[#0891B2]"
                     style={{ animationDelay: `${i * 140}ms` }}
                   >
                     ✓
@@ -225,24 +217,24 @@ export default function SuitabilityHub({
         </div>
       )}
 
-      {/* Existing start cards — functionality unchanged */}
-      <main className="relative z-10 flex-1 flex items-end justify-center px-4 pb-8 sm:pb-10 overflow-y-auto">
-        <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+      {/* Start cards — same actions, light surfaces */}
+      <main className="relative z-10 flex flex-1 items-end justify-center overflow-y-auto px-4 pb-8 sm:pb-10">
+        <div className="grid w-full max-w-5xl grid-cols-1 gap-4 sm:gap-5 md:grid-cols-3">
           <button
             type="button"
             onClick={() => onChoose('draw')}
             style={cardDelay(0)}
-            className={`group rounded-2xl border border-cyan-400/35 bg-slate-950/75 backdrop-blur-md px-5 py-6 md:py-8 text-left shadow-2xl hover:border-cyan-300 hover:-translate-y-0.5 ${cardClass()}`}
+            className={`group rounded-2xl border border-[#8BC9D7] bg-white/90 px-5 py-6 text-left shadow-[0_12px_32px_rgba(30,60,80,0.08)] backdrop-blur-md hover:-translate-y-0.5 hover:border-[#0891B2] hover:shadow-[0_16px_36px_rgba(30,60,80,0.12)] md:py-8 ${cardClass()}`}
           >
-            <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-500/10">
-              <Map className="h-6 w-6 text-cyan-300" />
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[#8BC9D7] bg-[#E2F5F8]">
+              <Map className="h-6 w-6 text-[#0891B2]" />
             </span>
-            <h2 className="mt-5 text-xl font-black text-white">Draw KML on map</h2>
-            <p className="mt-2 text-sm text-slate-300 leading-relaxed">
+            <h2 className="mt-5 text-xl font-black text-[#0B1726]">Draw KML on map</h2>
+            <p className="mt-2 text-sm leading-relaxed text-[#526579]">
               Set a start with lat/lon or click the map, then draw a line or polygon. Save as KML or run
               analysis.
             </p>
-            <p className="mt-4 text-[11px] font-bold uppercase tracking-wider text-cyan-300/90 flex items-center gap-1.5">
+            <p className="mt-4 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#0891B2]">
               <Crosshair className="h-3.5 w-3.5" />
               Lat/lon · click pin · draw
             </p>
@@ -252,17 +244,17 @@ export default function SuitabilityHub({
             type="button"
             onClick={() => onChoose('live')}
             style={cardDelay(1)}
-            className={`group rounded-2xl border border-emerald-400/35 bg-slate-950/75 backdrop-blur-md px-5 py-6 md:py-8 text-left shadow-2xl hover:border-emerald-300 hover:-translate-y-0.5 ${cardClass()}`}
+            className={`group rounded-2xl border border-[#91D4C1] bg-white/90 px-5 py-6 text-left shadow-[0_12px_32px_rgba(30,60,80,0.08)] backdrop-blur-md hover:-translate-y-0.5 hover:border-[#059669] hover:shadow-[0_16px_36px_rgba(30,60,80,0.12)] md:py-8 ${cardClass()}`}
           >
-            <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-emerald-400/30 bg-emerald-500/10">
-              <Navigation className="h-6 w-6 text-emerald-300" />
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[#91D4C1] bg-[#E3F7F0]">
+              <Navigation className="h-6 w-6 text-[#059669]" />
             </span>
-            <h2 className="mt-5 text-xl font-black text-white">Live location</h2>
-            <p className="mt-2 text-sm text-slate-300 leading-relaxed">
+            <h2 className="mt-5 text-xl font-black text-[#0B1726]">Live location</h2>
+            <p className="mt-2 text-sm leading-relaxed text-[#526579]">
               Jump to your GPS position, draw line or polygon nearby, then download KML or continue to
               analysis.
             </p>
-            <p className="mt-4 text-[11px] font-bold uppercase tracking-wider text-emerald-300/90">
+            <p className="mt-4 text-[11px] font-bold uppercase tracking-wider text-[#059669]">
               Browser GPS · then draw
             </p>
           </button>
@@ -271,16 +263,16 @@ export default function SuitabilityHub({
             type="button"
             onClick={() => onChoose('upload')}
             style={cardDelay(2)}
-            className={`group rounded-2xl border border-amber-400/35 bg-slate-950/75 backdrop-blur-md px-5 py-6 md:py-8 text-left shadow-2xl hover:border-amber-300 hover:-translate-y-0.5 ${cardClass()}`}
+            className={`group rounded-2xl border border-[#E7C77B] bg-[#FFFAF1]/95 px-5 py-6 text-left shadow-[0_12px_32px_rgba(30,60,80,0.08)] backdrop-blur-md hover:-translate-y-0.5 hover:border-[#D97706] hover:shadow-[0_16px_36px_rgba(30,60,80,0.12)] md:py-8 ${cardClass()}`}
           >
-            <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-amber-400/30 bg-amber-500/10">
-              <Upload className="h-6 w-6 text-amber-300" />
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[#E7C77B] bg-[#FFF3D9]">
+              <Upload className="h-6 w-6 text-[#D97706]" />
             </span>
-            <h2 className="mt-5 text-xl font-black text-white">Upload and get analysis</h2>
-            <p className="mt-2 text-sm text-slate-300 leading-relaxed">
+            <h2 className="mt-5 text-xl font-black text-[#0B1726]">Upload and get analysis</h2>
+            <p className="mt-2 text-sm leading-relaxed text-[#526579]">
               Upload an existing KML and get the full suitability score, towers, voltage, and report.
             </p>
-            <p className="mt-4 text-[11px] font-bold uppercase tracking-wider text-amber-300/90">
+            <p className="mt-4 text-[11px] font-bold uppercase tracking-wider text-[#D97706]">
               KML · instant screening
             </p>
           </button>
@@ -294,7 +286,7 @@ export default function SuitabilityHub({
           onClick={() => {
             skipRef.current = true
           }}
-          className="absolute bottom-5 right-5 z-20 text-[10px] font-bold tracking-[0.24em] text-slate-500 hover:text-cyan-300 transition-colors"
+          className="absolute bottom-5 right-5 z-20 text-[10px] font-bold tracking-[0.24em] text-[#718396] transition-colors hover:text-[#0891B2]"
         >
           SKIP INTRO →
         </button>

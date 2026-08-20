@@ -9,6 +9,11 @@ import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 import { Activity, ArrowLeft, MapPinned, RadioTower, X } from 'lucide-react'
 import type { LandingModuleId, NetworkMode } from '@/components/TransmissionNetwork'
+import { LandingThemeProvider, useLandingTheme } from '@/theme/LandingThemeContext'
+import { landingLightCssVars } from '@/theme/landingTheme'
+import LandingThemeToggle from '@/components/landing/LandingThemeToggle'
+import CelestialHorizon from '@/components/landing/CelestialHorizon'
+import CelestialDragControl from '@/components/landing/CelestialDragControl'
 
 const TransmissionNetwork = dynamic(() => import('@/components/TransmissionNetwork'), {
   ssr: false,
@@ -61,6 +66,15 @@ const MODULES = [
 const DEPART_MS = 420
 
 export default function LandingPage() {
+  return (
+    <LandingThemeProvider>
+      <LandingPageInner />
+    </LandingThemeProvider>
+  )
+}
+
+function LandingPageInner() {
+  const { appearance, isTransitioning, registerLandingEl, playIntroSunrise } = useLandingTheme()
   const router = useRouter()
   const [performanceOpen, setPerformanceOpen] = useState(false)
   const [activeModule, setActiveModule] = useState<LandingModuleId | null>(null)
@@ -125,6 +139,12 @@ export default function LandingPage() {
     return () => window.clearTimeout(t)
   }, [revealed])
 
+  useEffect(() => {
+    if (!revealed || appearance !== 'light') return
+    const t = window.setTimeout(() => playIntroSunrise(), 500)
+    return () => window.clearTimeout(t)
+  }, [revealed, appearance, playIntroSunrise])
+
   const revealClass = () =>
     `${settled ? 'transition-all' : 'transition-all duration-700 ease-out'} ${revealed ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0 pointer-events-none'
     }`
@@ -149,10 +169,16 @@ export default function LandingPage() {
       <Head>
         <title>TAMS · Choose module</title>
       </Head>
-      <div className="min-h-full flex flex-col text-slate-200 relative overflow-hidden bg-[#07111D]">
+      <div
+        ref={registerLandingEl}
+        className={`tams-landing min-h-full flex flex-col text-slate-200 relative overflow-hidden bg-[#07111D] ${isTransitioning ? 'tams-landing--theme-blend' : ''}`}
+        data-tams-theme={appearance}
+        style={appearance === 'light' && !isTransitioning ? landingLightCssVars() : undefined}
+        suppressHydrationWarning
+      >
         {/* Layer 1 — deep-navy atmospheric base */}
         <div
-          className="pointer-events-none absolute inset-0"
+          className="tams-landing-base pointer-events-none absolute inset-0"
           style={{
             background:
               'radial-gradient(circle at 50% 42%, rgba(0,110,150,0.10) 0%, rgba(0,60,100,0.05) 30%, transparent 60%), linear-gradient(180deg, #081522 0%, #07111D 45%, #050D17 100%)',
@@ -161,7 +187,7 @@ export default function LandingPage() {
 
         {/* Layer 2 — atmospheric glow behind the network (reaches into the upper sky) */}
         <div
-          className="pointer-events-none absolute inset-0"
+          className="tams-landing-glow pointer-events-none absolute inset-0"
           style={{
             background:
               'radial-gradient(ellipse 62% 50% at 50% 28%, rgba(46,150,190,0.11), transparent 74%), radial-gradient(ellipse 42% 34% at 74% 46%, rgba(34,211,238,0.05), transparent 70%)',
@@ -170,7 +196,7 @@ export default function LandingPage() {
 
         {/* Layer 2 — engineering grid (fine + coarse) */}
         <div
-          className="pointer-events-none absolute inset-0"
+          className="tams-landing-grid pointer-events-none absolute inset-0"
           style={{
             backgroundImage:
               'linear-gradient(rgba(90,150,180,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(90,150,180,0.03) 1px, transparent 1px), linear-gradient(rgba(90,150,180,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(90,150,180,0.045) 1px, transparent 1px)',
@@ -187,7 +213,7 @@ export default function LandingPage() {
 
         {/* Vignette — corners recede gently; kept off the upper sky region */}
         <div
-          className="pointer-events-none absolute inset-0"
+          className="tams-landing-vignette pointer-events-none absolute inset-0"
           style={{
             background:
               'radial-gradient(ellipse 95% 92% at 50% 40%, transparent 58%, rgba(4,9,16,0.38) 100%)',
@@ -201,15 +227,20 @@ export default function LandingPage() {
             mode={mode}
             skipRequested={skipRequested}
             departing={departing}
+            appearance={appearance}
             onInitialized={handleInitialized}
           />
         )}
 
-        <header className="relative z-10 shrink-0 h-14 flex items-center px-6 border-b border-[#8fb3c9]/10 bg-[#081522]/40">
-          <div>
-            <p className="text-[10px] font-bold tracking-[0.28em] text-[#7d94a8] uppercase">PlanetEye · TAMS</p>
-            <h1 className="text-sm font-black tracking-widest text-[#F4F7FA]">Transmission Asset Intelligence</h1>
+        <CelestialHorizon />
+        <CelestialDragControl />
+
+        <header className="tams-landing-header relative z-10 shrink-0 h-14 flex items-center gap-3 px-6 border-b border-[#8fb3c9]/10 bg-[#081522]/40">
+          <div className="min-w-0">
+            <p className="tams-landing-brand text-[10px] font-bold tracking-[0.28em] text-[#7d94a8] uppercase">PlanetEye · TAMS</p>
+            <h1 className="tams-landing-title text-sm font-black tracking-widest text-[#F4F7FA]">Transmission Asset Intelligence</h1>
           </div>
+          <LandingThemeToggle />
         </header>
 
         {/* Centered composition: the network sits behind, cards in the middle (lifted slightly) */}
@@ -219,26 +250,32 @@ export default function LandingPage() {
           <div className="relative w-full max-w-4xl flex flex-col items-center">
             {/* Subtle glow connecting the card group with the network behind */}
             <div
-              className="pointer-events-none absolute left-1/2 top-1/2 h-[130%] w-[110%] -translate-x-1/2 -translate-y-1/2"
+              className="tams-landing-card-glow pointer-events-none absolute left-1/2 top-1/2 h-[130%] w-[110%] -translate-x-1/2 -translate-y-1/2"
               style={{
                 background:
                   'radial-gradient(ellipse 60% 55% at 50% 55%, rgba(46,170,210,0.06), transparent 75%)',
               }}
             />
-            <p
-              className={`text-[11px] font-bold uppercase tracking-[0.4em] text-[#7d94a8] mb-3 text-center drop-shadow-[0_1px_8px_rgba(5,13,23,0.9)] ${revealClass()}`}
-              style={revealDelay(80)}
-            >
-              Select a module
-            </p>
-            <h2
-              className={`text-2xl sm:text-3xl font-black text-[#F4F7FA] text-center mb-10 tracking-tight drop-shadow-[0_2px_14px_rgba(5,13,23,0.95)] ${revealClass()}`}
-              style={revealDelay(160)}
-            >
-              Where do you want to work?
-            </h2>
+            <div className="relative mb-10 flex w-full flex-col items-center px-6 py-12 sm:py-14">
+              <div className="tams-heading-quiet pointer-events-none absolute inset-[-8px]" aria-hidden />
+              <p
+                className={`tams-landing-kicker relative text-[11px] font-bold uppercase tracking-[0.4em] text-[#7d94a8] mb-3 text-center drop-shadow-[0_1px_8px_rgba(5,13,23,0.9)] ${revealClass()}`}
+                style={revealDelay(80)}
+              >
+                Select a module
+              </p>
+              <h2
+                className={`tams-landing-heading relative text-2xl sm:text-3xl font-black text-[#F4F7FA] text-center tracking-tight drop-shadow-[0_2px_14px_rgba(5,13,23,0.95)] ${revealClass()}`}
+                style={revealDelay(160)}
+              >
+                Where do you want to work?
+              </h2>
+            </div>
 
-            <div className="grid w-full grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 justify-items-center">
+            <div
+              className={`grid w-full grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 justify-items-center ${settled ? 'tams-module-cards-offset' : ''
+                }`}
+            >
               {MODULES.map((mod, idx) => {
                 const Icon = mod.icon
                 return (
@@ -250,14 +287,14 @@ export default function LandingPage() {
                     onFocus={() => !departing && setActiveModule(mod.id)}
                     onBlur={() => !departing && setActiveModule(null)}
                     onClick={() => handleSelect(mod.id, mod.href)}
-                    className={`group flex w-full flex-col items-center text-center rounded-2xl border bg-[#051423]/[0.78] bg-gradient-to-b ${mod.accent} px-5 py-8 shadow-[0_18px_40px_-18px_rgba(3,10,20,0.85),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-md hover:-translate-y-1 hover:scale-[1.015] hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${cardClass()}`}
+                    className={`tams-mod-card tams-mod-${mod.id} group flex w-full flex-col items-center text-center rounded-2xl border bg-[#051423]/[0.78] bg-gradient-to-b ${mod.accent} px-5 py-8 shadow-[0_18px_40px_-18px_rgba(3,10,20,0.85),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-md hover:-translate-y-1 hover:scale-[1.015] hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${cardClass()}`}
                     style={cardDelay(idx)}
                   >
-                    <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-[#081522]/70">
-                      <Icon className={`h-7 w-7 ${mod.iconClass}`} />
+                    <span className="tams-mod-icon mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-[#081522]/70">
+                      <Icon className={`tams-mod-icon-svg h-7 w-7 ${mod.iconClass}`} />
                     </span>
-                    <span className="text-lg font-black text-[#F4F7FA] tracking-tight">{mod.title}</span>
-                    <span className="mt-1.5 text-xs font-semibold text-slate-300/80">{mod.subtitle}</span>
+                    <span className="tams-mod-title text-lg font-black text-[#F4F7FA] tracking-tight">{mod.title}</span>
+                    <span className="tams-mod-sub mt-1.5 text-xs font-semibold text-slate-300/80">{mod.subtitle}</span>
                   </button>
                 )
               })}
@@ -270,7 +307,7 @@ export default function LandingPage() {
           <button
             type="button"
             onClick={handleSkip}
-            className="fixed bottom-6 right-6 z-20 rounded-lg border border-white/10 bg-[#0e172a]/80 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400 backdrop-blur-sm transition-colors hover:border-cyan-400/40 hover:text-cyan-200"
+            className="tams-skip fixed bottom-6 right-6 z-20 rounded-lg border border-white/10 bg-[#0e172a]/80 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400 backdrop-blur-sm transition-colors hover:border-cyan-400/40 hover:text-cyan-200"
           >
             Skip intro →
           </button>
@@ -278,12 +315,12 @@ export default function LandingPage() {
 
         {performanceOpen && (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+            className="tams-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
             role="dialog"
             aria-modal="true"
             aria-labelledby="performance-soon-title"
           >
-            <div className="w-full max-w-md rounded-2xl border border-amber-400/40 bg-[#0e172a] p-6 shadow-2xl">
+            <div className="tams-modal w-full max-w-md rounded-2xl border border-amber-400/40 bg-[#0e172a] p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-wider text-amber-300/90">Tower Performance</p>

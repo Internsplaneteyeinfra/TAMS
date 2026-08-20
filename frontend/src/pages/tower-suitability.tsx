@@ -5,7 +5,7 @@ const TowerSuitabilityWorkspace = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="fixed inset-0 flex items-center justify-center bg-[#060B17] text-slate-400 text-sm">
+      <div className="fixed inset-0 flex items-center justify-center bg-[#F3F7FA] text-[#526579] text-sm">
         Loading tower site suitability…
       </div>
     ),

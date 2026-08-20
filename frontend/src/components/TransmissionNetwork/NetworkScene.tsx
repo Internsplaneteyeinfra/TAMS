@@ -7,9 +7,14 @@ import TransmissionLines from './TransmissionLines'
 import Transformer from './Transformer'
 import EnergyFlow from './EnergyFlow'
 import NetworkScanner from './NetworkScanner'
+import CorridorEnvironment from './CorridorEnvironment'
 import { buildCorridor, TOWER_HEIGHT } from './corridor'
 import { createProgress } from './types'
 import type { LandingModuleId, NetProgress, NetworkEvent, NetworkMode, ViewportTier } from './types'
+import { type LandingAppearance } from '@/theme/landingTheme'
+import type { CelestialVisualState } from '@/theme/LandingThemeContext'
+import SceneThemeDriver from './SceneThemeDriver'
+import CelestialScene3D from './CelestialScene3D'
 
 export interface NetworkSceneProps {
   viewport: ViewportTier
@@ -23,6 +28,13 @@ export interface NetworkSceneProps {
   /** screen-space position of the substation, so its status label can anchor to it */
   substationRef: MutableRefObject<{ x: number; y: number } | null>
   enableParallax: boolean
+  appearance: LandingAppearance
+  themeBlendRef: MutableRefObject<number>
+  transitionLockRef: MutableRefObject<boolean>
+  /** Theme transition visuals — must be passed in; Canvas has no outer React context. */
+  isTransitioning: boolean
+  celestial: CelestialVisualState | null
+  dragArcURef: MutableRefObject<number | null>
   onEvent?: (event: NetworkEvent) => void
 }
 
@@ -66,6 +78,12 @@ function NetworkContent({
   mouseRef,
   substationRef,
   enableParallax,
+  appearance,
+  themeBlendRef,
+  transitionLockRef,
+  isTransitioning,
+  celestial,
+  dragArcURef,
   onEvent,
 }: NetworkSceneProps) {
   const layout = useMemo(() => buildCorridor(viewport), [viewport])
@@ -224,11 +242,11 @@ function NetworkContent({
     const zMul = viewport === 'mobile' ? 1.4 : viewport === 'tablet' ? 1.18 : 1
     const spread = viewport === 'mobile' ? 0.72 : viewport === 'tablet' ? 0.8 : 1
     const startPos = { x: -3.1 * spread, y: 0.95, z: 4.7 * zMul }
-    // Settled framing tilts slightly further down so the distant transformer
-    // rides above the module-card band instead of hiding behind it
-    const endPos = { x: 0.35, y: 2.45, z: 7.3 * zMul }
+    // Settled framing — look slightly higher/deeper so distant corridor sits above the cards
+    const endPos = { x: 0.32, y: 2.78, z: 7.45 * zMul }
     const startLook = { x: -3.4 * spread, y: 1.0, z: 2.3 * spread }
-    const endLook = { x: 0.2, y: 0.55, z: -0.7 }
+    // Look slightly lower/deeper so the corridor arc sits below the heading and card band.
+    const endLook = { x: 0.02, y: 0.68, z: -7.8 }
 
     let px = 0
     let py = 0
@@ -272,22 +290,47 @@ function NetworkContent({
 
   return (
     <>
-      <TowerInstances layout={layout} progressRef={progressRef} activeModule={activeModule} />
-      <TransmissionLines layout={layout} progressRef={progressRef} activeModule={activeModule} />
-      <Transformer layout={layout} progressRef={progressRef} activeModule={activeModule} />
+      <SceneThemeDriver
+        appearance={appearance}
+        blendRef={themeBlendRef}
+        transitionLockRef={transitionLockRef}
+        isTransitioning={isTransitioning}
+        celestial={celestial}
+        dragArcURef={dragArcURef}
+      />
+      <TowerInstances
+        layout={layout}
+        progressRef={progressRef}
+        activeModule={activeModule}
+        themeBlendRef={themeBlendRef}
+      />
+      <TransmissionLines
+        layout={layout}
+        progressRef={progressRef}
+        activeModule={activeModule}
+        themeBlendRef={themeBlendRef}
+      />
+      <Transformer
+        layout={layout}
+        progressRef={progressRef}
+        activeModule={activeModule}
+        themeBlendRef={themeBlendRef}
+      />
       <EnergyFlow
         layout={layout}
         progressRef={progressRef}
         activeModule={activeModule}
         viewport={viewport}
+        themeBlendRef={themeBlendRef}
       />
-      <NetworkScanner layout={layout} progressRef={progressRef} />
-
-      {/* Ground plane keeps the corridor visually anchored */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
-        <planeGeometry args={[50, 50]} />
-        <meshStandardMaterial color="#0a1626" metalness={0.15} roughness={0.9} transparent opacity={0.55} />
-      </mesh>
+      <NetworkScanner layout={layout} progressRef={progressRef} themeBlendRef={themeBlendRef} />
+      <CorridorEnvironment layout={layout} viewport={viewport} themeBlendRef={themeBlendRef} />
+      <CelestialScene3D
+        themeBlendRef={themeBlendRef}
+        isTransitioning={isTransitioning}
+        celestial={celestial}
+        dragArcURef={dragArcURef}
+      />
     </>
   )
 }
@@ -306,16 +349,10 @@ export default function NetworkScene(props: NetworkSceneProps) {
         toneMapping: THREE.ACESFilmicToneMapping,
         toneMappingExposure: 1.15,
       }}
-      camera={{ position: [-3.1, 0.95, 4.7], fov: 42, near: 0.1, far: 60 }}
+      camera={{ position: [-3.1, 0.95, 4.7], fov: 42, near: 0.1, far: 90 }}
       style={{ background: 'transparent' }}
     >
-      <fog attach="fog" args={['#07111D', 9, 21]} />
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[5, 7, 4]} intensity={1.1} color="#e2e8f0" />
-      {/* Cyan rim light from behind the corridor */}
-      <directionalLight position={[-4, 3, -3]} intensity={0.65} color="#67e8f9" />
-      <pointLight position={[2.5, 2.5, -1.5]} intensity={0.55} color="#22d3ee" distance={10} decay={2} />
-
+      <fog attach="fog" args={['#07111D', 12, 55]} />
       <Suspense fallback={null}>
         <NetworkContent {...props} />
       </Suspense>

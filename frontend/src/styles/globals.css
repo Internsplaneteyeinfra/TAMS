@@ -229,6 +229,7 @@ body {
     opacity: 0;
     transform: translateY(-10px) scale(0.98);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -255,48 +256,99 @@ body {
 
 /* Monitoring result modal */
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes modalPop {
-  from { opacity: 0; transform: translateY(18px) scale(0.94); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.94);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes bounceSoft {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-4px);
+  }
 }
 
 @keyframes orbitA {
-  from { transform: rotate(0deg) translateX(140px) rotate(0deg); }
-  to { transform: rotate(360deg) translateX(140px) rotate(-360deg); }
+  from {
+    transform: rotate(0deg) translateX(140px) rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg) translateX(140px) rotate(-360deg);
+  }
 }
 
 @keyframes orbitB {
-  from { transform: rotate(90deg) translateX(200px) rotate(-90deg); }
-  to { transform: rotate(450deg) translateX(200px) rotate(-450deg); }
+  from {
+    transform: rotate(90deg) translateX(200px) rotate(-90deg);
+  }
+
+  to {
+    transform: rotate(450deg) translateX(200px) rotate(-450deg);
+  }
 }
 
 @keyframes orbitC {
-  from { transform: rotate(180deg) translateX(260px) rotate(-180deg); }
-  to { transform: rotate(540deg) translateX(260px) rotate(-540deg); }
+  from {
+    transform: rotate(180deg) translateX(260px) rotate(-180deg);
+  }
+
+  to {
+    transform: rotate(540deg) translateX(260px) rotate(-540deg);
+  }
 }
 
 @keyframes orbitD {
-  from { transform: rotate(270deg) translateX(110px) rotate(-270deg); }
-  to { transform: rotate(630deg) translateX(110px) rotate(-630deg); }
+  from {
+    transform: rotate(270deg) translateX(110px) rotate(-270deg);
+  }
+
+  to {
+    transform: rotate(630deg) translateX(110px) rotate(-630deg);
+  }
 }
 
 @keyframes shimmer {
-  0% { background-position: 0% 50%; }
-  100% { background-position: 200% 50%; }
+  0% {
+    background-position: 0% 50%;
+  }
+
+  100% {
+    background-position: 200% 50%;
+  }
 }
 
 .animate-fade-in {
@@ -329,12 +381,24 @@ body {
   pointer-events: none;
 }
 
-.tams-orbit-a { animation: orbitA 18s linear infinite; }
-.tams-orbit-b { animation: orbitB 26s linear infinite; }
-.tams-orbit-c { animation: orbitC 34s linear infinite; }
-.tams-orbit-d { animation: orbitD 14s linear infinite; }
+.tams-orbit-a {
+  animation: orbitA 18s linear infinite;
+}
+
+.tams-orbit-b {
+  animation: orbitB 26s linear infinite;
+}
+
+.tams-orbit-c {
+  animation: orbitC 34s linear infinite;
+}
+
+.tams-orbit-d {
+  animation: orbitD 14s linear infinite;
+}
 
 @media (prefers-reduced-motion: reduce) {
+
   .animate-fade-in,
   .animate-modal-pop,
   .animate-fade-up,
@@ -527,6 +591,7 @@ body {
     opacity: 0;
     transform: translateX(20px) scale(0.985);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -538,6 +603,7 @@ body {
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -549,6 +615,7 @@ body {
     opacity: 0;
     transform: translateX(16px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -564,6 +631,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .ts-card-in,
   .ts-drawer-in,
   .ts-rail-in,
@@ -571,7 +639,401 @@ body {
     animation: none !important;
     transition: none !important;
   }
+
   .ts-rail-btn:hover {
     transform: none;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Landing page — light theme overlays. Dark classNames stay the approved look. */
+/* -------------------------------------------------------------------------- */
+.tams-landing {
+  transition: background-color 0.35s ease, color 0.35s ease;
+}
+
+.tams-landing--theme-blend {
+  transition: none;
+  background-color: var(--tams-bg) !important;
+  color: var(--tams-text);
+}
+
+.tams-landing--theme-blend .tams-landing-header {
+  background: var(--tams-header-bg) !important;
+  border-bottom-color: var(--tams-header-border) !important;
+}
+
+.tams-landing--theme-blend .tams-landing-brand {
+  color: var(--tams-header-brand) !important;
+}
+
+.tams-landing--theme-blend .tams-landing-title {
+  color: var(--tams-header-title) !important;
+}
+
+.tams-landing--theme-blend .tams-landing-kicker {
+  color: var(--tams-kicker) !important;
+}
+
+.tams-landing--theme-blend .tams-landing-heading {
+  color: var(--tams-text) !important;
+}
+
+.tams-landing--theme-blend .tams-mod-card {
+  background-color: var(--tams-card-bg) !important;
+  border-color: var(--tams-card-border) !important;
+}
+
+.tams-landing--theme-blend .tams-mod-title {
+  color: var(--tams-text) !important;
+}
+
+.tams-landing--theme-blend .tams-mod-sub {
+  color: var(--tams-text-secondary) !important;
+}
+
+.tams-landing--theme-blend .tams-status-copy {
+  color: var(--tams-status) !important;
+}
+
+.tams-landing--theme-blend .tams-theme-toggle {
+  border-color: var(--tams-border) !important;
+  background: color-mix(in srgb, var(--tams-card-bg) 90%, transparent) !important;
+}
+
+.tams-celestial-sun {
+  filter: drop-shadow(0 0 22px rgba(255, 190, 80, 0.22));
+}
+
+.tams-celestial-body {
+  filter: drop-shadow(0 0 14px rgba(255, 200, 100, 0.14));
+}
+
+.tams-celestial-horizon svg path {
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.08));
+}
+
+.tams-celestial-drag-handle {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+.tams-celestial-drag-handle:hover {
+  filter: drop-shadow(0 0 22px rgba(255, 210, 120, 0.32));
+}
+
+.tams-landing[data-tams-theme='light'] .tams-celestial-drag-handle:hover {
+  filter: drop-shadow(0 0 20px rgba(255, 190, 80, 0.38));
+}
+
+.tams-landing[data-tams-theme='dark'] .tams-celestial-drag-handle:hover {
+  filter: drop-shadow(0 0 18px rgba(160, 190, 210, 0.35));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tams-celestial-drag {
+    display: none !important;
+  }
+}
+
+.tams-theme-btn:not(:disabled):hover {
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.18);
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .tams-celestial-layer,
+  .tams-celestial-horizon svg path {
+    display: none !important;
+  }
+
+  .tams-theme-btn:hover {
+    transform: none !important;
+  }
+}
+
+.tams-landing[data-tams-theme='light'] {
+  background-color: var(--tams-bg);
+  color: var(--tams-text);
+}
+
+.tams-landing[data-tams-theme='light'] .tams-landing-base {
+  background: linear-gradient(180deg, var(--tams-bg-top) 0%, var(--tams-bg-mid) 45%, var(--tams-bg-bottom) 100%) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-landing-glow {
+  background:
+    radial-gradient(ellipse 80% 58% at 50% 28%, rgba(110, 165, 195, 0.14), transparent 68%),
+    radial-gradient(ellipse 48% 40% at 72% 42%, rgba(90, 150, 175, 0.07), transparent 70%) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-landing-grid {
+  background-image: linear-gradient(var(--tams-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--tams-grid-line) 1px, transparent 1px),
+    linear-gradient(rgba(70, 105, 125, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(70, 105, 125, 0.04) 1px, transparent 1px) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-landing-vignette {
+  background: radial-gradient(ellipse 96% 90% at 50% 38%, transparent 64%, rgba(155, 178, 194, 0.18) 100%) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-landing-header {
+  background: var(--tams-header-bg) !important;
+  border-bottom-color: var(--tams-header-border) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.tams-landing[data-tams-theme='light'] .tams-landing-brand {
+  color: var(--tams-header-brand) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-landing-title {
+  color: var(--tams-header-title) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-theme-toggle {
+  border-color: var(--tams-border);
+  background: var(--tams-surface);
+  box-shadow: 0 4px 12px rgba(30, 60, 80, 0.08);
+}
+
+.tams-landing[data-tams-theme='light'] .tams-theme-sun {
+  background: #e2f5f8 !important;
+  color: var(--tams-cyan) !important;
+  box-shadow: 0 0 0 1px rgba(8, 145, 178, 0.28);
+}
+
+.tams-heading-quiet {
+  display: none;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-heading-quiet {
+  display: block;
+  background: radial-gradient(ellipse 62% 58% at 50% 48%,
+      rgba(247, 250, 252, 0.42) 0%,
+      rgba(239, 246, 249, 0.16) 50%,
+      transparent 78%);
+}
+
+.tams-net-atmosphere {
+  background:
+    radial-gradient(ellipse 70% 46% at 50% 22%, rgba(4, 10, 18, 0.16), transparent 72%);
+}
+
+.tams-landing[data-tams-theme='dark'] .tams-landing-kicker {
+  color: #94a8ba !important;
+  text-shadow: 0 1px 10px rgba(5, 13, 23, 0.95) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-net-atmosphere {
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 26%, rgba(125, 175, 200, 0.05), transparent 70%),
+    radial-gradient(ellipse 40% 32% at 80% 40%, rgba(100, 155, 180, 0.025), transparent 72%);
+}
+
+.tams-landing[data-tams-theme='light'] .tams-landing-kicker {
+  color: var(--tams-kicker) !important;
+  text-shadow: 0 1px 10px rgba(247, 250, 252, 0.85) !important;
+  filter: none;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-landing-heading {
+  color: var(--tams-text) !important;
+  text-shadow: 0 1px 14px rgba(247, 250, 252, 0.9) !important;
+  filter: none;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-landing-card-glow {
+  background: radial-gradient(ellipse 60% 55% at 50% 55%, rgba(8, 145, 178, 0.05), transparent 75%) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-card {
+  background-image: none !important;
+  background-color: var(--tams-card-bg) !important;
+  border-color: var(--tams-card-border) !important;
+  box-shadow: var(--tams-card-shadow) !important;
+  backdrop-filter: blur(10px);
+  filter: none !important;
+  transition: transform 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-card:hover {
+  transform: translateY(-3px) scale(1.01);
+  box-shadow: var(--tams-card-shadow-hover) !important;
+  filter: none !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-title {
+  color: var(--tams-text) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-sub {
+  color: var(--tams-text-secondary) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-icon {
+  border-color: transparent !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-suitability {
+  background-color: var(--tams-suit-bg) !important;
+  border-color: var(--tams-suit-border) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-suitability:hover {
+  background-color: var(--tams-cyan-soft) !important;
+  border-color: var(--tams-cyan) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-suitability .tams-mod-icon {
+  background: var(--tams-suit-icon) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-suitability .tams-mod-icon-svg {
+  color: var(--tams-cyan) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-analyzer {
+  background-color: var(--tams-an-bg) !important;
+  border-color: var(--tams-an-border) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-analyzer:hover {
+  background-color: var(--tams-green-soft) !important;
+  border-color: var(--tams-green) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-analyzer .tams-mod-icon {
+  background: var(--tams-an-icon) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-analyzer .tams-mod-icon-svg {
+  color: var(--tams-green) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-performance {
+  background-color: var(--tams-perf-bg) !important;
+  border-color: var(--tams-perf-border) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-performance:hover {
+  background-color: var(--tams-amber-soft) !important;
+  border-color: var(--tams-amber) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-performance .tams-mod-icon {
+  background: var(--tams-perf-icon) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-performance .tams-mod-icon-svg {
+  color: var(--tams-amber) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-status-copy {
+  color: var(--tams-status) !important;
+  text-shadow: none !important;
+  filter: none;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-substation-chip {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(8, 145, 178, 0.18);
+  border-radius: 6px;
+  padding: 6px 10px;
+  opacity: 1 !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-status-dot {
+  background-color: var(--tams-cyan) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-status-dot-ring {
+  background-color: rgb(8 145 178 / 0.35) !important;
+}
+
+.tams-net-read-center {
+  background: radial-gradient(ellipse 52% 48% at 50% 46%,
+      rgba(5, 13, 23, 0.16) 0%,
+      rgba(5, 13, 23, 0.06) 45%,
+      transparent 72%);
+}
+
+/* Small refinement: lower the 3-module card group after the intro settles,
+   giving more vertical clearance for midground tower lattices/wires. */
+.tams-module-cards-offset {
+  transform: translateY(clamp(24px, 3.2vh, 40px));
+}
+
+.tams-landing[data-tams-theme='light'] .tams-net-read-top {
+  background: linear-gradient(to bottom, rgba(247, 250, 252, 0.18), transparent) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-net-read-center {
+  background: radial-gradient(ellipse 48% 42% at 50% 52%,
+      rgba(247, 250, 252, 0.14) 0%,
+      rgba(239, 246, 249, 0.05) 48%,
+      transparent 72%) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-net-read-bottom {
+  background: radial-gradient(ellipse 62% 85% at 50% 94%,
+      rgba(220, 232, 240, 0.28) 24%,
+      rgba(231, 239, 244, 0.09) 58%,
+      transparent 100%) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-skip {
+  border-color: var(--tams-border);
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--tams-text-secondary);
+}
+
+.tams-landing[data-tams-theme='light'] .tams-skip:hover {
+  border-color: var(--tams-cyan);
+  color: var(--tams-cyan);
+}
+
+.tams-landing[data-tams-theme='light'] .tams-modal-backdrop {
+  background: rgba(15, 35, 50, 0.35);
+}
+
+.tams-landing[data-tams-theme='light'] .tams-modal {
+  background: var(--tams-surface);
+  border-color: var(--tams-perf-border);
+  color: var(--tams-text);
+}
+
+.tams-landing[data-tams-theme='light'] .tams-modal h3,
+.tams-landing[data-tams-theme='light'] .tams-modal p,
+.tams-landing[data-tams-theme='light'] .tams-modal button {
+  color: inherit;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-modal h3 {
+  color: var(--tams-text) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-modal p.text-slate-400 {
+  color: var(--tams-text-secondary) !important;
+}
+
+.tams-landing[data-tams-theme='light'] .tams-mod-card,
+.tams-landing[data-tams-theme='light'] .tams-landing-header,
+.tams-landing[data-tams-theme='light'] .tams-landing-base,
+.tams-landing[data-tams-theme='light'] .tams-landing-kicker,
+.tams-landing[data-tams-theme='light'] .tams-landing-heading {
+  transition: background-color 0.35s ease, border-color 0.35s ease, color 0.35s ease, box-shadow 0.35s ease,
+    transform 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .tams-landing,
+  .tams-landing[data-tams-theme='light'] .tams-mod-card,
+  .tams-landing[data-tams-theme='light'] .tams-landing-header {
+    transition: none;
   }
 }

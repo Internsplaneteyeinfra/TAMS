@@ -5,17 +5,22 @@ import type { MutableRefObject } from 'react'
 import type { NetProgress } from './types'
 import type { CorridorLayout } from './corridor'
 import { TOWER_HEIGHT } from './corridor'
+import { sceneAppearance } from '@/theme/landingTheme'
+
+const SCAN_DARK = new THREE.Color(sceneAppearance.dark.scan.color)
+const SCAN_LIGHT = new THREE.Color(sceneAppearance.light.scan.color)
 
 interface NetworkScannerProps {
   layout: CorridorLayout
   progressRef: MutableRefObject<NetProgress>
+  themeBlendRef: MutableRefObject<number>
 }
 
 /**
  * One-shot scan: a translucent vertical beam sweeps along the corridor
  * (T1 → transformer). Tower highlighting reacts in TowerInstances.
  */
-export default function NetworkScanner({ layout, progressRef }: NetworkScannerProps) {
+export default function NetworkScanner({ layout, progressRef, themeBlendRef }: NetworkScannerProps) {
   const beamRef = useRef<THREE.Mesh>(null)
   const tmp = useMemo(() => new THREE.Vector3(), [])
   const ahead = useMemo(() => new THREE.Vector3(), [])
@@ -61,7 +66,9 @@ export default function NetworkScanner({ layout, progressRef }: NetworkScannerPr
     beam.lookAt(ahead.x, TOWER_HEIGHT * 0.52, ahead.z)
 
     const fade = Math.sin(Math.min(1, p.scan) * Math.PI)
-    mat.opacity = (0.05 + fade * 0.08) * p.scanStrength
+    const blend = themeBlendRef.current
+    mat.color.lerpColors(SCAN_DARK, SCAN_LIGHT, blend)
+    mat.opacity = (0.05 + fade * 0.08) * p.scanStrength * (1 + blend * 0.35)
   })
 
   return (
