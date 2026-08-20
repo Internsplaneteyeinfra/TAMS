@@ -22,6 +22,7 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
       
       - name: Install dependencies
         run: npm ci
@@ -38,9 +39,10 @@ jobs:
       - name: Test
         run: npm run test -- --coverage
 
-  # Backend Tests & Lint
+  # Backend Tests & Lint (this repo is frontend-only; skip if ./backend is absent)
   backend:
     runs-on: ubuntu-latest
+    if: hashFiles('backend/requirements.txt') != ''
     defaults:
       run:
         working-directory: ./backend
