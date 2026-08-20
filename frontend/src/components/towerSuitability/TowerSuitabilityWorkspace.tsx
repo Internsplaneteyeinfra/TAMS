@@ -882,8 +882,6 @@ export default function TowerSuitabilityWorkspace() {
               </div>
             )}
 
-            )}
-
             {analysisReady && result && suggestions && (
               <>
                 <div className="absolute top-3 left-3 z-[1150] pointer-events-none flex flex-col gap-2 max-h-[calc(100%-1.5rem)] overflow-y-auto pb-16 md:pb-0">
