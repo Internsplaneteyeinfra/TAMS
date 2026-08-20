@@ -97,12 +97,8 @@ export default function CelestialScene3D({
       mesh.scale.setScalar(scale)
     }
 
-    const sunVis = traveling
-      ? celestial!.bodyOpacity * celestial!.sunOpacity
-      : THREE.MathUtils.clamp(blend * 1.35, 0, 1)
-    const moonVis = traveling
-      ? celestial!.bodyOpacity * celestial!.moonOpacity
-      : THREE.MathUtils.clamp((1 - blend) * 1.35, 0, 1)
+    const sunVis = 0
+    const moonVis = 0
 
     if (traveling) {
       worldPosFromArcU(celestial!.arcU, blend, travelPos)

@@ -11,24 +11,25 @@ interface CorridorEnvironmentProps {
   themeBlendRef: MutableRefObject<number>
 }
 
-/** Rural corridor palette — muted greens, olive, soil, dry grass */
-const GROUND_A = new THREE.Color('#465F42')
-const GROUND_B = new THREE.Color('#4F6A48')
-const GROUND_C = new THREE.Color('#587550')
-const GROUND_SOIL = new THREE.Color('#655C4A')
-const GROUND_WARM = new THREE.Color('#6E6850')
-const GROUND_OLIVE = new THREE.Color('#556048')
-const DARK_SOIL = new THREE.Color('#141a14')
-const LIGHT_HILL = new THREE.Color('#6A7E68')
-const LIGHT_MOUNT = new THREE.Color('#8A9AAA')
-const DARK_HILL = new THREE.Color('#0f1820')
-const DARK_MOUNT = new THREE.Color('#0a1018')
-const LIGHT_VEG = new THREE.Color('#365A3C')
-const DARK_VEG = new THREE.Color('#1a2820')
-const LIGHT_ROAD = new THREE.Color('#5E6850')
-const DARK_ROAD = new THREE.Color('#1a2018')
-const LIGHT_RIDGE = new THREE.Color('#7A8C7E')
-const DARK_RIDGE = new THREE.Color('#0c141c')
+/** Rural corridor palette — living grass, olive, soil, dry patches */
+const GROUND_A = new THREE.Color('#4E7A3E')
+const GROUND_B = new THREE.Color('#5C8B48')
+const GROUND_C = new THREE.Color('#6B9A52')
+const GROUND_SOIL = new THREE.Color('#7A6A4C')
+const GROUND_WARM = new THREE.Color('#8A7A4E')
+const GROUND_OLIVE = new THREE.Color('#5A7A42')
+const LIGHT_HILL = new THREE.Color('#6A8A5C')
+const LIGHT_MOUNT = new THREE.Color('#7A9080')
+const DARK_HILL = new THREE.Color('#1a2a22')
+const DARK_MOUNT = new THREE.Color('#121c18')
+const LIGHT_VEG = new THREE.Color('#2E6A34')
+const LIGHT_GRASS = new THREE.Color('#4A8A3A')
+const DARK_VEG = new THREE.Color('#2a4a32')
+const DARK_GRASS = new THREE.Color('#3a5c38')
+const LIGHT_ROAD = new THREE.Color('#6A7458')
+const DARK_ROAD = new THREE.Color('#2a3224')
+const LIGHT_RIDGE = new THREE.Color('#6E8A72')
+const DARK_RIDGE = new THREE.Color('#152018')
 
 function hash2(x: number, z: number) {
   const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453
@@ -127,15 +128,17 @@ function groundColorAt(x: number, z: number, pathPts: THREE.Vector3[], night = f
   if (night) {
     const n1 = fbm(x * 0.11, z * 0.11)
     const n2 = fbm(x * 0.24 + 1.3, z * 0.24 - 0.8)
-    const c = new THREE.Color('#141c16')
-    if (n1 < 0.42) c.lerp(new THREE.Color('#101814'), 0.45)
-    else if (n1 > 0.58) c.lerp(new THREE.Color('#182018'), 0.35)
-    c.lerp(new THREE.Color('#1a1814'), n2 * 0.22)
+    const n3 = fbm(x * 0.048 - 2.1, z * 0.048 + 1.4)
+    const c = new THREE.Color('#243628')
+    if (n1 < 0.38) c.lerp(new THREE.Color('#1c2e20'), 0.55)
+    else if (n1 > 0.62) c.lerp(new THREE.Color('#2e4a30'), 0.5)
+    c.lerp(new THREE.Color('#2a281c'), n2 * 0.28)
+    c.lerp(new THREE.Color('#1e3824'), (n3 - 0.5) * 0.35 + 0.2)
     const depthZ = THREE.MathUtils.smoothstep(-4, -38, z)
     const radial = THREE.MathUtils.smoothstep(16, 48, Math.hypot(x, z))
     const haze = Math.max(depthZ, radial * 0.55)
-    c.lerp(DARK_HORIZON_TINT, haze * 0.18)
-    c.lerp(DARK_HORIZON_LIGHT, haze * 0.08)
+    c.lerp(DARK_HORIZON_TINT, haze * 0.12)
+    c.lerp(DARK_HORIZON_LIGHT, haze * 0.06)
     return c
   }
 
@@ -154,8 +157,8 @@ function groundColorAt(x: number, z: number, pathPts: THREE.Vector3[], night = f
   const depthZ = THREE.MathUtils.smoothstep(-4, -38, z)
   const radial = THREE.MathUtils.smoothstep(16, 48, Math.hypot(x, z))
   const haze = Math.max(depthZ, radial * 0.55)
-  c.lerp(HORIZON_TINT, haze * 0.22)
-  c.lerp(HORIZON_LIGHT, haze * 0.1)
+  c.lerp(HORIZON_TINT, haze * 0.12)
+  c.lerp(HORIZON_LIGHT, haze * 0.05)
   return c
 }
 
@@ -187,36 +190,39 @@ const SKY_FRAG = /* glsl */ `
   }
   void main() {
     float h = clamp(vDir.y * 0.5 + 0.5, 0.0, 1.0);
-    // Clear outdoor daylight: deeper zenith → lighter mid → pale warm haze at horizon
-    vec3 lightZen = vec3(0.38, 0.62, 0.90);
-    vec3 lightMid = vec3(0.62, 0.78, 0.93);
-    vec3 lightHor = vec3(0.92, 0.90, 0.87);
-    vec3 darkZen = vec3(0.006, 0.014, 0.038);
-    vec3 darkMid = vec3(0.012, 0.028, 0.055);
-    vec3 darkHor = vec3(0.018, 0.038, 0.068);
-    vec3 day = mix(lightHor, lightMid, smoothstep(0.04, 0.38, h));
-    day = mix(day, lightZen, smoothstep(0.32, 0.94, h));
-    float lift = smoothstep(0.22, 0.5, h) * (1.0 - smoothstep(0.65, 0.92, h));
-    day += vec3(0.05, 0.06, 0.07) * lift;
-    float haze = smoothstep(0.0, 0.48, 1.0 - h);
-    day = mix(day, vec3(0.94, 0.93, 0.91), haze * 0.36);
-    vec3 groundMist = vec3(0.86, 0.90, 0.93);
-    float mistBand = smoothstep(0.0, 0.32, 1.0 - h) * smoothstep(0.0, 0.1, h);
-    day = mix(day, groundMist, mistBand * 0.18 * uBlend);
-    vec3 night = mix(darkHor, darkMid, smoothstep(0.0, 0.42, h));
-    night = mix(night, darkZen, smoothstep(0.34, 0.94, h));
+    // Day: clear vivid blue zenith → soft mid → warm pale horizon
+    vec3 lightZen = vec3(0.22, 0.52, 0.92);
+    vec3 lightMid = vec3(0.48, 0.72, 0.96);
+    vec3 lightHor = vec3(0.88, 0.90, 0.94);
+    // Night: flat digital void (deep navy → black) — no atmosphere/clouds
+    vec3 darkZen = vec3(0.020, 0.045, 0.075);
+    vec3 darkMid = vec3(0.015, 0.032, 0.055);
+    vec3 darkHor = vec3(0.008, 0.014, 0.028);
+
+    vec3 day = mix(lightHor, lightMid, smoothstep(0.02, 0.36, h));
+    day = mix(day, lightZen, smoothstep(0.28, 0.92, h));
+    float lift = smoothstep(0.18, 0.48, h) * (1.0 - smoothstep(0.58, 0.9, h));
+    day += vec3(0.06, 0.08, 0.10) * lift;
+    float haze = smoothstep(0.0, 0.42, 1.0 - h);
+    day = mix(day, vec3(0.96, 0.95, 0.93), haze * 0.28);
+    vec3 groundMist = vec3(0.90, 0.93, 0.96);
+    float mistBand = smoothstep(0.0, 0.28, 1.0 - h) * smoothstep(0.0, 0.12, h);
+    day = mix(day, groundMist, mistBand * 0.22 * uBlend);
+
+    vec3 night = mix(darkHor, darkMid, smoothstep(0.0, 0.55, h));
+    night = mix(night, darkZen, smoothstep(0.45, 1.0, h));
+
     vec2 uv = normalize(vDir.xz + 0.001) * (1.0 / max(0.14, vDir.y + 0.2));
-    // Very soft haze variation (not obvious clouds)
-    vec2 uv2 = uv + vec2(uTime * 0.01, uTime * 0.006);
-    float cloud = n2(uv2 * 0.85) * 0.5 + n2(uv2 * 1.9) * 0.5;
-    cloud = smoothstep(0.58, 0.84, cloud) * smoothstep(0.08, 0.5, vDir.y);
-    day = mix(day, vec3(0.96, 0.97, 0.99), cloud * 0.08 * uBlend);
+    vec2 uv2 = uv + vec2(uTime * 0.008, uTime * 0.005);
+    float cloud = n2(uv2 * 0.7) * 0.55 + n2(uv2 * 1.65) * 0.45;
+    cloud = smoothstep(0.52, 0.82, cloud) * smoothstep(0.06, 0.55, vDir.y);
+    day = mix(day, vec3(0.98, 0.99, 1.0), cloud * 0.14 * uBlend);
+
     vec3 dir = normalize(vDir);
     float sunDot = max(dot(dir, normalize(uSunDir)), 0.0);
-    day += vec3(1.0, 0.95, 0.86) * pow(sunDot, 32.0) * 0.04 * uBlend;
-    day += vec3(1.0, 0.96, 0.9) * pow(sunDot, 8.0) * 0.028 * uBlend;
-    float nightWeight = 1.0 - uBlend;
-    // No star field — the old polar mapping caused vertical streak artifacts in dark mode.
+    day += vec3(1.0, 0.96, 0.88) * pow(sunDot, 28.0) * 0.06 * uBlend;
+    day += vec3(1.0, 0.97, 0.92) * pow(sunDot, 6.0) * 0.04 * uBlend;
+
     gl_FragColor = vec4(mix(night, day, uBlend), 1.0);
   }
 `
@@ -227,10 +233,9 @@ export default function CorridorEnvironment({ layout, viewport, themeBlendRef }:
   const roadMat = useRef<THREE.MeshStandardMaterial>(null)
   const skyMat = useRef<THREE.ShaderMaterial>(null)
   const horizonMat = useRef<THREE.MeshBasicMaterial>(null)
-  const horizonDark = useMemo(() => new THREE.Color('#061018'), [])
-  const horizonLight = useMemo(() => new THREE.Color('#C4D4DE'), [])
-  const terrainDark = useMemo(() => new THREE.Color('#0a100e'), [])
-  const terrainLight = useMemo(() => new THREE.Color('#d8e0d2'), [])
+  const horizonDark = useMemo(() => new THREE.Color('#0a1c2e'), [])
+  const horizonLight = useMemo(() => new THREE.Color('#D2E4F2'), [])
+  const terrainLight = useMemo(() => new THREE.Color('#ffffff'), [])
   const horizonTmp = useMemo(() => new THREE.Color(), [])
   const dummy = useMemo(() => new THREE.Object3D(), [])
   const shared = useMemo(
@@ -267,10 +272,17 @@ export default function CorridorEnvironment({ layout, viewport, themeBlendRef }:
       }),
       veg: new THREE.MeshStandardMaterial({
         color: DARK_VEG.clone(),
-        roughness: 0.96,
+        roughness: 0.88,
         metalness: 0,
         transparent: true,
-        opacity: 0.38,
+        opacity: 0.62,
+      }),
+      grass: new THREE.MeshStandardMaterial({
+        color: DARK_GRASS.clone(),
+        roughness: 0.82,
+        metalness: 0,
+        transparent: true,
+        opacity: 0.78,
       }),
       trunk: new THREE.MeshStandardMaterial({
         color: '#1a1814',
@@ -296,9 +308,9 @@ export default function CorridorEnvironment({ layout, viewport, themeBlendRef }:
 
   const segs = viewport === 'mobile' ? 28 : viewport === 'tablet' ? 36 : 48
   // Keep vegetation sparse: open corridor, not a forest
-  const grassN = viewport === 'mobile' ? 36 : viewport === 'tablet' ? 52 : 78
-  const treeN = viewport === 'mobile' ? 4 : viewport === 'tablet' ? 6 : 9
-  const bushN = viewport === 'mobile' ? 8 : viewport === 'tablet' ? 12 : 18
+  const grassN = viewport === 'mobile' ? 70 : viewport === 'tablet' ? 110 : 170
+  const treeN = viewport === 'mobile' ? 6 : viewport === 'tablet' ? 9 : 14
+  const bushN = viewport === 'mobile' ? 14 : viewport === 'tablet' ? 22 : 32
 
   const { terrainGeo, roadGeo, ridgeGeo, ridgeFarGeo, terrainLightCols, terrainDarkCols } = useMemo(() => {
     const geo = new THREE.PlaneGeometry(90, 90, segs, segs)
@@ -395,8 +407,8 @@ export default function CorridorEnvironment({ layout, viewport, themeBlendRef }:
       mesh.count = placed
       mesh.instanceMatrix.needsUpdate = true
     }
-    scatter(grassRef.current, grassN, (i) => 0.22 + hash2(i, 1) * 0.2, 0.06, 1.8, 20)
-    scatter(bushRef.current, bushN, (i) => 0.18 + hash2(i, 4) * 0.18, 0.1, 2.8, 18)
+    scatter(grassRef.current, grassN, (i) => 0.38 + hash2(i, 1) * 0.42, 0.08, 1.5, 22)
+    scatter(bushRef.current, bushN, (i) => 0.28 + hash2(i, 4) * 0.32, 0.12, 2.4, 20)
 
     const trunks = trunkRef.current
     const crowns = crownRef.current
@@ -446,6 +458,7 @@ export default function CorridorEnvironment({ layout, viewport, themeBlendRef }:
       shared.ridge.dispose()
       shared.ridgeFar.dispose()
       shared.veg.dispose()
+      shared.grass.dispose()
       shared.trunk.dispose()
       shared.shadow.dispose()
     },
@@ -453,6 +466,16 @@ export default function CorridorEnvironment({ layout, viewport, themeBlendRef }:
   )
 
   const sunDirDefault = useMemo(() => new THREE.Vector3(0.35, 0.25, -0.9), [])
+  // Stable uniforms — inline objects reset uBlend to 0 on every React re-render
+  // (theme transition / status updates), which left the sky stuck dark.
+  const skyUniforms = useMemo(
+    () => ({
+      uBlend: { value: 0 },
+      uSunDir: { value: new THREE.Vector3(0.35, 0.25, -0.9) },
+      uTime: { value: 0 },
+    }),
+    []
+  )
 
   useFrame((state) => {
     const t = themeBlendRef.current
@@ -473,31 +496,38 @@ export default function CorridorEnvironment({ layout, viewport, themeBlendRef }:
       skyMat.current.uniforms.uTime.value = state.clock.elapsedTime
     }
     if (terrainMat.current) {
-      terrainMat.current.color.lerpColors(terrainDark, terrainLight, t)
-      terrainMat.current.emissive.lerpColors(DARK_SOIL, new THREE.Color('#000000'), t)
-      terrainMat.current.emissiveIntensity = THREE.MathUtils.lerp(0.025, 0.008, t)
+      // Dark: hide real-world terrain (digital void). Light: unchanged.
+      terrainMat.current.color.lerpColors(new THREE.Color('#050D17'), terrainLight, t)
+      terrainMat.current.emissive.set('#000000')
+      terrainMat.current.emissiveIntensity = THREE.MathUtils.lerp(0, 0.02, t)
+      terrainMat.current.transparent = true
+      terrainMat.current.opacity = THREE.MathUtils.lerp(0, 1, t)
+      terrainMat.current.depthWrite = t > 0.4
     }
     shared.hill.color.lerpColors(DARK_HILL, LIGHT_HILL, t)
-    shared.hill.opacity = THREE.MathUtils.lerp(0.55, 0.78, t)
+    // Dark mode: hide mountain/hill silhouettes. Light mode values unchanged.
+    shared.hill.opacity = THREE.MathUtils.lerp(0, 0.86, t)
     shared.mount.color.lerpColors(DARK_MOUNT, LIGHT_MOUNT, t)
-    shared.mount.opacity = THREE.MathUtils.lerp(0.42, 0.55, t)
+    shared.mount.opacity = THREE.MathUtils.lerp(0, 0.62, t)
     shared.ridge.color.lerpColors(DARK_RIDGE, LIGHT_RIDGE, t)
-    shared.ridge.opacity = THREE.MathUtils.lerp(0.32, 0.72, t)
+    shared.ridge.opacity = THREE.MathUtils.lerp(0, 0.78, t)
     shared.ridgeFar.color.lerpColors(DARK_RIDGE, LIGHT_RIDGE, t)
-    shared.ridgeFar.opacity = THREE.MathUtils.lerp(0.22, 0.5, t)
+    shared.ridgeFar.opacity = THREE.MathUtils.lerp(0, 0.55, t)
     if (horizonMat.current) {
       horizonMat.current.color.copy(horizonTmp.lerpColors(horizonDark, horizonLight, t))
-      horizonMat.current.opacity = THREE.MathUtils.lerp(0.08, 0.14, t)
+      horizonMat.current.opacity = THREE.MathUtils.lerp(0, 0.2, t)
     }
     if (roadMat.current) {
       roadMat.current.color.lerpColors(DARK_ROAD, LIGHT_ROAD, t)
-      roadMat.current.opacity = THREE.MathUtils.lerp(0.35, 0.22, t)
+      roadMat.current.opacity = THREE.MathUtils.lerp(0, 0.2, t)
     }
     shared.veg.color.lerpColors(DARK_VEG, LIGHT_VEG, t)
-    shared.veg.opacity = THREE.MathUtils.lerp(0.38, 0.55, t)
-    shared.trunk.color.lerpColors(new THREE.Color('#141210'), new THREE.Color('#4a4038'), t)
-    shared.trunk.opacity = THREE.MathUtils.lerp(0.32, 0.24, t)
-    shared.shadow.opacity = THREE.MathUtils.lerp(0.14, 0.1, t)
+    shared.veg.opacity = THREE.MathUtils.lerp(0, 0.88, t)
+    shared.grass.color.lerpColors(DARK_GRASS, LIGHT_GRASS, t)
+    shared.grass.opacity = THREE.MathUtils.lerp(0, 0.95, t)
+    shared.trunk.color.lerpColors(new THREE.Color('#2a241c'), new THREE.Color('#5a4a38'), t)
+    shared.trunk.opacity = THREE.MathUtils.lerp(0, 0.72, t)
+    shared.shadow.opacity = THREE.MathUtils.lerp(0, 0.08, t)
   })
 
   /** Soft midground hills + farther atmospheric mountain silhouettes */
@@ -528,11 +558,7 @@ export default function CorridorEnvironment({ layout, viewport, themeBlendRef }:
           ref={skyMat}
           vertexShader={SKY_VERT}
           fragmentShader={SKY_FRAG}
-          uniforms={{
-            uBlend: { value: 0 },
-            uSunDir: { value: new THREE.Vector3(0.35, 0.25, -0.9) },
-            uTime: { value: 0 },
-          }}
+          uniforms={skyUniforms}
           side={THREE.BackSide}
           depthWrite={false}
           fog={false}
@@ -596,17 +622,17 @@ export default function CorridorEnvironment({ layout, viewport, themeBlendRef }:
         </mesh>
       ))}
 
-      <instancedMesh ref={grassRef} args={[undefined, shared.veg, grassN]}>
-        <coneGeometry args={[0.07, 0.14, 4]} />
+      <instancedMesh ref={grassRef} args={[undefined, shared.grass, grassN]}>
+        <coneGeometry args={[0.09, 0.22, 4]} />
       </instancedMesh>
       <instancedMesh ref={bushRef} args={[undefined, shared.veg, bushN]}>
-        <sphereGeometry args={[0.14, 5, 4]} />
+        <sphereGeometry args={[0.18, 6, 5]} />
       </instancedMesh>
       <instancedMesh ref={trunkRef} args={[undefined, shared.trunk, treeN]}>
-        <cylinderGeometry args={[0.035, 0.05, 0.55, 4]} />
+        <cylinderGeometry args={[0.04, 0.06, 0.7, 5]} />
       </instancedMesh>
       <instancedMesh ref={crownRef} args={[undefined, shared.veg, treeN]}>
-        <sphereGeometry args={[0.22, 5, 4]} />
+        <sphereGeometry args={[0.28, 6, 5]} />
       </instancedMesh>
 
       {pathPts.map((p, i) => (

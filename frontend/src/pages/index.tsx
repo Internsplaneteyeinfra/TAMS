@@ -12,8 +12,6 @@ import type { LandingModuleId, NetworkMode } from '@/components/TransmissionNetw
 import { LandingThemeProvider, useLandingTheme } from '@/theme/LandingThemeContext'
 import { landingLightCssVars } from '@/theme/landingTheme'
 import LandingThemeToggle from '@/components/landing/LandingThemeToggle'
-import CelestialHorizon from '@/components/landing/CelestialHorizon'
-import CelestialDragControl from '@/components/landing/CelestialDragControl'
 
 const TransmissionNetwork = dynamic(() => import('@/components/TransmissionNetwork'), {
   ssr: false,
@@ -74,7 +72,7 @@ export default function LandingPage() {
 }
 
 function LandingPageInner() {
-  const { appearance, isTransitioning, registerLandingEl, playIntroSunrise } = useLandingTheme()
+  const { appearance, isTransitioning, registerLandingEl } = useLandingTheme()
   const router = useRouter()
   const [performanceOpen, setPerformanceOpen] = useState(false)
   const [activeModule, setActiveModule] = useState<LandingModuleId | null>(null)
@@ -138,12 +136,6 @@ function LandingPageInner() {
     const t = window.setTimeout(() => setSettled(true), 1400)
     return () => window.clearTimeout(t)
   }, [revealed])
-
-  useEffect(() => {
-    if (!revealed || appearance !== 'light') return
-    const t = window.setTimeout(() => playIntroSunrise(), 500)
-    return () => window.clearTimeout(t)
-  }, [revealed, appearance, playIntroSunrise])
 
   const revealClass = () =>
     `${settled ? 'transition-all' : 'transition-all duration-700 ease-out'} ${revealed ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0 pointer-events-none'
@@ -231,9 +223,6 @@ function LandingPageInner() {
             onInitialized={handleInitialized}
           />
         )}
-
-        <CelestialHorizon />
-        <CelestialDragControl />
 
         <header className="tams-landing-header relative z-10 shrink-0 h-14 flex items-center gap-3 px-6 border-b border-[#8fb3c9]/10 bg-[#081522]/40">
           <div className="min-w-0">

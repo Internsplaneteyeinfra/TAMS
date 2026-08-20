@@ -42,15 +42,12 @@ const fillDark = new THREE.Color(D.fill.color)
 
 const fillLight = new THREE.Color('#FFE8C8')
 
-const hemiSkyDark = new THREE.Color('#0a1520')
+const hemiSkyDark = new THREE.Color('#102028')
+const hemiGroundDark = new THREE.Color('#1a2e1c')
+const hemiSkyLight = new THREE.Color('#a8d0ec')
+const hemiGroundLight = new THREE.Color('#6a9a52')
 
-const hemiGroundDark = new THREE.Color('#0a0e0c')
-
-const hemiSkyLight = new THREE.Color('#9ec8e8')
-
-const hemiGroundLight = new THREE.Color('#6a8a58')
-
-const bgLight = new THREE.Color('#8EC4E8')
+const bgLight = new THREE.Color('#6EB4E8')
 
 
 
@@ -157,7 +154,7 @@ export default function SceneThemeDriver({
     }
 
     const bg = tmp.current.lerpColors(fogDark, bgLight, t)
-    ; (scene.background as THREE.Color).copy(bg)
+      ; (scene.background as THREE.Color).copy(bg)
     // Opaque clear prevents light page layers from bleeding through the sky dome.
     gl.setClearColor(bg.getHex(), 1)
 
@@ -234,7 +231,7 @@ export default function SceneThemeDriver({
 
     if (hemiRef.current) {
 
-      hemiRef.current.intensity = THREE.MathUtils.lerp(0.08, 0.38, t)
+      hemiRef.current.intensity = THREE.MathUtils.lerp(0.06, 0.52, t)
 
       hemiRef.current.color.lerpColors(hemiSkyDark, hemiSkyLight, t)
 

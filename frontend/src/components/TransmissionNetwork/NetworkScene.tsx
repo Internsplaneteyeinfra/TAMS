@@ -352,7 +352,7 @@ export default function NetworkScene(props: NetworkSceneProps) {
       camera={{ position: [-3.1, 0.95, 4.7], fov: 42, near: 0.1, far: 90 }}
       style={{ background: 'transparent' }}
     >
-      <fog attach="fog" args={['#07111D', 12, 55]} />
+      <fog attach="fog" args={['#050D17', 18, 62]} />
       <Suspense fallback={null}>
         <NetworkContent {...props} />
       </Suspense>

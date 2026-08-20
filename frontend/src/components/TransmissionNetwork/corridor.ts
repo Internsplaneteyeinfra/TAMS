@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { ViewportTier } from './types'
 
-export const TOWER_HEIGHT = 1.9
+export const TOWER_HEIGHT = 2.55
 
 export interface TowerSlot {
   position: THREE.Vector3
@@ -22,28 +22,21 @@ export interface CorridorLayout {
   conductorCurves: THREE.CatmullRomCurve3[]
 }
 
-// Corridor waypoints — foreground-left sweeping to background-right.
-// The slot after the last tower holds the transformer: kept to the right of
-// the corridor and not much deeper, so it stays clearly visible.
-//
-// The first two entries are LOCKED: they place the foreground towers whose
-// framing is final. Everything from index 2 on recedes faster so the corridor
-// silhouette drops below the centered heading and leaves it unobstructed.
-// Indices 0/1 are LOCKED — do not change. Indices 2+ follow a gentle arc (bowing
-// toward the camera at centre) so the corridor reads circular, not a straight line.
+// Corridor waypoints — straight line from left foreground to right background.
+// Indices 0/1 are LOCKED. Remaining towers recede evenly along that line.
 const WAYPOINTS: [number, number, number][] = [
-  [-3.4, 0, 2.3], // 1 — far-left foreground
-  [-4.7, 0, -2.85], // 2 — left of Suitability, mid-depth
-  [-2.55, 0, -7.55], // 3 — shifted right, between 2 and 4 on the arc
-  [-0.55, 0, -10.15], // 4 — deep, Suitability/Analyzer gap
-  [0.95, 0, -11.65], // 5 — deepest centre (below heading)
-  [3.75, 0, -9.15], // 6 — Performance gap
-  [6.35, 0, -6.25], // 7 — right wing toward substation
-  [8.45, 0, -6.55], // transformer slot
+  [-3.4, 0, 2.3],
+  [-1.85, 0, 1.05],
+  [-0.25, 0, -0.05],
+  [1.35, 0, -1.1],
+  [2.75, 0, -2.05],
+  [4.05, 0, -2.9],
+  [5.2, 0, -3.55],
+  [7.85, 0, -4.35], // transformer — further right of the corridor end
 ]
 
-const SCALE_JITTER = [1.0, 0.96, 1.1, 0.9, 0.76, 0.88, 1.06]
-const MID_TOWER_LIFT = [0, 0, 0.02, 0.02, 0.02, 0.02, 0.02]
+const SCALE_JITTER = [1.08, 1.12, 1.18, 1.14, 1.1, 1.08, 1.06]
+const MID_TOWER_LIFT = [0, 0, 0, 0, 0, 0, 0]
 const ROT_JITTER = [0.12, -0.08, 0.04, 0.01, 0, -0.02, 0.03]
 
 const TOWER_COUNT: Record<ViewportTier, number> = {
@@ -85,7 +78,7 @@ export function buildCorridor(viewport: ViewportTier): CorridorLayout {
   const transformerScale = TRANSFORMER_SCALE[viewport]
 
   const groundPts = [...towers.map((t) => t.position.clone()), transformerPos.clone()]
-  const groundCurve = new THREE.CatmullRomCurve3(groundPts, false, 'catmullrom', 0.32)
+  const groundCurve = new THREE.CatmullRomCurve3(groundPts, false, 'catmullrom', 0.38)
 
   // Conductor paths: through each tower's arm attach points with mid-span sag,
   // ending at the transformer bushings.

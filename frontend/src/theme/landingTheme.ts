@@ -193,9 +193,9 @@ export function landingLightCssVars(): CSSProperties {
 /** 3D appearance — dark numbers are the live approved scene; do not restyle them. */
 export const sceneAppearance = {
   dark: {
-    fogColor: '#07111D',
-    fogNear: 12,
-    fogFar: 55,
+    fogColor: '#050D17',
+    fogNear: 18,
+    fogFar: 62,
     exposure: 1.15,
     ambient: { intensity: 0.5, color: '#ffffff' },
     key: { intensity: 1.1, color: '#e2e8f0' },
@@ -225,10 +225,10 @@ export const sceneAppearance = {
     },
   },
   light: {
-    fogColor: '#9CB8CC',
-    fogNear: 18,
-    fogFar: 72,
-    exposure: 1.04,
+    fogColor: '#8EB8D4',
+    fogNear: 20,
+    fogFar: 78,
+    exposure: 1.08,
     ambient: { intensity: 0.62, color: '#eef4f8' },
     key: { intensity: 1.05, color: '#fff8ee' },
     rim: { intensity: 0.2, color: '#98b8c8' },

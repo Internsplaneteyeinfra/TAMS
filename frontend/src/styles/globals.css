@@ -823,6 +823,21 @@ body {
     radial-gradient(ellipse 70% 46% at 50% 22%, rgba(4, 10, 18, 0.16), transparent 72%);
 }
 
+.tams-landing[data-tams-theme='dark'] .tams-landing-base {
+  background:
+    radial-gradient(circle at 50% 40%, rgba(0, 90, 130, 0.08) 0%, transparent 55%),
+    linear-gradient(180deg, #081522 0%, #07111D 42%, #050D17 100%) !important;
+}
+
+.tams-landing[data-tams-theme='dark'] .tams-landing-glow {
+  background:
+    radial-gradient(ellipse 58% 48% at 50% 30%, rgba(34, 120, 160, 0.07), transparent 72%) !important;
+}
+
+.tams-landing[data-tams-theme='dark'] .tams-net-atmosphere {
+  background: transparent;
+}
+
 .tams-landing[data-tams-theme='dark'] .tams-landing-kicker {
   color: #94a8ba !important;
   text-shadow: 0 1px 10px rgba(5, 13, 23, 0.95) !important;
