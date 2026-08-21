@@ -164,8 +164,13 @@ export default function MapIntelPanel({
           <Metric label="Coverage" value={`${stats.coveragePct}%`} accent="text-cyan-300" />
           <Metric label="Healthy" value={`${stats.healthyPct}%`} accent="text-emerald-400" />
         </div>
+        <p className="mt-1.5 text-[8px] leading-relaxed text-slate-500">
+          Assets = towers + lines + substations (
+          {stats.towers.toLocaleString()} + {stats.lines.toLocaleString()} +{' '}
+          {stats.substations.toLocaleString()})
+        </p>
         {stats.lineKm > 0 && (
-          <p className="mt-1.5 text-[9px] text-slate-500 font-mono">
+          <p className="mt-1 text-[9px] text-slate-500 font-mono">
             Corridor {stats.lineKm.toLocaleString()} km · OSM / indian_KML
           </p>
         )}
@@ -202,8 +207,8 @@ export default function MapIntelPanel({
               <>
                 <GroupHint>India KML totals (counts only)</GroupHint>
                 <p className="mb-2 text-[9px] leading-relaxed text-slate-500">
-                  Map filters stay off at national view for performance. Select a state in Places to
-                  enable asset classes on the map.
+                  Full inventory for India. Select a state in Places for that state’s tower, line, and
+                  substation counts with map filters.
                 </p>
                 {ASSET_ROWS.map((row) => (
                   <CountRow
@@ -213,6 +218,12 @@ export default function MapIntelPanel({
                     count={row.getCount(stats)}
                   />
                 ))}
+                <div className="mt-2 rounded-md border border-slate-800 bg-slate-950/60 px-2 py-1.5 text-[9px] text-slate-400">
+                  Total assets:{' '}
+                  <span className="font-mono font-bold text-slate-200">
+                    {stats.totalAssets.toLocaleString()}
+                  </span>
+                </div>
                 <div className="mt-2 space-y-0.5 border-t border-slate-800/70 pt-2">
                   <p className="mb-1 text-[8px] font-bold uppercase tracking-wider text-slate-600">
                     Within substations

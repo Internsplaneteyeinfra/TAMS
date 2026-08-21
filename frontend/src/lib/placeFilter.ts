@@ -75,6 +75,7 @@ export function filterAlertsByPlace(alerts: Alert[], assets: Asset[], placeId: s
 export interface RegionStats {
   placeLabel: string
   placeId: string
+  /** Towers + lines + substations for the selected place. */
   totalAssets: number
   substations: number
   towers: number
@@ -120,13 +121,12 @@ export function computeRegionStats(
       .filter((a) => a.asset_type === 'line')
       .reduce((sum, a) => sum + (typeof a.metadata?.length_km === 'number' ? a.metadata.length_km : 0), 0)
 
-  const allCounted = kmlStats?.total ?? filtered.length
+  // Assets = towers + lines + substations (full KML/OSM inventory for the place)
+  const totalAssets = kmlStats?.total ?? towers + lines + substations
   const healthy = filtered.filter((a) => a.health_score === 'healthy').length
   const catalogCount = filtered.length
-  // Coverage = availability of loaded catalog assets (KML total is tower-heavy and
-  // would crush this metric if used as the denominator).
   const monitored = filtered.filter((a) => a.status !== 'offline').length
-  const coverageBase = catalogCount > 0 ? catalogCount : Math.max(allCounted, 1)
+  const coverageBase = catalogCount > 0 ? catalogCount : Math.max(totalAssets, 1)
   const coveragePct = Math.round((monitored / coverageBase) * 1000) / 10
   const healthyPct = catalogCount
     ? Math.round((healthy / Math.max(catalogCount, 1)) * 100)
@@ -135,7 +135,7 @@ export function computeRegionStats(
   return {
     placeLabel: place?.label ?? path[path.length - 1]?.label ?? 'India',
     placeId,
-    totalAssets: allCounted,
+    totalAssets,
     substations,
     towers,
     lines,
