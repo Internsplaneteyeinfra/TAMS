@@ -18,6 +18,7 @@ import {
 
 import LogoutButton from '@/components/auth/LogoutButton'
 import { fetchGisTowers } from '@/lib/api'
+import { createSiteScore } from '@/lib/siteScoresApi'
 import {
   collectSiteSignals,
   inferOsmLineVoltageKv,
@@ -28,7 +29,6 @@ import {
 import { downloadSuitabilityReport } from './downloadSuitabilityReport'
 import type { SoilReportOpts } from './downloadSoilScreeningReport'
 import { fetchSoilScreening } from './soilScreening'
-import { createSiteScore } from '@/lib/siteScoresApi'
 import { downloadKmlFile } from './kmlExport'
 import {
   estimateTowerBand,

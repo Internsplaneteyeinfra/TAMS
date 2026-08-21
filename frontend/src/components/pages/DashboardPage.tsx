@@ -1,11 +1,11 @@
 import React, { useMemo } from 'react'
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
+import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { Box, Button, Card, CardContent, LinearProgress, Typography } from '@/components/mui'
 import AppLayout from '@/components/layout/AppLayout'
 import { fetchApi } from '@/lib/api'
-import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 
 interface OpsDashboard {
   active_alarms: number

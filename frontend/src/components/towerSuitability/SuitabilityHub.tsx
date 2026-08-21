@@ -9,8 +9,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { Crosshair, Map, Navigation, Upload } from 'lucide-react'
-import type { HubIntroEvent, HubIntroMode, HubTier } from './HubIntro3D'
 import { readLandingAppearance, type LandingAppearance } from '@/theme/landingTheme'
+import type { HubIntroEvent, HubIntroMode, HubTier } from './HubIntro3D'
 
 const HubIntro3D = dynamic(() => import('./HubIntro3D'), { ssr: false })
 

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import NetworkScene from './NetworkScene'
-import type { LandingModuleId, NetworkEvent, NetworkMode, ViewportTier } from './types'
 import type { LandingAppearance } from '@/theme/landingTheme'
 import { useLandingTheme } from '@/theme/LandingThemeContext'
+import NetworkScene from './NetworkScene'
+import type { LandingModuleId, NetworkEvent, NetworkMode, ViewportTier } from './types'
 
 export type { LandingModuleId, NetworkMode }
 

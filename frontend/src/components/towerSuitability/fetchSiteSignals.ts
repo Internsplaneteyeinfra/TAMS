@@ -1,6 +1,6 @@
+import { fetchGeotechNearest } from '@/lib/geotechApi'
 import { findNearbyPowerSupply } from './nearbyPowerSupply'
 import type { SiteSignals } from './scoring'
-import { fetchGeotechNearest } from '@/lib/geotechApi'
 import { fetchSoilScreening } from './soilScreening'
 
 const haversineKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {

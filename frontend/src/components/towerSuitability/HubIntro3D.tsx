@@ -702,7 +702,8 @@ function IntroScene({ mode, tier, skipRef, onEvent, appearance = 'dark' }: HubIn
         sunDirRef.current.position.set(10 + evening * 6, 14 - evening * 4, 6)
       }
       if (scene.fog && (scene.fog as THREE.Fog).isFog) {
-        ;(scene.fog as THREE.Fog).color.set(day > 0.45 ? '#C8D8E4' : '#D4C4B0')
+        const fog = scene.fog as THREE.Fog
+        fog.color.set(day > 0.45 ? '#C8D8E4' : '#D4C4B0')
       }
     }
 
