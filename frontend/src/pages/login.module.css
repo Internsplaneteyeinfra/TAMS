@@ -1,4 +1,4 @@
-/* Login page layout + tower4 3D background */
+/* Login page — cinematic glass form over 3D tower backdrop */
 
 .page {
   position: relative;
@@ -58,39 +58,114 @@
 .panel {
   width: 100%;
   max-width: 28rem;
+  position: relative;
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.75s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.revealIn {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .formCard {
-  border-radius: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.1) 0%,
-    rgba(12, 40, 58, 0.35) 48%,
-    rgba(8, 28, 42, 0.28) 100%
-  );
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  position: relative;
+  border-radius: 1.15rem;
+  border: 1px solid rgba(103, 232, 249, 0.28);
+  background: linear-gradient(155deg,
+      rgba(255, 255, 255, 0.12) 0%,
+      rgba(12, 40, 58, 0.42) 45%,
+      rgba(8, 24, 40, 0.38) 100%);
+  backdrop-filter: blur(22px) saturate(1.15);
+  -webkit-backdrop-filter: blur(22px) saturate(1.15);
   box-shadow:
-    0 24px 60px -24px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  padding: 1.25rem 1.35rem;
+    0 28px 70px -22px rgba(0, 0, 0, 0.65),
+    0 0 40px -12px rgba(34, 211, 238, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  padding: 1.35rem 1.4rem;
+  overflow: hidden;
+}
+
+.formCard::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(125deg,
+      rgba(103, 232, 249, 0.55),
+      rgba(255, 255, 255, 0.08) 35%,
+      rgba(251, 146, 60, 0.35) 70%,
+      rgba(34, 211, 238, 0.4));
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.85;
+  animation: borderPulse 4.5s ease-in-out infinite;
+}
+
+.formCard::after {
+  content: '';
+  position: absolute;
+  top: -40%;
+  left: -30%;
+  width: 60%;
+  height: 80%;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.14), transparent 68%);
+  pointer-events: none;
+  animation: glowDrift 8s ease-in-out infinite;
+}
+
+@keyframes borderPulse {
+
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes glowDrift {
+
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  50% {
+    transform: translate(40%, 20%);
+  }
 }
 
 @media (min-width: 640px) {
   .formCard {
-    padding: 1.5rem;
+    padding: 1.6rem 1.65rem;
   }
 }
 
 .eyebrow {
   color: #a5f3fc;
   text-shadow: 0 2px 14px rgba(5, 13, 23, 0.95);
+  letter-spacing: 0.32em;
 }
 
 .title {
   color: #ffffff;
-  text-shadow: 0 2px 18px rgba(5, 13, 23, 0.95);
+  text-shadow:
+    0 2px 18px rgba(5, 13, 23, 0.95),
+    0 0 40px rgba(34, 211, 238, 0.18);
 }
 
 .label {
@@ -99,8 +174,8 @@
 
 .input {
   width: 100%;
-  height: 2.75rem;
-  border-radius: 0.75rem;
+  height: 2.85rem;
+  border-radius: 0.8rem;
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.1);
   color: #ffffff;
@@ -109,6 +184,10 @@
   font-size: 0.95rem;
   font-weight: 500;
   backdrop-filter: blur(8px);
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    background 0.25s ease;
 }
 
 .input::placeholder {
@@ -117,8 +196,11 @@
 
 .input:focus {
   outline: none;
-  border-color: rgba(103, 232, 249, 0.5);
-  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.25);
+  border-color: rgba(103, 232, 249, 0.55);
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 0 0 3px rgba(34, 211, 238, 0.22),
+    0 0 24px -6px rgba(34, 211, 238, 0.35);
 }
 
 .brandMuted {
@@ -129,4 +211,188 @@
 .brandTitle {
   color: #ffffff;
   text-shadow: 0 1px 12px rgba(5, 13, 23, 0.95);
+}
+
+.cta {
+  position: relative;
+  width: 100%;
+  height: 3rem;
+  border-radius: 0.85rem;
+  overflow: hidden;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+  box-shadow:
+    0 12px 28px -10px rgba(8, 145, 178, 0.55),
+    0 0 0 1px rgba(103, 232, 249, 0.25);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.cta:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 16px 34px -10px rgba(8, 145, 178, 0.7),
+    0 0 28px -4px rgba(34, 211, 238, 0.4);
+}
+
+.cta:disabled {
+  opacity: 0.7;
+}
+
+.ctaShine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg,
+      transparent 35%,
+      rgba(255, 255, 255, 0.22) 50%,
+      transparent 65%);
+  transform: translateX(-120%);
+  animation: shineSweep 3.8s ease-in-out infinite;
+}
+
+@keyframes shineSweep {
+
+  0%,
+  55% {
+    transform: translateX(-120%);
+  }
+
+  80%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+.helper {
+  margin-top: 0.55rem;
+  max-width: 26rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: rgba(186, 210, 225, 0.82);
+  text-shadow: 0 1px 10px rgba(5, 13, 23, 0.85);
+}
+
+.capsWarn {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #fcd34d;
+}
+
+.errorBox {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(251, 113, 133, 0.4);
+  background: rgba(244, 63, 94, 0.16);
+  backdrop-filter: blur(10px);
+  padding: 0.65rem 0.85rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #fecdd3;
+}
+
+.footHint {
+  margin: 0;
+  text-align: center;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: rgba(148, 175, 195, 0.75);
+}
+
+.kbd {
+  display: inline-block;
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.3rem;
+  border: 1px solid rgba(148, 175, 195, 0.35);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: rgba(207, 230, 245, 0.9);
+}
+
+.shake {
+  animation: formShake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes formShake {
+
+  10%,
+  90% {
+    transform: translateX(-2px);
+  }
+
+  20%,
+  80% {
+    transform: translateX(4px);
+  }
+
+  30%,
+  50%,
+  70% {
+    transform: translateX(-6px);
+  }
+
+  40%,
+  60% {
+    transform: translateX(6px);
+  }
+}
+
+.statusChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.85rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(103, 232, 249, 0.25);
+  background: rgba(8, 30, 45, 0.45);
+  backdrop-filter: blur(8px);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(165, 243, 252, 0.9);
+}
+
+.statusDot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: #22d3ee;
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.8);
+  animation: statusPulse 2s ease-in-out infinite;
+}
+
+@keyframes statusPulse {
+
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .reveal,
+  .formCard::before,
+  .formCard::after,
+  .ctaShine,
+  .statusDot,
+  .shake {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
 }
