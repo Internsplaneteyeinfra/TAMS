@@ -88,6 +88,16 @@ export const SUITABILITY_LIVE_SOURCES: DataSourceEntry[] = [
     whatYouSee: 'Human-readable place name for the analysis header.',
     limits: 'Depends on OSM naming; not official revenue village code.',
   },
+  {
+    id: 'geotech',
+    label: 'Soil / SBC (open GIS + field)',
+    kind: 'live',
+    provider: 'ISRIC SoilGrids 2.0 + TAMS field geotech (when entered)',
+    whatYouSee:
+      'Open soil texture + indicative SBC/CBR ranges at any pad (~40–50% screening confidence). Field BH records within 5 km raise confidence.',
+    limits:
+      'SoilGrids is a 250 m model — not lab accuracy. Foundation design still needs borehole / IS code checks.',
+  },
 ]
 
 export const MAP_VISUAL_SOURCES: DataSourceEntry[] = [
@@ -136,14 +146,6 @@ export const NOT_IN_THIS_BUILD: DataSourceEntry[] = [
     provider: 'Central / state forest & ROW portals — not wired live',
     whatYouSee: '—',
     limits: 'Needs manual clearance workflow outside TAMS.',
-  },
-  {
-    id: 'geotech',
-    label: 'Soil / SBC / borehole',
-    kind: 'unavailable',
-    provider: 'Field investigation only',
-    whatYouSee: '—',
-    limits: 'No live satellite can replace lab geotech.',
   },
 ]
 

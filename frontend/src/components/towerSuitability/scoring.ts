@@ -40,6 +40,8 @@ export interface SiteSignals {
     grid: boolean
     wind: boolean
     landcover: boolean
+    geotech?: boolean
+    soilScreening?: boolean
   }
   /** True when Overpass failed and Photon geocode fallback was used. */
   usedFallback?: {
@@ -49,6 +51,23 @@ export interface SiteSignals {
   }
   /** Nearest substations/plants and voltage classes from live TAMS + OSM. */
   nearbyPower?: NearbyPowerSupply
+  /** Nearest field geotech investigation from TAMS /geotech (within max radius). */
+  geotech?: {
+    id: string
+    site_code: string
+    site_name: string
+    distance_km: number
+    adopted_sbc_tm2?: number
+    design_depth_m?: number
+    governing_cbr_pct?: number
+    adopted_resistivity_ohm_m?: number
+    groundwater_note?: string
+    recommended_pile?: string
+  } | null
+  /** Open GIS soil screening (SoilGrids) — not lab accuracy. */
+  soilScreening?: import('./soilScreening').SoilScreening | null
+  /** Human place label from Nominatim when available. */
+  placeLabel?: string | null
 }
 
 export interface SuitabilityResult {
@@ -378,6 +397,48 @@ export function scoreSiteSignals(signals: SiteSignals): SuitabilityResult {
     source: 'Live · OSM landuse',
     live: signals.liveOk?.landcover ?? signals.landCoverHint !== 'unknown',
   })
+
+  // Factor: Field geotech + open GIS soil screening
+  {
+    const g = signals.geotech
+    const soil = signals.soilScreening
+    let gs = 5
+    let note =
+      'No open soil map or field record yet. Re-run analyze to fetch SoilGrids screening.'
+    let raw = 'not on file'
+    let live = false
+    if (g) {
+      const sbc = g.adopted_sbc_tm2
+      raw = `${g.site_code} · ${g.distance_km.toFixed(2)} km`
+      if (sbc != null && sbc >= 20) gs = 9
+      else if (sbc != null && sbc >= 12) gs = 7
+      else if (sbc != null) gs = 6
+      else gs = 6
+      note = `Field geotech on file: SBC ${sbc ?? '—'} T/m² @ ${g.design_depth_m ?? '—'} m · CBR ${
+        g.governing_cbr_pct ?? '—'
+      }% (~85–95% design confidence after engineer review).`
+      live = true
+    } else if (soil) {
+      raw = `${soil.textureClass} · ~${soil.confidencePct}%`
+      gs = Math.max(5, Math.round(soil.confidencePct / 10))
+      note = `Open GIS soil (SoilGrids): ${soil.textureClass}. Indicative SBC ${soil.indicativeSbcTm2.low}–${soil.indicativeSbcTm2.high} T/m². Screening confidence ~${soil.confidencePct}% — not a borehole.`
+      live = true
+    }
+    factors.push({
+      id: 'geotech',
+      label: 'Soil / SBC (open GIS + field)',
+      weight: 0.08,
+      rawLabel: raw,
+      score: gs,
+      note,
+      source: g
+        ? 'Live · TAMS Geotech module'
+        : soil
+          ? 'Live · ISRIC SoilGrids (open)'
+          : 'SoilGrids / TAMS Geotech',
+      live: signals.liveOk?.geotech || signals.liveOk?.soilScreening || live,
+    })
+  }
 
   const weightSum = factors.reduce((s, f) => s + f.weight, 0)
   const finalScore = clamp(

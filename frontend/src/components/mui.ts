@@ -29,6 +29,7 @@ import MuiList from '@mui/material/List'
 import MuiListItemButton from '@mui/material/ListItemButton'
 import MuiListItemIcon from '@mui/material/ListItemIcon'
 import MuiListItemText from '@mui/material/ListItemText'
+import MuiStack from '@mui/material/Stack'
 import MuiTable from '@mui/material/Table'
 import MuiTableBody from '@mui/material/TableBody'
 import MuiTableCell from '@mui/material/TableCell'
@@ -56,6 +57,7 @@ import type { ListProps } from '@mui/material/List'
 import type { ListItemButtonProps } from '@mui/material/ListItemButton'
 import type { ListItemIconProps } from '@mui/material/ListItemIcon'
 import type { ListItemTextProps } from '@mui/material/ListItemText'
+import type { StackProps } from '@mui/material/Stack'
 import type { TableProps } from '@mui/material/Table'
 import type { TableBodyProps } from '@mui/material/TableBody'
 import type { TableCellProps } from '@mui/material/TableCell'
@@ -91,6 +93,7 @@ export const List = MuiList as ComponentType<ListProps & Poly>
 export const ListItemButton = MuiListItemButton as ComponentType<ListItemButtonProps & Poly>
 export const ListItemIcon = MuiListItemIcon as ComponentType<ListItemIconProps & Poly>
 export const ListItemText = MuiListItemText as ComponentType<ListItemTextProps & Poly>
+export const Stack = MuiStack as ComponentType<StackProps & Poly>
 export const Table = MuiTable as ComponentType<TableProps & Poly>
 export const TableBody = MuiTableBody as ComponentType<TableBodyProps & Poly>
 export const TableCell = MuiTableCell as ComponentType<TableCellProps & Poly>

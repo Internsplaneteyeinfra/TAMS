@@ -131,11 +131,12 @@ function stylizeTower(root: THREE.Object3D, light: boolean): THREE.MeshStandardM
       const m = mat.clone() as THREE.MeshStandardMaterial
       if (m.isMeshStandardMaterial) {
         if (light) {
-          m.color.set('#5E7180')
-          m.metalness = 0.42
-          m.roughness = 0.48
-          m.emissive.set('#4a6a78')
-          m.emissiveIntensity = 0.06
+          // Slightly darker steel so daylight towers read with more mass
+          m.color.set('#3F4E5C')
+          m.metalness = 0.5
+          m.roughness = 0.52
+          m.emissive.set('#2a3f4c')
+          m.emissiveIntensity = 0.035
         } else {
           m.color.set('#98a7ba')
           m.metalness = 0.55
@@ -186,7 +187,7 @@ const ROCKS = [
 ]
 
 function IntroScene({ mode, tier, skipRef, onEvent, appearance = 'dark' }: HubIntro3DProps) {
-  const { camera } = useThree()
+  const { camera, scene } = useThree()
   const light = appearance === 'light'
 
   // --- terrain geometry: graphite/steel (dark) or olive grass (light) ---
@@ -260,34 +261,100 @@ function IntroScene({ mode, tier, skipRef, onEvent, appearance = 'dark' }: HubIn
     return geo
   }, [])
 
-  // --- subtle conductor spans extending from the tower toward the horizon ---
+  // --- corridor endpoint (right) + conductor spans with power-flow beads ---
+  const RIGHT_TOWER_X = 15.8
+  const RIGHT_TOWER_Z = -4.6
+  const LEFT_ANCHOR_X = -15.5
+  const LEFT_ANCHOR_Z = -5.2
+
   const conductors = useMemo(() => {
-    const mk = (fromY: number, to: THREE.Vector3) => {
-      const from = new THREE.Vector3(0, fromY, 0)
+    type Span = {
+      line: THREE.Line
+      curve: THREE.QuadraticBezierCurve3
+      beads: THREE.Mesh[]
+      beadGroup: THREE.Group
+      dir: 1 | -1
+    }
+    const mkSpan = (
+      from: THREE.Vector3,
+      to: THREE.Vector3,
+      sag: number,
+      dir: 1 | -1,
+      beadCount = 5
+    ): Span => {
       const mid = from.clone().lerp(to, 0.5)
-      mid.y = Math.min(from.y, to.y) - 1.6 // sag
+      mid.y = Math.min(from.y, to.y) - sag
       const curve = new THREE.QuadraticBezierCurve3(from, mid, to)
-      const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(36))
+      const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(48))
       const mat = new THREE.LineBasicMaterial({
-        color: light ? '#6E8494' : '#3b6a7d',
+        color: light ? '#3E5160' : '#3b6a7d',
         transparent: true,
         opacity: 0,
       })
-      return new THREE.Line(geo, mat)
+      const line = new THREE.Line(geo, mat)
+      const beadGroup = new THREE.Group()
+      beadGroup.visible = false
+      const beads: THREE.Mesh[] = []
+      for (let i = 0; i < beadCount; i++) {
+        const beadMat = new THREE.MeshBasicMaterial({
+          color: light ? '#0891B2' : '#22d3ee',
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+        })
+        const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), beadMat)
+        beads.push(mesh)
+        beadGroup.add(mesh)
+      }
+      return { line, curve, beads, beadGroup, dir }
     }
-    return [
-      mk(5.7, new THREE.Vector3(-TERRAIN_W / 2 + 2, 3.4, -7)),
-      mk(5.7, new THREE.Vector3(TERRAIN_W / 2 - 2, 3.1, -5.5)),
-    ]
+
+    const phaseY = [5.9, 5.55, 5.2]
+    const rightBase = terrainHeight(RIGHT_TOWER_X, RIGHT_TOWER_Z)
+    const leftBase = terrainHeight(LEFT_ANCHOR_X, LEFT_ANCHOR_Z)
+    const rightAttach = phaseY.map(
+      (y, i) =>
+        new THREE.Vector3(
+          RIGHT_TOWER_X + (i - 1) * 0.38,
+          rightBase + y * 0.88,
+          RIGHT_TOWER_Z + (i - 1) * 0.14
+        )
+    )
+    const leftAttach = phaseY.map(
+      (y, i) =>
+        new THREE.Vector3(
+          LEFT_ANCHOR_X + (i - 1) * 0.28,
+          leftBase + y * 0.82,
+          LEFT_ANCHOR_Z + (i - 1) * 0.1
+        )
+    )
+
+    const spans: Span[] = []
+    phaseY.forEach((y, i) => {
+      spans.push(
+        mkSpan(new THREE.Vector3((i - 1) * 0.22, y, 0.08 * (i - 1)), rightAttach[i], 1.75 + i * 0.12, 1)
+      )
+    })
+    phaseY.forEach((y, i) => {
+      spans.push(
+        mkSpan(new THREE.Vector3((i - 1) * 0.22, y, 0.08 * (i - 1)), leftAttach[i], 1.55 + i * 0.1, -1, 4)
+      )
+    })
+
+    return spans
   }, [light])
 
   useEffect(() => () => {
     terrainGeo.dispose()
     wireGeo.dispose()
     roadGeo.dispose()
-    conductors.forEach((l) => {
-      l.geometry.dispose()
-        ; (l.material as THREE.Material).dispose()
+    conductors.forEach((s) => {
+      s.line.geometry.dispose()
+      ;(s.line.material as THREE.Material).dispose()
+      s.beads.forEach((b) => {
+        b.geometry.dispose()
+        ;(b.material as THREE.Material).dispose()
+      })
     })
   }, [terrainGeo, wireGeo, roadGeo, conductors])
 
@@ -344,20 +411,29 @@ function IntroScene({ mode, tier, skipRef, onEvent, appearance = 'dark' }: HubIn
 
   // --- tower model (existing GLB, normalized, base at y=0) ---
   const gltf = useLoader(GLTFLoader, MODEL_PATH, configureLoader)
-  const { towerHolder, towerMats } = useMemo(() => {
-    const clone = gltf.scene.clone(true)
-    const mats = stylizeTower(clone, light)
-    const box = new THREE.Box3().setFromObject(clone)
-    const size = new THREE.Vector3()
-    const center = new THREE.Vector3()
-    box.getSize(size)
-    box.getCenter(center)
-    const fit = TOWER_HEIGHT / (size.y || 1)
-    clone.scale.setScalar(fit)
-    clone.position.set(-center.x * fit, -box.min.y * fit, -center.z * fit)
-    const holder = new THREE.Group()
-    holder.add(clone)
-    return { towerHolder: holder, towerMats: mats }
+  const { towerHolder, towerMats, remoteTowerHolder, remoteTowerMats } = useMemo(() => {
+    const fit = (root: THREE.Object3D, height: number) => {
+      const mats = stylizeTower(root, light)
+      const box = new THREE.Box3().setFromObject(root)
+      const size = new THREE.Vector3()
+      const center = new THREE.Vector3()
+      box.getSize(size)
+      box.getCenter(center)
+      const s = height / (size.y || 1)
+      root.scale.setScalar(s)
+      root.position.set(-center.x * s, -box.min.y * s, -center.z * s)
+      const holder = new THREE.Group()
+      holder.add(root)
+      return { holder, mats }
+    }
+    const main = fit(gltf.scene.clone(true), TOWER_HEIGHT)
+    const remote = fit(gltf.scene.clone(true), TOWER_HEIGHT * 0.92)
+    return {
+      towerHolder: main.holder,
+      towerMats: main.mats,
+      remoteTowerHolder: remote.holder,
+      remoteTowerMats: remote.mats,
+    }
   }, [gltf, light])
 
   // --- animated refs ---
@@ -374,6 +450,13 @@ function IntroScene({ mode, tier, skipRef, onEvent, appearance = 'dark' }: HubIn
   const towerScanRef = useRef<THREE.Mesh>(null)
   const towerScanMatRef = useRef<THREE.MeshBasicMaterial>(null)
   const envGroupRef = useRef<THREE.Group>(null)
+  const ambRef = useRef<THREE.AmbientLight>(null)
+  const hemiRef = useRef<THREE.HemisphereLight>(null)
+  const sunDirRef = useRef<THREE.DirectionalLight>(null)
+  const contactShadowRef = useRef<THREE.Mesh>(null)
+  const castShadowRef = useRef<THREE.Mesh>(null)
+  const remoteTowerRef = useRef<THREE.Group>(null)
+  const flowTmp = useMemo(() => new THREE.Vector3(), [])
 
   const elapsedRef = useRef(mode === 'instant' ? T.done + 0.01 : 0)
   const firedRef = useRef<Set<string>>(new Set())
@@ -486,11 +569,40 @@ function IntroScene({ mode, tier, skipRef, onEvent, appearance = 'dark' }: HubIn
       }
     }
 
-    // --- conductors fade in once the tower is locked ---
-    for (const line of conductors) {
-      const m = line.material as THREE.LineBasicMaterial
-      const target = t >= LOCK_T ? (settled ? (light ? 0.35 : 0.28) : light ? 0.48 : 0.4) : 0
-      m.opacity = THREE.MathUtils.damp(m.opacity, target, 4, dt)
+    // --- conductors fade in once the tower is locked; power beads travel along sag ---
+    const lineTarget = t >= LOCK_T ? (settled ? (light ? 0.42 : 0.34) : light ? 0.55 : 0.48) : 0
+    const flowOn = t >= LOCK_T + 0.15
+    for (let si = 0; si < conductors.length; si++) {
+      const span = conductors[si]
+      const m = span.line.material as THREE.LineBasicMaterial
+      m.opacity = THREE.MathUtils.damp(m.opacity, lineTarget, 4, dt)
+      span.beadGroup.visible = flowOn && m.opacity > 0.08
+      if (!span.beadGroup.visible) continue
+      const n = span.beads.length
+      for (let bi = 0; bi < n; bi++) {
+        const bead = span.beads[bi]
+        const u =
+          ((clock * 0.22 * span.dir + bi / n + si * 0.07) % 1 + 1) % 1
+        span.curve.getPoint(u, flowTmp)
+        bead.position.copy(flowTmp)
+        const pulse = 0.45 + 0.55 * Math.sin(u * Math.PI)
+        const bm = bead.material as THREE.MeshBasicMaterial
+        bm.opacity = THREE.MathUtils.damp(bm.opacity, pulse * (light ? 0.85 : 0.95), 8, dt)
+        bead.scale.setScalar(0.75 + pulse * 0.55)
+      }
+    }
+
+    // Remote right-corner tower rises with the conductor lock
+    if (remoteTowerRef.current) {
+      const d = ease((t - LOCK_T + 0.35) / 0.85)
+      remoteTowerRef.current.visible = d > 0.02
+      const baseY = terrainHeight(RIGHT_TOWER_X, RIGHT_TOWER_Z)
+      remoteTowerRef.current.position.set(RIGHT_TOWER_X, baseY + (1 - d) * 1.2, RIGHT_TOWER_Z)
+      remoteTowerRef.current.rotation.y = -0.35
+    }
+    for (const m of remoteTowerMats) {
+      const base = settled ? (light ? 0.03 : 0.12) : light ? 0.04 : 0.16
+      m.emissiveIntensity = THREE.MathUtils.damp(m.emissiveIntensity, base, 5, dt)
     }
 
     // --- site scan: intro sweep, then a continuous ambient sweep ---
@@ -573,6 +685,42 @@ function IntroScene({ mode, tier, skipRef, onEvent, appearance = 'dark' }: HubIn
     )
     tmpLook.set(0, THREE.MathUtils.lerp(1.4, 1.9, camT), 0)
     camera.lookAt(tmpLook)
+
+    // Light mode: slow daylight → evening sky shift (fog + key lights)
+    if (light) {
+      const day = 0.5 + 0.5 * Math.sin(clock * 0.085)
+      const evening = 1 - day
+      if (ambRef.current) ambRef.current.intensity = 0.72 + day * 0.12
+      if (hemiRef.current) {
+        hemiRef.current.color.set(day > 0.45 ? '#9ec8e8' : '#c9a88a')
+        hemiRef.current.groundColor.set(day > 0.45 ? '#6a8a58' : '#7a6a52')
+        hemiRef.current.intensity = 0.42 + day * 0.14
+      }
+      if (sunDirRef.current) {
+        sunDirRef.current.intensity = 0.95 + day * 0.28
+        sunDirRef.current.color.set(day > 0.4 ? '#fff8ee' : '#ffd2a8')
+        sunDirRef.current.position.set(10 + evening * 6, 14 - evening * 4, 6)
+      }
+      if (scene.fog && (scene.fog as THREE.Fog).isFog) {
+        ;(scene.fog as THREE.Fog).color.set(day > 0.45 ? '#C8D8E4' : '#D4C4B0')
+      }
+    }
+
+    // Contact + left-cast ground shadows grow with the tower
+    const towerVis = t >= T.tower ? ease((t - T.tower) / T.towerDur) : 0
+    if (contactShadowRef.current) {
+      contactShadowRef.current.visible = towerVis > 0.05
+      const s = 0.55 + towerVis * 0.9
+      contactShadowRef.current.scale.set(s, s, 1)
+      const mat = contactShadowRef.current.material as THREE.MeshBasicMaterial
+      mat.opacity = towerVis * (light ? 0.28 : 0.38)
+    }
+    if (castShadowRef.current) {
+      castShadowRef.current.visible = towerVis > 0.05
+      castShadowRef.current.scale.set(0.7 + towerVis * 1.1, 0.35 + towerVis * 0.45, 1)
+      const mat = castShadowRef.current.material as THREE.MeshBasicMaterial
+      mat.opacity = towerVis * (light ? 0.2 : 0.3)
+    }
   })
 
   const showEnv = tier !== 'mobile'
@@ -580,11 +728,13 @@ function IntroScene({ mode, tier, skipRef, onEvent, appearance = 'dark' }: HubIn
   return (
     <>
       {/* Daylight / digital-twin lighting */}
-      <ambientLight intensity={light ? 0.78 : 0.72} />
+      <ambientLight ref={ambRef} intensity={light ? 0.78 : 0.72} />
       <hemisphereLight
+        ref={hemiRef}
         args={light ? ['#9ec8e8', '#6a8a58', 0.52] : ['#3d5470', '#0b1420', 0.45]}
       />
       <directionalLight
+        ref={sunDirRef}
         position={[12, 16, 8]}
         intensity={light ? 1.15 : 1.1}
         color={light ? '#fff8ee' : '#e2e8f0'}
@@ -750,9 +900,66 @@ function IntroScene({ mode, tier, skipRef, onEvent, appearance = 'dark' }: HubIn
         <primitive object={towerHolder} />
       </group>
 
-      {/* Subtle conductor spans toward the horizon */}
-      {conductors.map((line, i) => (
-        <primitive key={i} object={line} />
+      {/* Soft contact shadow + left-cast ground projection under the tower */}
+      <mesh
+        ref={contactShadowRef}
+        visible={false}
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.12, 0]}
+      >
+        <circleGeometry args={[1.55, 40]} />
+        <meshBasicMaterial color="#0b1220" transparent opacity={0} depthWrite={false} />
+      </mesh>
+      <mesh
+        ref={castShadowRef}
+        visible={false}
+        rotation={[-Math.PI / 2, 0, 0.35]}
+        position={[-1.15, 0.11, 0.35]}
+      >
+        <circleGeometry args={[1.9, 40]} />
+        <meshBasicMaterial color="#0b1220" transparent opacity={0} depthWrite={false} />
+      </mesh>
+
+      {/* Right-corner transmission tower — receives the sagging corridor */}
+      <group ref={remoteTowerRef} visible={false}>
+        <primitive object={remoteTowerHolder} />
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.1, 0]}>
+          <circleGeometry args={[1.35, 32]} />
+          <meshBasicMaterial
+            color="#0b1220"
+            transparent
+            opacity={light ? 0.22 : 0.32}
+            depthWrite={false}
+          />
+        </mesh>
+      </group>
+
+      {/* Left corridor anchor (simple pole) */}
+      <group position={[LEFT_ANCHOR_X, terrainHeight(LEFT_ANCHOR_X, LEFT_ANCHOR_Z), LEFT_ANCHOR_Z]}>
+        <mesh position={[0, 2.35, 0]}>
+          <cylinderGeometry args={[0.08, 0.12, 4.7, 6]} />
+          <meshStandardMaterial
+            color={light ? '#3A4A58' : '#6b7c8c'}
+            metalness={0.45}
+            roughness={0.5}
+          />
+        </mesh>
+        <mesh position={[0, 4.75, 0]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.04, 0.04, 1.7, 6]} />
+          <meshStandardMaterial
+            color={light ? '#3A4A58' : '#6b7c8c'}
+            metalness={0.5}
+            roughness={0.45}
+          />
+        </mesh>
+      </group>
+
+      {/* Sagging conductors + moving power flow */}
+      {conductors.map((span, i) => (
+        <group key={`span-${i}`}>
+          <primitive object={span.line} />
+          <primitive object={span.beadGroup} />
+        </group>
       ))}
 
       {/* Vertical tower scan ring (analysis phase) */}

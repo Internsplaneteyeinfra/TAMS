@@ -26,6 +26,9 @@ import {
   type KmlFeature,
 } from './fetchSiteSignals'
 import { downloadSuitabilityReport } from './downloadSuitabilityReport'
+import type { SoilReportOpts } from './downloadSoilScreeningReport'
+import { fetchSoilScreening } from './soilScreening'
+import { createSiteScore } from '@/lib/siteScoresApi'
 import { downloadKmlFile } from './kmlExport'
 import {
   estimateTowerBand,
@@ -52,7 +55,9 @@ import type { DrawMode } from './TowerSuitabilityMap'
 import type { IntelligencePanel, TowerWorkspaceMode } from './workspaceTypes'
 import SiteScoreCard from './analysis/SiteScoreCard'
 import SmartSuggestionsCard from './analysis/SmartSuggestionsCard'
+import SoilReportCard from './analysis/SoilReportCard'
 import DownloadReportCard from './analysis/DownloadReportCard'
+import SaveSiteScoreCard from './analysis/SaveSiteScoreCard'
 import IntelligenceRail from './analysis/IntelligenceRail'
 import IntelligenceDrawer from './analysis/IntelligenceDrawer'
 import OverviewPanel from './analysis/OverviewPanel'
@@ -495,8 +500,42 @@ export default function TowerSuitabilityWorkspace() {
       std: voltageStandard,
       spanM: lineTowerPlan.spanM,
       voltageKv: lineTowerPlan.voltageKv,
+      searchRadiusKm,
     })
-  }, [lineTowerPlan, kmlFeatures, result?.signals.nearbyPower?.assets, voltageStandard])
+  }, [lineTowerPlan, kmlFeatures, result?.signals.nearbyPower?.assets, voltageStandard, searchRadiusKm])
+
+  const mapNearbyAssets = useMemo(() => {
+    const base = result?.signals.nearbyPower?.assets ?? []
+    const byId = new Map(base.map((a) => [a.id, a]))
+    const hints = [
+      corridorAdvice?.nearestTower,
+      corridorAdvice?.nearestStation,
+      corridorAdvice?.powerConnect?.station,
+      corridorAdvice?.powerConnect?.towerNearStation,
+      corridorAdvice?.powerConnect?.towerNearPad,
+    ]
+    for (const hint of hints) {
+      if (!hint) continue
+      if (byId.has(hint.id)) continue
+      byId.set(hint.id, {
+        id: hint.id,
+        name: hint.name,
+        kind: hint.kind,
+        distanceKm: hint.distanceKm,
+        voltageKv: hint.voltageKv,
+        voltagesKv: hint.voltageKv != null ? [hint.voltageKv] : [],
+        source: 'osm',
+        lat: hint.lat,
+        lon: hint.lon,
+      })
+    }
+    return [...byId.values()].slice(0, 120)
+  }, [
+    result?.signals.nearbyPower?.assets,
+    corridorAdvice?.nearestTower,
+    corridorAdvice?.nearestStation,
+    corridorAdvice?.powerConnect,
+  ])
 
   useEffect(() => {
     if (!kmlFeatures.length) {
@@ -566,6 +605,161 @@ export default function TowerSuitabilityWorkspace() {
       spanM: lineTowerPlan?.spanM,
     })
   }, [result, suggestions, siteLabel, lat, lon, kmlFeatures.length, lineTowerPlan])
+
+  const onSaveSiteScore = useCallback(async () => {
+    if (!result || lat == null || lon == null) throw new Error('No analysis to save')
+    const label =
+      result.signals.placeLabel ||
+      siteLabel ||
+      `${lat.toFixed(5)}, ${lon.toFixed(5)}`
+    await createSiteScore({
+      site_label: label,
+      place_label: result.signals.placeLabel || null,
+      latitude: lat,
+      longitude: lon,
+      final_score: result.finalScore,
+      verdict: result.verdict,
+      confidence_pct: result.confidencePct,
+      voltage_kv: lineTowerPlan?.voltageKv ?? null,
+      search_radius_km: searchRadiusKm,
+      summary: suggestions?.summary || null,
+      factors: result.factors.map((f) => ({
+        id: f.id,
+        label: f.label,
+        score: f.score,
+        weight: f.weight,
+        rawLabel: f.rawLabel,
+        note: f.note,
+        source: f.source,
+      })),
+      result_payload: {
+        finalScore: result.finalScore,
+        verdict: result.verdict,
+        confidencePct: result.confidencePct,
+        disclaimer: result.disclaimer,
+        fetchedAt: result.fetchedAt || new Date().toISOString(),
+        signals: {
+          elevationM: result.signals.elevationM,
+          slopeDeg: result.signals.slopeDeg,
+          roadKm: result.signals.roadKm,
+          waterKm: result.signals.waterKm,
+          placeLabel: result.signals.placeLabel,
+          soilScreening: result.signals.soilScreening
+            ? {
+                textureClass: result.signals.soilScreening.textureClass,
+                confidencePct: result.signals.soilScreening.confidencePct,
+                indicativeSbcTm2: result.signals.soilScreening.indicativeSbcTm2,
+              }
+            : null,
+          geotech: result.signals.geotech || null,
+          nearbyPower: result.signals.nearbyPower
+            ? {
+                suggestedVoltageKv: result.signals.nearbyPower.suggestedVoltageKv,
+                powerNetworkVerdict: result.signals.nearbyPower.powerNetworkVerdict,
+                nearestTower: result.signals.nearbyPower.nearestTower
+                  ? {
+                      name: result.signals.nearbyPower.nearestTower.name,
+                      distanceKm: result.signals.nearbyPower.nearestTower.distanceKm,
+                      voltageKv: result.signals.nearbyPower.nearestTower.voltageKv,
+                    }
+                  : null,
+                nearestSubstation: result.signals.nearbyPower.nearestSubstation
+                  ? {
+                      name: result.signals.nearbyPower.nearestSubstation.name,
+                      distanceKm: result.signals.nearbyPower.nearestSubstation.distanceKm,
+                      voltageKv: result.signals.nearbyPower.nearestSubstation.voltageKv,
+                    }
+                  : null,
+              }
+            : null,
+        },
+        corridorAdvice: corridorAdvice
+          ? {
+              voltageLabel: corridorAdvice.voltageLabel,
+              canPlaceCount: corridorAdvice.canPlaceCount,
+              plannedCount: corridorAdvice.plannedCount,
+              lineSuitability: corridorAdvice.lineSuitability,
+              powerConnect: corridorAdvice.powerConnect
+                ? {
+                    bestPadIndex: corridorAdvice.powerConnect.bestPadIndex,
+                    stationToPadKm: corridorAdvice.powerConnect.stationToPadKm,
+                    confidencePct: corridorAdvice.powerConnect.confidencePct,
+                    stationName: corridorAdvice.powerConnect.station.name,
+                  }
+                : null,
+            }
+          : null,
+      },
+      notes: 'Saved from Tower Suitability workspace',
+    })
+  }, [
+    result,
+    lat,
+    lon,
+    siteLabel,
+    lineTowerPlan?.voltageKv,
+    searchRadiusKm,
+    suggestions?.summary,
+    corridorAdvice,
+  ])
+
+  const soilReportLabel = useMemo(() => {
+    if (lat == null || lon == null) return siteLabel || 'Unknown'
+    return (
+      result?.signals.placeLabel ||
+      (siteLabel && !siteLabel.toLowerCase().includes('set start') ? siteLabel : null) ||
+      `${lat.toFixed(5)}, ${lon.toFixed(5)}`
+    )
+  }, [lat, lon, result?.signals.placeLabel, siteLabel])
+
+  const soilReportOpts = useMemo(() => {
+    if (lat == null || lon == null || !result?.signals.soilScreening) return null
+    const soil = result.signals.soilScreening
+    return {
+      siteLabel: soilReportLabel,
+      lat,
+      lon,
+      soil: { ...soil, placeName: soil.placeName || result.signals.placeLabel || undefined },
+      signals: result.signals,
+    }
+  }, [lat, lon, result, soilReportLabel])
+
+  const onGenerateSoilReport = useCallback(async (): Promise<SoilReportOpts> => {
+    if (lat == null || lon == null || !result) {
+      throw new Error('Analyze a site first')
+    }
+    const label = soilReportLabel
+    let soil = result.signals.soilScreening
+    let signals = result.signals
+    if (!soil) {
+      const place = result.signals.placeLabel || siteLabel
+      soil = await fetchSoilScreening(lat, lon, place)
+      if (!soil) throw new Error('Soil screening unavailable')
+      signals = {
+        ...result.signals,
+        soilScreening: soil,
+        liveOk: {
+          dem: result.signals.liveOk?.dem ?? false,
+          road: result.signals.liveOk?.road ?? false,
+          water: result.signals.liveOk?.water ?? false,
+          settlement: result.signals.liveOk?.settlement ?? false,
+          grid: result.signals.liveOk?.grid ?? false,
+          wind: result.signals.liveOk?.wind ?? false,
+          landcover: result.signals.liveOk?.landcover ?? false,
+          geotech: result.signals.liveOk?.geotech,
+          soilScreening: true,
+        },
+      }
+      setResult({ ...result, signals })
+    }
+    return {
+      siteLabel: label,
+      lat,
+      lon,
+      soil: { ...soil, placeName: soil.placeName || signals.placeLabel || undefined },
+      signals,
+    }
+  }, [lat, lon, result, siteLabel, soilReportLabel])
 
 
   const analysisReady = workspaceMode === 'analysis' && !!result && !!suggestions
@@ -707,11 +901,23 @@ export default function TowerSuitabilityWorkspace() {
               result={result}
               kmlFeatures={kmlFeatures}
               plannedTowers={lineTowerPlan?.towers ?? []}
-              nearbyAssets={result?.signals.nearbyPower?.assets?.slice(0, 80) ?? []}
+              nearbyAssets={mapNearbyAssets}
               searchRadiusKm={searchRadiusKm}
               placementAdvice={corridorAdvice?.items ?? []}
               voltageKv={lineTowerPlan?.voltageKv ?? null}
               spanM={lineTowerPlan?.spanM}
+              corridorLineColor={corridorAdvice?.lineColor ?? '#fbbf24'}
+              highlightTowerId={
+                corridorAdvice?.powerConnect?.towerNearStation?.id ??
+                corridorAdvice?.nearestTower?.id ??
+                null
+              }
+              highlightStationId={
+                corridorAdvice?.powerConnect?.station?.id ??
+                corridorAdvice?.nearestStation?.id ??
+                null
+              }
+              powerConnect={corridorAdvice?.powerConnect ?? null}
               drawMode={drawMode}
               drawingEnabled={workspaceMode === 'planning' && !analyzing}
               focusTick={focusTick}
@@ -887,6 +1093,17 @@ export default function TowerSuitabilityWorkspace() {
                     />
                   </div>
                   <div className="pointer-events-auto">
+                    <SoilReportCard
+                      soil={result.signals.soilScreening}
+                      siteLabel={soilReportLabel}
+                      reportOpts={soilReportOpts}
+                      onGenerate={onGenerateSoilReport}
+                    />
+                  </div>
+                  <div className="pointer-events-auto">
+                    <SaveSiteScoreCard onSave={onSaveSiteScore} />
+                  </div>
+                  <div className="pointer-events-auto">
                     <DownloadReportCard onDownload={onDownloadReport} />
                   </div>
                 </div>
@@ -906,6 +1123,8 @@ export default function TowerSuitabilityWorkspace() {
                           result={result}
                           suggestions={suggestions}
                           corridorAdvice={corridorAdvice}
+                          manualVoltageKv={manualVoltageKv}
+                          onManualVoltageKv={setManualVoltageKv}
                           onExploreFactors={() => setActivePanel('factors')}
                           lat={lat}
                           lon={lon}

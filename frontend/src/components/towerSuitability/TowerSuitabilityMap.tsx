@@ -8,7 +8,7 @@ import type { PlannedTower } from './lineTowers'
 import { voltageLabel } from './lineTowers'
 import type { NearbyPowerAsset } from './nearbyPowerSupply'
 import { powerKindLabel } from './nearbyPowerSupply'
-import type { PlannedTowerAdvice } from './corridorPlacementAdvice'
+import type { PlannedTowerAdvice, PowerConnectSuggestion } from './corridorPlacementAdvice'
 import type { SuitabilityResult } from './scoring'
 import { verdictColor } from './scoring'
 
@@ -54,6 +54,10 @@ export default function TowerSuitabilityMap({
   voltageKv = null,
   spanM,
   searchRadiusKm = 8,
+  corridorLineColor = '#fbbf24',
+  highlightTowerId = null,
+  highlightStationId = null,
+  powerConnect = null,
   drawMode,
   drawingEnabled = true,
   focusTick = 0,
@@ -73,6 +77,13 @@ export default function TowerSuitabilityMap({
   voltageKv?: number | null
   spanM?: number
   searchRadiusKm?: number
+  /** Suitability color for the drawn corridor line */
+  corridorLineColor?: string
+  /** Emphasize nearest existing tower / station on map */
+  highlightTowerId?: string | null
+  highlightStationId?: string | null
+  /** Station ↔ best new pad (+ existing tower) connect suggestion */
+  powerConnect?: PowerConnectSuggestion | null
   drawMode: DrawMode
   drawingEnabled?: boolean
   focusTick?: number
@@ -343,19 +354,23 @@ export default function TowerSuitabilityMap({
         L.polyline(feat.latlngs, {
           color: '#111827',
           weight: 14,
-          opacity: 0.8,
+          opacity: 0.75,
           lineCap: 'round',
           lineJoin: 'round',
         }).addTo(layer)
         const line = L.polyline(feat.latlngs, {
-          color: '#fbbf24',
-          weight: 6,
+          color: corridorLineColor,
+          weight: 7,
           opacity: 1,
           lineCap: 'round',
           lineJoin: 'round',
         })
         line.addTo(layer)
-        const label = [feat.name || 'Drawn site', voltageKv != null ? `${voltageKv} kV` : null]
+        const label = [
+          feat.name || 'Suggested corridor',
+          voltageKv != null ? `${voltageKv} kV` : null,
+          'screening suggestion — not an order',
+        ]
           .filter(Boolean)
           .join(' · ')
         line.bindTooltip(label, { sticky: true, className: 'ts-kml-label' })
@@ -380,43 +395,74 @@ export default function TowerSuitabilityMap({
 
     const dense = plannedTowers.length > 60
     const adviceByIndex = new Map(placementAdvice.map((a) => [a.index, a]))
+    const bestPad = powerConnect?.bestPadIndex ?? null
     plannedTowers.forEach((tower) => {
       const advice = adviceByIndex.get(tower.index)
+      const isBest = bestPad != null && tower.index === bestPad
       const fill =
         advice?.verdict === 'skip_existing'
-          ? '#f87171'
+          ? '#ef4444'
           : advice?.verdict === 'too_close'
-            ? '#fbbf24'
+            ? '#f59e0b'
             : advice?.verdict === 'review'
               ? '#38bdf8'
-              : '#f59e0b'
+              : '#22c55e'
+      if (isBest) {
+        L.circleMarker([tower.lat, tower.lon], {
+          radius: dense ? 16 : 20,
+          color: '#0f766e',
+          weight: 3,
+          fillColor: '#5eead4',
+          fillOpacity: 0.3,
+        })
+          .bindTooltip(`★ Best new pad T${tower.index} · power take-off`, {
+            permanent: true,
+            direction: 'top',
+            offset: [0, -10],
+            className: 'ts-tower-label',
+          })
+          .addTo(layer)
+      }
       L.circleMarker([tower.lat, tower.lon], {
-        radius: dense ? 7 : 11,
-        color: '#ffffff',
-        weight: 3,
-        fillColor: fill,
+        radius: isBest ? (dense ? 10 : 14) : dense ? 7 : 11,
+        color: isBest ? '#0f766e' : '#ffffff',
+        weight: isBest ? 4 : 3,
+        fillColor: isBest ? '#14b8a6' : fill,
         fillOpacity: 1,
       })
-        .bindTooltip(`T${tower.index}`, {
-          permanent: !dense || tower.index === 1 || tower.index === plannedTowers.length || tower.index % 5 === 0,
+        .bindTooltip(isBest ? `★ T${tower.index} (best for power)` : `T${tower.index}`, {
+          permanent:
+            isBest ||
+            !dense ||
+            tower.index === 1 ||
+            tower.index === plannedTowers.length ||
+            tower.index % 5 === 0,
           direction: 'top',
           offset: [0, -8],
           className: 'ts-tower-label',
         })
         .bindPopup(
-          `<strong>Tower T${tower.index}</strong><br/>${voltageLabel(voltageKv)}<br/>${
-            spanM ? `${spanM} m span` : ''
-          }<br/>${
+          `<strong>${isBest ? '★ Best new transmission pad ' : 'Suggested pad '}T${
+            tower.index
+          }</strong><br/>${voltageLabel(voltageKv)}<br/>${spanM ? `${spanM} m span` : ''}<br/>${
+            isBest && powerConnect
+              ? `<b style="color:#0f766e">Suggested power take-off toward “${
+                  powerConnect.station.name
+                }” (~${powerConnect.stationToPadKm.toFixed(2)} km) · ~${
+                  powerConnect.confidencePct
+                }% screening confidence</b><br/>`
+              : ''
+          }${
             advice
               ? `<b>${
                   advice.verdict === 'place'
-                    ? 'Can place'
+                    ? 'Suggestion: place OK'
                     : advice.verdict === 'skip_existing'
-                      ? 'Cannot place — tower already here'
+                      ? 'Suggestion: skip / reuse existing'
                       : advice.verdict === 'too_close'
-                        ? 'Cannot place — under min span'
-                        : 'Review first'
-                }</b><br/>${advice.reason}<br/>`
+                        ? 'Suggestion: shift (under min span)'
+                        : 'Suggestion: review first'
+                }</b><br/>${advice.reason}<br/><em>Not an order — change kV anytime.</em><br/>`
               : ''
           }${tower.lat.toFixed(5)}, ${tower.lon.toFixed(5)}`
         )
@@ -427,7 +473,7 @@ export default function TowerSuitabilityMap({
     if (bounds.isValid() && isMapAlive(map)) {
       map.fitBounds(bounds.pad(0.2), { animate: false, maxZoom: 16 })
     }
-  }, [kmlFeatures, plannedTowers, voltageKv, spanM, placementAdvice, mapReady])
+  }, [kmlFeatures, plannedTowers, voltageKv, spanM, placementAdvice, corridorLineColor, powerConnect, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
@@ -441,23 +487,82 @@ export default function TowerSuitabilityMap({
     layer.clearLayers()
 
     // Existing infrastructure only — never mix with planned T1…Tn (those are on kml layer)
-    nearbyAssets.forEach((asset) => {
-      // Spec styles: tower=blue, substation=purple, line=green, pole=teal
+    const hiTowerIds = new Set<string>()
+    const hiStationIds = new Set<string>()
+    if (highlightTowerId) hiTowerIds.add(highlightTowerId)
+    if (highlightStationId) hiStationIds.add(highlightStationId)
+    if (powerConnect?.towerNearStation) hiTowerIds.add(powerConnect.towerNearStation.id)
+    if (powerConnect?.towerNearPad) hiTowerIds.add(powerConnect.towerNearPad.id)
+    if (powerConnect?.station) hiStationIds.add(powerConnect.station.id)
+
+    // Ensure connect targets are drawn even if missing from the asset slice
+    const drawAssets = [...nearbyAssets]
+    const seen = new Set(drawAssets.map((a) => a.id))
+    const ensure = (
+      hint: { id: string; name: string; kind: string; lat: number; lon: number; distanceKm: number; voltageKv: number | null } | null | undefined,
+      kind: NearbyPowerAsset['kind']
+    ) => {
+      if (!hint || seen.has(hint.id)) return
+      seen.add(hint.id)
+      drawAssets.push({
+        id: hint.id,
+        name: hint.name,
+        kind,
+        distanceKm: hint.distanceKm,
+        voltageKv: hint.voltageKv,
+        voltagesKv: hint.voltageKv != null ? [hint.voltageKv] : [],
+        source: 'osm',
+        lat: hint.lat,
+        lon: hint.lon,
+      })
+    }
+    ensure(powerConnect?.station, powerConnect?.station?.kind === 'plant' ? 'plant' : 'substation')
+    ensure(powerConnect?.towerNearStation, 'tower')
+    ensure(powerConnect?.towerNearPad, 'tower')
+
+    drawAssets.forEach((asset) => {
+      const isHiTower = hiTowerIds.has(asset.id)
+      const isHiStation = hiStationIds.has(asset.id)
+      const isHighlight = isHiTower || isHiStation
+      const isTowerNearSs = powerConnect?.towerNearStation?.id === asset.id
+      const isTowerNearPad = powerConnect?.towerNearPad?.id === asset.id && !isTowerNearSs
+
       const fill =
         asset.kind === 'substation'
-          ? '#a855f7' // purple
+          ? '#a855f7'
           : asset.kind === 'line'
-            ? '#22c55e' // green
+            ? '#22c55e'
             : asset.kind === 'tower'
-              ? '#3b82f6' // blue
+              ? '#3b82f6'
               : asset.kind === 'plant'
                 ? '#ec4899'
-                : '#2dd4bf' // pole
+                : '#2dd4bf'
+
+      if (isHighlight) {
+        L.circleMarker([asset.lat, asset.lon], {
+          radius: 18,
+          color: isHiStation ? '#a855f7' : '#3b82f6',
+          weight: 3,
+          fillColor: isHiStation ? '#c084fc' : '#93c5fd',
+          fillOpacity: 0.25,
+        })
+          .bindTooltip(
+            isHiStation
+              ? `Nearest power station · ${asset.name}`
+              : isTowerNearSs
+                ? `Existing tower nearest to station · ${asset.name}`
+                : isTowerNearPad
+                  ? `Existing tower nearest to new pad · ${asset.name}`
+                  : `Nearest tower · ${asset.name}`,
+            { direction: 'top', offset: [0, -10], sticky: true }
+          )
+          .addTo(layer)
+      }
 
       const marker = L.circleMarker([asset.lat, asset.lon], {
-        radius: asset.kind === 'pole' ? 6 : asset.kind === 'tower' ? 9 : 8,
-        color: '#ffffff',
-        weight: 2,
+        radius: isHighlight ? 12 : asset.kind === 'pole' ? 6 : asset.kind === 'tower' ? 9 : 8,
+        color: isHighlight ? (isHiStation ? '#7e22ce' : '#1d4ed8') : '#ffffff',
+        weight: isHighlight ? 3 : 2,
         fillColor: fill,
         fillOpacity: 0.95,
       })
@@ -475,24 +580,36 @@ export default function TowerSuitabilityMap({
           ? `${Math.round(asset.distanceKm * 1000)} m`
           : `${asset.distanceKm.toFixed(2)} km`
 
+      const roleLabel = isHiStation
+        ? '★ Nearest station · '
+        : isTowerNearSs
+          ? '★ Tower next to station · '
+          : isTowerNearPad
+            ? '★ Tower near new pad · '
+            : isHiTower
+              ? '★ Nearest tower · '
+              : ''
+
       marker
         .bindTooltip(
-          `${powerKindLabel(asset.kind)}${
+          `${roleLabel}${powerKindLabel(asset.kind)}${
             asset.voltageKv != null ? ` · ${asset.voltageKv} kV` : ' · Unknown V'
-          }`,
-          { direction: 'top', offset: [0, -6] }
+          } · ${distText}`,
+          { direction: 'top', offset: [0, -6], sticky: true }
         )
         .bindPopup(
           `<strong>${asset.name}</strong><br/>` +
+            (roleLabel
+              ? `<b style="color:${isHiStation ? '#7e22ce' : '#1d4ed8'}">${roleLabel.trim()}</b><br/>`
+              : '') +
             `ID: ${asset.id}<br/>` +
             `${powerKindLabel(asset.kind)} · ${distText} (Haversine)<br/>` +
             `Voltage: ${voltageText}<br/>` +
             `Source: ${asset.source === 'tams' ? 'TAMS GIS' : 'OSM'} · Confidence: ${conf}<br/>` +
-            `<span style="opacity:.7">Existing infrastructure — not a planned corridor tower</span>`
+            `<span style="opacity:.7">Existing infrastructure — suggestion reference only</span>`
         )
         .addTo(layer)
 
-      // Green line stub for line assets (point representation of nearest vertex)
       if (asset.kind === 'line') {
         L.circleMarker([asset.lat, asset.lon], {
           radius: 4,
@@ -504,33 +621,104 @@ export default function TowerSuitabilityMap({
       }
     })
 
-    // Cyan dashed proposed connection from site to nearest existing asset
-    const nearest =
-      [...nearbyAssets].sort((a, b) => a.distanceKm - b.distanceKm)[0] ?? null
-    if (hasStart && nearest && Number.isFinite(nearest.lat) && Number.isFinite(nearest.lon)) {
+    // Power take-off links: station → best new pad, station → existing tower
+    if (powerConnect) {
+      const ss = powerConnect.station
       L.polyline(
         [
-          [lat, lon],
-          [nearest.lat, nearest.lon],
+          [ss.lat, ss.lon],
+          [powerConnect.bestPadLat, powerConnect.bestPadLon],
         ],
         {
-          color: '#22d3ee',
-          weight: 3,
-          opacity: 0.85,
-          dashArray: '8 6',
+          color: '#0f766e',
+          weight: 4,
+          opacity: 0.95,
+          dashArray: '10 6',
         }
       )
         .bindTooltip(
-          `Proposed connection · ${
-            nearest.distanceKm < 1
-              ? `${Math.round(nearest.distanceKm * 1000)} m`
-              : `${nearest.distanceKm.toFixed(2)} km`
-          } direct (Haversine)`,
+          `Power take-off · SS → new T${powerConnect.bestPadIndex} · ${powerConnect.stationToPadKm.toFixed(
+            2
+          )} km · ~${powerConnect.confidencePct}% fit`,
           { sticky: true }
         )
         .addTo(layer)
+
+      if (powerConnect.towerNearStation) {
+        const tw = powerConnect.towerNearStation
+        L.polyline(
+          [
+            [ss.lat, ss.lon],
+            [tw.lat, tw.lon],
+          ],
+          {
+            color: '#7c3aed',
+            weight: 3,
+            opacity: 0.9,
+            dashArray: '6 4',
+          }
+        )
+          .bindTooltip(
+            `Station → nearest existing tower · ${tw.name} · ${tw.distanceKm.toFixed(2)} km`,
+            { sticky: true }
+          )
+          .addTo(layer)
+      }
+
+      if (
+        powerConnect.towerNearPad &&
+        powerConnect.towerNearPad.id !== powerConnect.towerNearStation?.id
+      ) {
+        const tw = powerConnect.towerNearPad
+        L.polyline(
+          [
+            [powerConnect.bestPadLat, powerConnect.bestPadLon],
+            [tw.lat, tw.lon],
+          ],
+          {
+            color: '#2563eb',
+            weight: 2.5,
+            opacity: 0.85,
+            dashArray: '4 4',
+          }
+        )
+          .bindTooltip(
+            `New T${powerConnect.bestPadIndex} → nearest existing tower · ${tw.name} · ${tw.distanceKm.toFixed(
+              2
+            )} km`,
+            { sticky: true }
+          )
+          .addTo(layer)
+      }
+    } else if (hasStart) {
+      // Fallback: start pin → nearest asset
+      const nearest =
+        [...drawAssets].sort((a, b) => a.distanceKm - b.distanceKm)[0] ?? null
+      if (nearest && Number.isFinite(nearest.lat) && Number.isFinite(nearest.lon)) {
+        L.polyline(
+          [
+            [lat!, lon!],
+            [nearest.lat, nearest.lon],
+          ],
+          {
+            color: '#22d3ee',
+            weight: 3,
+            opacity: 0.85,
+            dashArray: '8 6',
+          }
+        )
+          .bindTooltip(
+            `Suggested connect direction · ${
+              nearest.distanceKm < 1
+                ? `${Math.round(nearest.distanceKm * 1000)} m`
+                : `${nearest.distanceKm.toFixed(2)} km`
+            } direct (Haversine)`,
+            { sticky: true }
+          )
+          .addTo(layer)
+      }
     }
-  }, [nearbyAssets, lat, lon, mapReady])
+  }, [nearbyAssets, lat, lon, mapReady, highlightTowerId, highlightStationId, powerConnect])
 
   useEffect(() => {
     const map = mapRef.current

@@ -31,6 +31,8 @@ interface DashboardKpiStripProps {
   workOrders?: WorkOrder[]
   onSelectAsset?: (id: string) => void
   onOpenMission?: () => void
+  /** Explorer = read-only KPIs (no dropdown overlays over the map). */
+  interactionMode?: 'explorer' | 'operations'
 }
 
 type Glow = 'emerald' | 'amber' | 'red' | 'cyan' | 'indigo' | 'slate' | 'blue'
@@ -401,7 +403,9 @@ export default function DashboardKpiStrip({
   workOrders = [],
   onSelectAsset,
   onOpenMission,
+  interactionMode = 'operations',
 }: DashboardKpiStripProps) {
+  const isExplorer = interactionMode === 'explorer'
   const [openDropdown, setOpenDropdown] = useState<KpiDropdownKind>(null)
   const [anchor, setAnchor] = useState<DropdownAnchor | null>(null)
   const activeCardRef = useRef<HTMLDivElement>(null)
@@ -428,6 +432,7 @@ export default function DashboardKpiStrip({
   )
 
   const toggleDropdown = (kind: Exclude<KpiDropdownKind, null>) => {
+    if (isExplorer) return
     setOpenDropdown((prev) => {
       const next = prev === kind ? null : kind
       if (next) {
@@ -438,6 +443,13 @@ export default function DashboardKpiStrip({
       return next
     })
   }
+
+  useEffect(() => {
+    if (isExplorer) {
+      setOpenDropdown(null)
+      setAnchor(null)
+    }
+  }, [isExplorer])
 
   const closeDropdown = () => {
     setOpenDropdown(null)
@@ -493,9 +505,13 @@ export default function DashboardKpiStrip({
             glow="amber"
             valueClass="text-amber-400"
             sparkColor="#fbbf24"
-            onClick={() => toggleDropdown('active')}
-            expanded={openDropdown === 'active'}
-            titleAttr="Show active alerts for this region"
+            onClick={isExplorer ? undefined : () => toggleDropdown('active')}
+            expanded={!isExplorer && openDropdown === 'active'}
+            titleAttr={
+              isExplorer
+                ? 'Select a state to drill into active alerts'
+                : 'Show active alerts for this region'
+            }
           />
         </div>
 
@@ -509,9 +525,13 @@ export default function DashboardKpiStrip({
             glow="red"
             valueClass="text-red-500"
             sparkColor="#f87171"
-            onClick={() => toggleDropdown('critical')}
-            expanded={openDropdown === 'critical'}
-            titleAttr="Show critical / high priority alerts"
+            onClick={isExplorer ? undefined : () => toggleDropdown('critical')}
+            expanded={!isExplorer && openDropdown === 'critical'}
+            titleAttr={
+              isExplorer
+                ? 'Select a state to drill into critical alerts'
+                : 'Show critical / high priority alerts'
+            }
           />
         </div>
 
@@ -533,7 +553,7 @@ export default function DashboardKpiStrip({
           glow="indigo"
           valueClass="text-indigo-400"
           sparkColor="#a78bfa"
-          onClick={onOpenMission}
+          onClick={isExplorer ? undefined : onOpenMission}
           titleAttr="Satellite + AI findings from monitoring runs in the last 24 hours"
         />
         <KpiCard
@@ -544,7 +564,7 @@ export default function DashboardKpiStrip({
           glow="blue"
           valueClass="text-white"
           sparkColor="#60a5fa"
-          onClick={onOpenMission}
+          onClick={isExplorer ? undefined : onOpenMission}
           titleAttr="Satellite monitoring pipeline executions in the last 24 hours"
         />
         <div ref={workOrdersCardRef}>
@@ -557,13 +577,18 @@ export default function DashboardKpiStrip({
             glow="slate"
             valueClass="text-white"
             sparkColor="#94a3b8"
-            onClick={() => toggleDropdown('workorders')}
-            expanded={openDropdown === 'workorders'}
-            titleAttr="Show open maintenance work orders"
+            onClick={isExplorer ? undefined : () => toggleDropdown('workorders')}
+            expanded={!isExplorer && openDropdown === 'workorders'}
+            titleAttr={
+              isExplorer
+                ? 'Select a state to review work orders'
+                : 'Show open maintenance work orders'
+            }
           />
         </div>
       </div>
 
+      {!isExplorer && (
       <KpiDropdownOverlay
         open={openDropdown !== null}
         kind={openDropdown}
@@ -577,6 +602,7 @@ export default function DashboardKpiStrip({
           onSelectAsset?.(assetId)
         }}
       />
+      )}
     </div>
   )
 }

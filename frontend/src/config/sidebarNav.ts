@@ -54,5 +54,7 @@ export const SIDEBAR_NAV_ITEMS: SidebarNavItem[] = [
   { id: 'satellite', label: 'Satellite', href: '/monitoring', icon: Satellite },
   { id: 'analytics', label: 'Analytics', href: '/analytics', icon: BarChart3 },
   { id: 'reports', label: 'Reports', href: '/analytics', icon: FileText },
-  { id: 'settings', label: 'Settings', href: '/dashboard', icon: Settings },
+  { id: 'geotech', label: 'Geotech', href: '/geotech', icon: Layers },
+  // Settings route TBD — keep Analyzer map; Ops KPIs are /dashboard via landing only
+  { id: 'settings', label: 'Settings', href: '/analyzer', icon: Settings },
 ]

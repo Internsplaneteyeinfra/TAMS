@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import Head from 'next/head'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
-import { Activity, ArrowLeft, MapPinned, RadioTower, X } from 'lucide-react'
+import { Activity, MapPinned, RadioTower } from 'lucide-react'
 import LogoutButton from '@/components/auth/LogoutButton'
 import type { LandingModuleId, NetworkMode } from '@/components/TransmissionNetwork'
 import { LandingThemeProvider, useLandingTheme } from '@/theme/LandingThemeContext'
@@ -52,8 +52,8 @@ const MODULES = [
   {
     id: 'performance' as const,
     title: 'Tower Performance',
-    subtitle: 'Coming soon',
-    href: null as string | null,
+    subtitle: 'Operations Dashboard',
+    href: '/dashboard',
     icon: Activity,
     accent:
       'from-amber-400/[0.15] to-transparent border-amber-300/30 hover:border-amber-300/65 hover:shadow-[0_22px_48px_-20px_rgba(251,191,36,0.28)]',
@@ -75,7 +75,6 @@ export default function LandingPage() {
 function LandingPageInner() {
   const { appearance, isTransitioning, registerLandingEl } = useLandingTheme()
   const router = useRouter()
-  const [performanceOpen, setPerformanceOpen] = useState(false)
   const [activeModule, setActiveModule] = useState<LandingModuleId | null>(null)
   const [departing, setDeparting] = useState(false)
 
@@ -117,13 +116,9 @@ function LandingPageInner() {
    * network, then navigate. Kept short so it never feels like a delay.
    */
   const handleSelect = useCallback(
-    (id: LandingModuleId, href: string | null) => {
+    (id: LandingModuleId, href: string) => {
       if (departing) return
       setActiveModule(id)
-      if (!href) {
-        setPerformanceOpen(true)
-        return
-      }
       setDeparting(true)
       window.setTimeout(() => void router.push(href), DEPART_MS)
     },
@@ -232,7 +227,7 @@ function LandingPageInner() {
           </div>
           <div className="ml-auto flex items-center gap-2">
             <LandingThemeToggle />
-            <LogoutButton variant="dark" />
+            <LogoutButton variant={appearance === 'light' ? 'light' : 'dark'} />
           </div>
         </header>
 
@@ -304,46 +299,6 @@ function LandingPageInner() {
           >
             Skip intro →
           </button>
-        )}
-
-        {performanceOpen && (
-          <div
-            className="tams-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="performance-soon-title"
-          >
-            <div className="tams-modal w-full max-w-md rounded-2xl border border-amber-400/40 bg-[#0e172a] p-6 shadow-2xl">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-wider text-amber-300/90">Tower Performance</p>
-                  <h3 id="performance-soon-title" className="mt-1 text-xl font-black text-white">
-                    Coming soon
-                  </h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPerformanceOpen(false)}
-                  className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800"
-                  aria-label="Close"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <p className="mt-3 text-sm text-slate-400 leading-relaxed">
-                Performance analytics for towers is under development. Check back later for KPIs, trends, and health
-                insights.
-              </p>
-              <button
-                type="button"
-                onClick={() => setPerformanceOpen(false)}
-                className="mt-5 inline-flex w-full items-center justify-center gap-2 h-11 rounded-xl border border-amber-400/50 bg-amber-500/15 text-sm font-bold text-amber-100 hover:bg-amber-500/25 transition-colors"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back to modules
-              </button>
-            </div>
-          </div>
         )}
       </div>
     </>

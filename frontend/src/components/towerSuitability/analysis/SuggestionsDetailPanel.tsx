@@ -27,7 +27,13 @@ export default function SuggestionsDetailPanel({
         Focus on Map
       </button>
       {corridorAdvice && (
-        <p className="text-[11px] text-[#66727a] leading-snug">{corridorAdvice.summary}</p>
+        <div className="rounded-lg border border-[rgba(51,65,85,0.12)] bg-white/50 px-2.5 py-2 space-y-1.5">
+          <p className="text-[10px] font-black uppercase tracking-wide text-[#66727a]">Corridor suggestion</p>
+          <p className="text-[11px] text-[#66727a] leading-snug">{corridorAdvice.summary}</p>
+          <p className="text-[11px] text-[#27856b] leading-snug">{corridorAdvice.whyFollow}</p>
+          <p className="text-[11px] text-[#c75b50] leading-snug">{corridorAdvice.whyNotFollow}</p>
+          <p className="text-[10px] text-[#b97816] leading-snug">{corridorAdvice.suggestionNote}</p>
+        </div>
       )}
       <div className="grid grid-cols-3 gap-1.5 text-[10px]">
         <div className="rounded-lg border border-[rgba(51,65,85,0.12)] bg-white/40 px-2 py-1.5">

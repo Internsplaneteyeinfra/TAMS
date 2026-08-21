@@ -126,7 +126,7 @@ export const landingTokens = {
   statusText: '#426879',
   statusTextAlt: '#477084',
   substationText: '#365467',
-  headerBg: 'rgba(255,255,255,0.75)',
+  headerBg: 'rgba(255,255,255,0.18)',
   headerBorder: '#D7E1E7',
   headerBrand: '#3d5568',
   headerTitle: '#0B1726',

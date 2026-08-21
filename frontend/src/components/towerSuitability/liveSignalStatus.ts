@@ -29,6 +29,8 @@ export function liveStatusBySource(signals?: SiteSignals | null): Record<string,
     landcover: asFlag(liveOk?.landcover),
     power_supply: asFlag(signals.nearbyPower?.liveOk),
     location: 'live',
+    geotech: asFlag(liveOk?.geotech),
+    soilScreening: asFlag(liveOk?.soilScreening),
   }
 }
 

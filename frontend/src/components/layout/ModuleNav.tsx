@@ -1,7 +1,7 @@
 import React from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { MODULE_NAV_ITEMS } from '@/config/moduleNav'
+import { ANALYZER_STRIP_NAV_ITEMS, MODULE_NAV_ITEMS } from '@/config/moduleNav'
 
 interface ModuleNavProps {
   variant?: 'sidebar' | 'strip'
@@ -9,11 +9,15 @@ interface ModuleNavProps {
 
 export default function ModuleNav({ variant = 'sidebar' }: ModuleNavProps) {
   const router = useRouter()
+  const stripItems =
+    router.pathname === '/analyzer' ? ANALYZER_STRIP_NAV_ITEMS : MODULE_NAV_ITEMS
+  const sidebarItems =
+    router.pathname === '/analyzer' ? ANALYZER_STRIP_NAV_ITEMS : MODULE_NAV_ITEMS
 
   if (variant === 'strip') {
     return (
       <nav className="flex items-center gap-1 flex-wrap" aria-label="TAMS modules">
-        {MODULE_NAV_ITEMS.map((item) => {
+        {stripItems.map((item) => {
           const active = router.pathname === item.href
           return (
             <Link
@@ -37,7 +41,7 @@ export default function ModuleNav({ variant = 'sidebar' }: ModuleNavProps) {
     <nav className="p-3 border-b border-slate-800 bg-slate-950/80" aria-label="TAMS modules">
       <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-2">Enterprise Modules</p>
       <div className="grid grid-cols-2 gap-1.5">
-        {MODULE_NAV_ITEMS.map((item) => {
+        {sidebarItems.map((item) => {
           const active = router.pathname === item.href
           return (
             <Link

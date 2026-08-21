@@ -14,6 +14,11 @@ const FACTOR_EMOJI: Record<string, string> = {
   corridor: '⚡',
   wind: '💨',
   landcover: '🌿',
+  geotech: '🪨',
+  power_connectivity: '🔌',
+  voltage_suitability: '⚡',
+  connection_distance: '📏',
+  corridor_feasibility: '🛤️',
 }
 
 function esc(s: string): string {

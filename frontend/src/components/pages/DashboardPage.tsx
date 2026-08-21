@@ -1,9 +1,11 @@
 import React, { useMemo } from 'react'
+import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
-import { Box, Card, CardContent, LinearProgress, Typography } from '@/components/mui'
+import { Box, Button, Card, CardContent, LinearProgress, Typography } from '@/components/mui'
 import AppLayout from '@/components/layout/AppLayout'
 import { fetchApi } from '@/lib/api'
+import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 
 interface OpsDashboard {
   active_alarms: number
@@ -67,10 +69,30 @@ export default function DashboardPage() {
   ]
 
   return (
-    <AppLayout title="Operations" alarmCount={ops?.active_alarms}>
-      <Typography variant="h4" gutterBottom sx={{ fontWeight: 800 }}>
-        📊 Operations Dashboard
-      </Typography>
+    <AppLayout title="Tower Performance" alarmCount={ops?.active_alarms}>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, mb: 1 }}>
+        <Box>
+          <Typography variant="overline" sx={{ fontWeight: 700, letterSpacing: 1.2, color: 'text.secondary' }}>
+            Tower Performance
+          </Typography>
+          <Typography variant="h4" sx={{ fontWeight: 800 }}>
+            Operations Dashboard
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Live KPIs, alarm severity, and reliability metrics for the monitored grid.
+          </Typography>
+        </Box>
+        <Button
+          component={Link}
+          href="/"
+          variant="outlined"
+          startIcon={<ArrowBackIcon />}
+          aria-label="Back to module selection"
+          sx={{ flexShrink: 0, textTransform: 'none', fontWeight: 700 }}
+        >
+          Back to modules
+        </Button>
+      </Box>
       {isLoading && <LinearProgress sx={{ mb: 2 }} />}
 
       {/* KPI cards */}

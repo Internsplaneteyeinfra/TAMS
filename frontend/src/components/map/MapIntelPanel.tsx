@@ -80,6 +80,8 @@ interface MapIntelPanelProps {
   offlineTowers?: number
   collapsed?: boolean
   onToggleCollapse?: () => void
+  /** India explorer: counts only — no map filter / location drill-down. */
+  interactionMode?: 'explorer' | 'operations'
 }
 
 export default function MapIntelPanel({
@@ -102,8 +104,10 @@ export default function MapIntelPanel({
   offlineTowers = 0,
   collapsed = false,
   onToggleCollapse,
+  interactionMode = 'operations',
 }: MapIntelPanelProps) {
   const [tab, setTab] = useState<FilterTab>('assets')
+  const isExplorer = interactionMode === 'explorer' || selectedPlaceId === 'india'
 
   if (collapsed) {
     return (
@@ -143,10 +147,17 @@ export default function MapIntelPanel({
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <p className="text-[8px] font-bold text-slate-500 uppercase tracking-wider">Region Summary</p>
-            <h3 className="text-sm font-extrabold text-white truncate">{stats.placeLabel}</h3>
+            <h3 className="text-sm font-extrabold text-white truncate">
+              {isExplorer ? 'India' : stats.placeLabel}
+            </h3>
           </div>
           {onToggleCollapse && <PanelMinimizeButton variant="hide" onClick={() => onToggleCollapse()} title="Hide region summary" />}
         </div>
+        {isExplorer && (
+          <p className="mt-1 text-[8px] font-semibold uppercase tracking-wider text-cyan-500/80">
+            National KML counts · map filters locked
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-2 text-[10px]">
           <Metric label="Assets" value={stats.totalAssets} />
           <Metric label="Alerts" value={stats.openAlerts} accent={stats.openAlerts > 0 ? 'text-amber-400' : 'text-emerald-400'} />
@@ -187,77 +198,155 @@ export default function MapIntelPanel({
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-3 py-2.5">
         {tab === 'assets' && (
           <div className="space-y-0.5">
-            <GroupHint>Show these asset classes on the map</GroupHint>
-            {ASSET_ROWS.map((row) => (
-              <React.Fragment key={row.key}>
-                <CheckRow
-                  checked={row.filterKey ? typeFilters[row.filterKey] !== false : true}
-                  color={row.color}
-                  label={row.label}
-                  count={row.getCount(stats)}
-                  onToggle={() => row.filterKey && onToggleType(row.filterKey)}
-                />
-                {/* Substation types by voltage sub-class */}
-                {row.key === 'substation' && typeFilters.substation !== false && (
-                  <div className="ml-1.5 pl-2.5 my-1 border-l border-slate-800 space-y-0.5">
-                    <p className="text-[8px] text-slate-500 font-bold uppercase tracking-wider py-0.5 flex items-center gap-1">
-                      <span aria-hidden>🏭</span> Substation types (kV)
-                    </p>
-                    {VOLTAGE_ROWS.filter((v) => v.key !== 'other').map((v) => (
-                      <CheckRow
-                        key={`sub-${v.key}`}
-                        checked={substationVoltageFilters[v.key] !== false}
-                        color={v.color}
-                        label={v.label}
-                        onToggle={() => onToggleSubstationVoltage(v.key)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </React.Fragment>
-            ))}
-            <div className="mt-2 pt-2 border-t border-slate-800/70">
-              <p className="text-[8px] text-slate-600 font-bold uppercase tracking-wider mb-1">Within substations</p>
-              {ASSET_SUBROWS.map((row) => (
-                <div key={row.key} className="flex items-center gap-2 py-0.5 text-[10px]">
-                  <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: row.color }} />
-                  <span className="flex-1 text-slate-400">{row.label}</span>
-                  <span className="font-mono font-bold text-slate-300 tabular-nums">{row.getCount(stats).toLocaleString()}</span>
+            {isExplorer ? (
+              <>
+                <GroupHint>India KML totals (counts only)</GroupHint>
+                <p className="mb-2 text-[9px] leading-relaxed text-slate-500">
+                  Map filters stay off at national view for performance. Select a state in Places to
+                  enable asset classes on the map.
+                </p>
+                {ASSET_ROWS.map((row) => (
+                  <CountRow
+                    key={row.key}
+                    color={row.color}
+                    label={row.label}
+                    count={row.getCount(stats)}
+                  />
+                ))}
+                <div className="mt-2 space-y-0.5 border-t border-slate-800/70 pt-2">
+                  <p className="mb-1 text-[8px] font-bold uppercase tracking-wider text-slate-600">
+                    Within substations
+                  </p>
+                  {ASSET_SUBROWS.map((row) => (
+                    <CountRow
+                      key={row.key}
+                      color={row.color}
+                      label={row.label}
+                      count={row.getCount(stats)}
+                    />
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            ) : (
+              <>
+                <GroupHint>Show these asset classes on the map</GroupHint>
+                {ASSET_ROWS.map((row) => (
+                  <React.Fragment key={row.key}>
+                    <CheckRow
+                      checked={row.filterKey ? typeFilters[row.filterKey] !== false : true}
+                      color={row.color}
+                      label={row.label}
+                      count={row.getCount(stats)}
+                      onToggle={() => row.filterKey && onToggleType(row.filterKey)}
+                    />
+                    {row.key === 'substation' && typeFilters.substation !== false && (
+                      <div className="ml-1.5 my-1 space-y-0.5 border-l border-slate-800 pl-2.5">
+                        <p className="flex items-center gap-1 py-0.5 text-[8px] font-bold uppercase tracking-wider text-slate-500">
+                          <span aria-hidden>🏭</span> Substation types (kV)
+                        </p>
+                        {VOLTAGE_ROWS.filter((v) => v.key !== 'other').map((v) => (
+                          <CheckRow
+                            key={`sub-${v.key}`}
+                            checked={substationVoltageFilters[v.key] !== false}
+                            color={v.color}
+                            label={v.label}
+                            onToggle={() => onToggleSubstationVoltage(v.key)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </React.Fragment>
+                ))}
+                <div className="mt-2 border-t border-slate-800/70 pt-2">
+                  <p className="mb-1 text-[8px] font-bold uppercase tracking-wider text-slate-600">
+                    Within substations
+                  </p>
+                  {ASSET_SUBROWS.map((row) => (
+                    <div key={row.key} className="flex items-center gap-2 py-0.5 text-[10px]">
+                      <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: row.color }} />
+                      <span className="flex-1 text-slate-400">{row.label}</span>
+                      <span className="font-mono font-bold tabular-nums text-slate-300">
+                        {row.getCount(stats).toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
 
         {tab === 'voltage' && (
           <div className="space-y-0.5">
-            <GroupHint>Filter corridors by voltage class</GroupHint>
-            {VOLTAGE_ROWS.map((row) => (
-              <CheckRow
-                key={row.key}
-                checked={voltageFilters[row.key] !== false}
-                color={row.color}
-                label={row.label}
-                swatch="line"
-                onToggle={() => onToggleVoltage(row.key)}
-              />
-            ))}
-            <p className="mt-2 text-[8px] text-slate-600 leading-relaxed">
-              Hover any corridor to see live power-flow direction. Line color = voltage class from KML.
-            </p>
+            {isExplorer ? (
+              <>
+                <GroupHint>Voltage legend (India overview)</GroupHint>
+                <p className="mb-2 text-[9px] leading-relaxed text-slate-500">
+                  National map shows a light EHV corridor sample. Full voltage filters unlock after
+                  you select a state.
+                </p>
+                {VOLTAGE_ROWS.map((row) => (
+                  <CountRow key={row.key} color={row.color} label={row.label} swatch="line" />
+                ))}
+              </>
+            ) : (
+              <>
+                <GroupHint>Filter corridors by voltage class</GroupHint>
+                {VOLTAGE_ROWS.map((row) => (
+                  <CheckRow
+                    key={row.key}
+                    checked={voltageFilters[row.key] !== false}
+                    color={row.color}
+                    label={row.label}
+                    swatch="line"
+                    onToggle={() => onToggleVoltage(row.key)}
+                  />
+                ))}
+                <p className="mt-2 text-[8px] leading-relaxed text-slate-600">
+                  Hover any corridor to see live power-flow direction. Line color = voltage class from
+                  KML.
+                </p>
+              </>
+            )}
           </div>
         )}
 
         {tab === 'boundaries' && (
           <div className="space-y-0.5">
             <GroupHint>Reference layers drawn over the basemap</GroupHint>
-            <CheckRow checked={corridorsOn} color="#22c55e" label="Transmission corridors" swatch="line" onToggle={onToggleCorridors} />
+            {!isExplorer && (
+              <CheckRow
+                checked={corridorsOn}
+                color="#22c55e"
+                label="Transmission corridors"
+                swatch="line"
+                onToggle={onToggleCorridors}
+              />
+            )}
             <CheckRow checked={labelsOn} color="#38bdf8" label="Asset labels" onToggle={onToggleLabels} />
+            {isExplorer && (
+              <p className="mt-2 text-[9px] leading-relaxed text-slate-500">
+                Corridor layer stays on for India overview. Pick a state for full layer controls.
+              </p>
+            )}
           </div>
         )}
 
         {tab === 'location' && (
-          <LocationSelector selectedPlaceId={selectedPlaceId} onSelectPlace={onSelectPlace} />
+          isExplorer ? (
+            <div className="space-y-2">
+              <GroupHint>Region locked to India</GroupHint>
+              <div className="rounded-lg border border-cyan-500/25 bg-cyan-500/10 px-2.5 py-2">
+                <p className="text-[11px] font-bold text-cyan-200">🇮🇳 India</p>
+                <p className="mt-1 text-[9px] leading-relaxed text-slate-400">
+                  Region Summary stays on national KML totals. Use the Places menu (top of map) to
+                  open a state — then state/city filters and map asset classes unlock.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <LocationSelector selectedPlaceId={selectedPlaceId} onSelectPlace={onSelectPlace} />
+          )
         )}
       </div>
 
@@ -291,6 +380,34 @@ export default function MapIntelPanel({
 
 function GroupHint({ children }: { children: React.ReactNode }) {
   return <p className="text-[8px] text-slate-600 uppercase tracking-wider font-bold mb-1.5">{children}</p>
+}
+
+function CountRow({
+  color,
+  label,
+  count,
+  swatch = 'box',
+}: {
+  color: string
+  label: string
+  count?: number
+  swatch?: 'box' | 'line'
+}) {
+  return (
+    <div className="flex w-full items-center gap-2 py-1 text-left">
+      {swatch === 'line' ? (
+        <span className="h-[3px] w-4 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+      ) : (
+        <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: color }} />
+      )}
+      <span className="flex-1 text-[10px] font-medium text-slate-200">{label}</span>
+      {count != null && (
+        <span className="font-mono text-[10px] font-bold tabular-nums text-slate-200">
+          {count.toLocaleString()}
+        </span>
+      )}
+    </div>
+  )
 }
 
 function CheckRow({

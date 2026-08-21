@@ -1,5 +1,7 @@
 import { findNearbyPowerSupply } from './nearbyPowerSupply'
 import type { SiteSignals } from './scoring'
+import { fetchGeotechNearest } from '@/lib/geotechApi'
+import { fetchSoilScreening } from './soilScreening'
 
 const haversineKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const R = 6371
@@ -378,14 +380,19 @@ export async function collectSiteSignals(
     slopeDeg = maxSlope
   }
 
-  onProgress?.('Searching existing power (TAMS + OSM, up to ~45s)…', 92)
-  const nearbyPower = await findNearbyPowerSupply(lat, lon, options?.searchRadiusKm ?? 8, {
-    waterKm,
-    buildingKm,
-    slopeDeg,
-    landCover: land,
-    corridor: options?.corridor,
-  })
+  onProgress?.('Searching existing power + open soil map…', 92)
+  const [nearbyPower, geotechNearest, placeLabel, soilScreening] = await Promise.all([
+    findNearbyPowerSupply(lat, lon, options?.searchRadiusKm ?? 8, {
+      waterKm,
+      buildingKm,
+      slopeDeg,
+      landCover: land,
+      corridor: options?.corridor,
+    }),
+    withTimeout(fetchGeotechNearest(lat, lon, 5), 6000, null),
+    withTimeout(resolveCityStateLabel(lat, lon), 6500, null),
+    withTimeout(fetchSoilScreening(lat, lon), 12000, null),
+  ])
 
   // Tower / power distances only from the dedicated search (avoids duplicate API load)
   const nearbyTowerKm = nearbyPower.nearestTower?.distanceKm ?? null
@@ -407,6 +414,27 @@ export async function collectSiteSignals(
   const towerKm = towerKmCandidates.length ? Math.min(...towerKmCandidates) : null
 
   const nearbySsKm = nearbyPower.nearestSubstation?.distanceKm ?? null
+
+  const geotech =
+    geotechNearest && geotechNearest.id
+      ? {
+          id: geotechNearest.id,
+          site_code: geotechNearest.site_code,
+          site_name: geotechNearest.site_name,
+          distance_km: geotechNearest.distance_km,
+          adopted_sbc_tm2: geotechNearest.adopted_sbc_tm2,
+          design_depth_m: geotechNearest.design_depth_m,
+          governing_cbr_pct: geotechNearest.governing_cbr_pct,
+          adopted_resistivity_ohm_m: geotechNearest.adopted_resistivity_ohm_m,
+          groundwater_note: geotechNearest.groundwater_note,
+          recommended_pile: geotechNearest.recommended_pile,
+        }
+      : null
+
+  const soil =
+    soilScreening && placeLabel
+      ? { ...soilScreening, placeName: placeLabel }
+      : soilScreening
 
   return {
     lat,
@@ -434,10 +462,15 @@ export async function collectSiteSignals(
         (osmPowerKm != null && !usedFallback.grid),
       wind: windMs != null,
       landcover: land !== 'unknown',
+      geotech: geotech != null,
+      soilScreening: soil != null,
     },
     usedFallback:
       usedFallback.water || usedFallback.settlement || usedFallback.grid ? usedFallback : undefined,
     nearbyPower,
+    geotech,
+    soilScreening: soil,
+    placeLabel,
   }
 }
 

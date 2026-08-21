@@ -140,9 +140,17 @@ function voltageLineColor(kv: number | null | undefined): string {
   return '#64748b'
 }
 
-function lineWeightForVoltage(kv: number | null | undefined, selected: boolean): number {
+function lineWeightForVoltage(
+  kv: number | null | undefined,
+  selected: boolean,
+  explorerOverview = false
+): number {
   // Keep low-voltage corridors (11–66 kV) visible at Gujarat overview zoom
-  const base = kv != null && kv >= 400 ? 4.5 : kv != null && kv >= 220 ? 3.5 : kv != null && kv >= 66 ? 2.75 : 2.5
+  let base =
+    kv != null && kv >= 400 ? 4.5 : kv != null && kv >= 220 ? 3.5 : kv != null && kv >= 66 ? 2.75 : 2.5
+  // India explorer: thicken EHV so national backbone reads at low zoom
+  if (explorerOverview && kv != null && kv >= 400) base += 1.75
+  else if (explorerOverview && kv != null && kv >= 220) base += 0.75
   return selected ? base + 2 : base
 }
 
@@ -278,6 +286,33 @@ function makeAssetIcon(asset: Asset, isSelected: boolean, hasAlert: boolean, isM
       ">${isMissionFocus ? 'FOCUSED' : cfg.badge}</div>
     </div>`,
   })
+}
+
+function buildMinimalPopupHtml(asset: Asset): string {
+  const typeLabel =
+    asset.asset_type === 'tower'
+      ? 'Tower'
+      : asset.asset_type === 'line'
+        ? 'Transmission Line'
+        : asset.asset_type === 'substation'
+          ? 'Substation'
+          : String(asset.asset_type)
+  const state = asset.metadata?.country_or_state ? String(asset.metadata.country_or_state) : null
+  const name = asset.name || asset.id
+  const lat = Number.isFinite(asset.latitude) ? asset.latitude.toFixed(2) : '—'
+  const lon = Number.isFinite(asset.longitude) ? asset.longitude.toFixed(2) : '—'
+  return `<div style="padding:10px 12px;max-width:220px;font-family:system-ui,sans-serif">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+      <span style="font-size:14px">⚡</span>
+      <div style="font-weight:800;font-size:12px;color:#f8fafc;line-height:1.25">${name}</div>
+    </div>
+    <div style="font-size:10px;color:#94a3b8;line-height:1.6">
+      <div>Type: <span style="color:#e2e8f0;font-weight:700">${typeLabel}</span></div>
+      <div>ID: <span style="font-family:ui-monospace,monospace;color:#e2e8f0">${asset.id}</span></div>
+      <div>Location: <span style="font-family:ui-monospace,monospace;color:#e2e8f0">${lat}, ${lon}</span></div>
+      ${state ? `<div>State: <span style="color:#e2e8f0;font-weight:700">${state}</span></div>` : ''}
+    </div>
+  </div>`
 }
 
 function buildPopupHtml(asset: Asset): string {
@@ -442,6 +477,7 @@ export default function GISMap({
   focusTarget = null,
   onFocusConsumed,
   highlightAssetId = null,
+  interactionMode = 'operations',
 }: {
   assets: Asset[]
   selectedAssetId?: string | null
@@ -470,6 +506,7 @@ export default function GISMap({
   onFocusConsumed?: () => void
   /** Unique color highlight after mission-report View */
   highlightAssetId?: string | null
+  interactionMode?: 'explorer' | 'operations'
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -496,6 +533,9 @@ export default function GISMap({
     substation: true,
     line: true,
   }
+
+  const lastAssetClickRef = useRef<{ id: string; t: number } | null>(null)
+  const isExplorer = interactionMode === 'explorer' || selectedPlaceId === 'india'
 
   const [viewportTowers, setViewportTowers] = useState<Asset[]>([])
   const [towersLoading, setTowersLoading] = useState(false)
@@ -561,8 +601,10 @@ export default function GISMap({
     const east = bounds.getEast()
     const south = bounds.getSouth()
     const north = bounds.getNorth()
-    // Skip world-size / country-zoom requests — they hang cold KML and cause 502s
-    if (east - west > 12 || north - south > 10 || zoom < 7) {
+    // Skip world-size / country-zoom requests — they hang cold KML and cause 502s.
+    // Explorer: require zoom >= 8; state ops keep zoom >= 7.
+    const minTowerZoom = isExplorer ? 8 : 7
+    if (east - west > 12 || north - south > 10 || zoom < minTowerZoom) {
       setViewportTowers([])
       setTowersLoading(false)
       return
@@ -592,7 +634,7 @@ export default function GISMap({
         if (requestId !== towerRequestIdRef.current) return
         setTowersLoading(false)
       })
-  }, [selectedPlaceId, showTowers])
+  }, [selectedPlaceId, showTowers, isExplorer])
 
   useEffect(() => {
     loadViewportTowersRef.current = loadViewportTowers
@@ -876,7 +918,36 @@ export default function GISMap({
 
     const zoom = map.getZoom()
     const labelsVisible = showLabels && zoom >= 10
-    const compactTowers = zoom < 10
+    const compactTowers = zoom < 10 || isExplorer
+    const explorerOverview = isExplorer && zoom <= 7
+    const popupFor = (asset: Asset) =>
+      isExplorer
+        ? {
+            html: buildMinimalPopupHtml(asset),
+            opts: { className: 'asset-popup asset-popup--minimal', maxWidth: 220 },
+          }
+        : {
+            html: buildPopupHtml(asset),
+            opts: { className: 'asset-popup', maxWidth: 280 },
+          }
+
+    const onFeatureClick = (asset: Asset, layer: L.Layer) => {
+      const now = Date.now()
+      const last = lastAssetClickRef.current
+      if (last && last.id === asset.id && now - last.t < 320) {
+        lastAssetClickRef.current = null
+        map.closePopup()
+        return
+      }
+      lastAssetClickRef.current = { id: asset.id, t: now }
+      if (isExplorer) {
+        if ('openPopup' in layer && typeof (layer as L.Path).openPopup === 'function') {
+          ;(layer as L.Path).openPopup()
+        }
+        return
+      }
+      onSelectAsset?.(asset.id)
+    }
 
     filteredAssets.forEach((asset) => {
       const isSelected = asset.id === selectedAssetId
@@ -902,8 +973,20 @@ export default function GISMap({
             : lineHealth === 'attention_required'
               ? '#F59E0B'
               : voltageLineColor(kv)
-        const baseWeight = lineWeightForVoltage(kv, isCorridorFocus) + (isCorridorFocus ? 3 : 0)
-        const baseOpacity = isCorridorFocus ? 1 : kv != null && kv >= 220 ? 0.95 : 0.75
+        const baseWeight = lineWeightForVoltage(kv, isCorridorFocus, explorerOverview) + (isCorridorFocus ? 3 : 0)
+        // India overview: keep EHV corridors readable over satellite
+        const baseOpacity = isCorridorFocus
+          ? 1
+          : explorerOverview
+            ? kv != null && kv >= 220
+              ? 0.98
+              : 0.7
+            : kv != null && kv >= 220
+              ? 0.95
+              : 0.75
+        // Prefer solid strokes at national zoom so corridors read as a backbone
+        const dashArray =
+          isCorridorFocus || explorerOverview || (kv != null && kv >= 400) ? undefined : '8 6'
 
         if (isCorridorFocus) {
           // Very dark black border casing so the corridor is unmistakable
@@ -923,7 +1006,7 @@ export default function GISMap({
           color: lineColor,
           weight: baseWeight,
           opacity: baseOpacity,
-          dashArray: isCorridorFocus ? undefined : kv != null && kv >= 400 ? undefined : '8 6',
+          dashArray,
           className: isCorridorFocus ? 'tams-mission-focus-line' : 'tams-line-flow',
           interactive: true,
           lineCap: 'round',
@@ -931,7 +1014,7 @@ export default function GISMap({
         }).addTo(map)
         polyline.on('click', (e) => {
           L.DomEvent.stopPropagation(e)
-          onSelectAsset?.(asset.id)
+          onFeatureClick(asset, polyline)
         })
 
         // Signature interaction: reveal directional power flow on hover
@@ -979,7 +1062,8 @@ export default function GISMap({
           markerByIdRef.current.set(asset.id, directionAnchor)
           overlaysRef.current.push(startPin, endPin, directionAnchor)
         } else {
-          polyline.bindPopup(buildPopupHtml(asset))
+          const popup = popupFor(asset)
+          polyline.bindPopup(popup.html, popup.opts)
           polyline.bindTooltip(
             `<div style="display:flex;align-items:center;gap:6px;font-family:ui-monospace,monospace">
               <span style="width:6px;height:6px;border-radius:50%;background:${lineColor}"></span>
@@ -1004,6 +1088,9 @@ export default function GISMap({
         return
       }
 
+      // India national zoom: corridors + state labels only (avoid green cluster clutter)
+      if (explorerOverview) return
+
       if (asset.asset_type === 'substation' && asset.geometry?.type === 'Polygon' && zoom >= 8) {
         const rings = asset.geometry.coordinates as number[][][]
         const latlngs = rings.map((r) => toLatLngs(r))
@@ -1013,8 +1100,11 @@ export default function GISMap({
           fillColor: isMissionFocus ? MISSION_FOCUS_COLOR : cfg.color,
           fillOpacity: isMissionFocus ? 0.45 : 0.35,
         }).addTo(map)
-        polygon.bindPopup(buildPopupHtml(asset))
-        polygon.on('click', () => onSelectAsset?.(asset.id))
+        polygon.bindPopup(popupFor(asset).html, popupFor(asset).opts)
+        polygon.on('click', (e) => {
+          L.DomEvent.stopPropagation(e)
+          onFeatureClick(asset, polygon)
+        })
         overlaysRef.current.push(polygon)
       }
 
@@ -1056,7 +1146,8 @@ export default function GISMap({
       }
       marker.assetRef = asset
 
-      marker.bindPopup(buildPopupHtml(asset), { className: 'asset-popup', maxWidth: 280 })
+      const popup = popupFor(asset)
+      marker.bindPopup(popup.html, popup.opts)
 
       if (labelsVisible && asset.asset_type !== 'tower') {
         marker.bindTooltip(`${cfg.badge}: ${asset.name}`, {
@@ -1067,7 +1158,10 @@ export default function GISMap({
         })
       }
 
-      marker.on('click', () => onSelectAsset?.(asset.id))
+      marker.on('click', (e) => {
+        L.DomEvent.stopPropagation(e)
+        onFeatureClick(asset, marker)
+      })
       markerByIdRef.current.set(asset.id, marker)
 
       // Wildfire Risk overlay — thin outline only
@@ -1148,6 +1242,7 @@ export default function GISMap({
     voltageFilterKey,
     voltageFilters,
     highlightAssetId,
+    isExplorer,
   ])
 
   // Cinematic intro: frame the world, fly to India, then settle on the region.

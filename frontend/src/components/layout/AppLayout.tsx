@@ -12,6 +12,7 @@ import FavoriteIcon from '@mui/icons-material/Favorite'
 import AssignmentIcon from '@mui/icons-material/Assignment'
 import AnalyticsIcon from '@mui/icons-material/Analytics'
 import SatelliteAltIcon from '@mui/icons-material/SatelliteAlt'
+import TerrainIcon from '@mui/icons-material/Terrain'
 import {
   AppBar,
   Badge,
@@ -39,6 +40,7 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
   '/health': <FavoriteIcon />,
   '/maintenance': <BuildIcon />,
   '/inspections': <AssignmentIcon />,
+  '/geotech': <TerrainIcon />,
   '/analytics': <AnalyticsIcon />,
   '/monitoring': <SatelliteAltIcon />,
 }

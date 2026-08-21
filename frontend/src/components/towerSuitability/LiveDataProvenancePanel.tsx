@@ -57,6 +57,7 @@ export default function LiveDataProvenancePanel({
     landcover: liveOk?.landcover,
     power_supply: signals?.nearbyPower?.liveOk,
     location: true,
+    geotech: liveOk?.geotech || liveOk?.soilScreening,
   }
 
   const liveCount = Object.values(liveStatus).filter(Boolean).length

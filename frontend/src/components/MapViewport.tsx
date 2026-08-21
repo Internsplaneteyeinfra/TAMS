@@ -20,6 +20,27 @@ import type { Alert, Asset, RegionAssetStats } from '@/lib/api'
 import { computeRegionStats, filterAlertsByPlace, filterAssetsByPlace } from '@/lib/placeFilter'
 import type { MapStatusSnapshot } from '@/types/mapStatus'
 
+export type MapInteractionMode = 'explorer' | 'operations'
+
+const ALL_VOLTAGE_FILTERS: Record<string, boolean> = {
+  '765': true,
+  '400': true,
+  '220': true,
+  '132': true,
+  '66': true,
+  other: true,
+}
+
+/** India explorer: EHV backbone only (hide 132 / 66 / other until state pick or toggle). */
+const EXPLORER_VOLTAGE_FILTERS: Record<string, boolean> = {
+  '765': true,
+  '400': true,
+  '220': true,
+  '132': false,
+  '66': false,
+  other: false,
+}
+
 const GISMap = dynamic(() => import('@/components/GISMap'), {
   ssr: false,
   loading: () => (
@@ -59,6 +80,7 @@ interface MapViewportProps {
   showOpsReopen?: boolean
   rightPanelOpen?: boolean
   onOpenOpsPanel?: () => void
+  interactionMode?: MapInteractionMode
 }
 
 export default function MapViewport({
@@ -80,11 +102,14 @@ export default function MapViewport({
   showOpsReopen = false,
   rightPanelOpen = false,
   onOpenOpsPanel,
+  interactionMode: externalInteractionMode,
 }: MapViewportProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('2d')
   const [internalPlaceId, setInternalPlaceId] = useState(DEFAULT_PLACE_ID)
   const selectedPlaceId = externalPlaceId ?? internalPlaceId
   const onSelectPlace = externalOnSelectPlace ?? setInternalPlaceId
+  const interactionMode: MapInteractionMode =
+    externalInteractionMode ?? (selectedPlaceId === 'india' ? 'explorer' : 'operations')
 
   const [mapZoom, setMapZoom] = useState<MapZoomHandlers | null>(null)
   const [heatMapMode, setHeatMapMode] = useState<HeatMapMode>('normal')
@@ -96,22 +121,12 @@ export default function MapViewport({
     substation: true,
     line: true,
   })
-  const [voltageFilters, setVoltageFilters] = useState<Record<string, boolean>>({
-    '765': true,
-    '400': true,
-    '220': true,
-    '132': true,
-    '66': true,
-    other: true,
-  })
-  const [substationVoltageFilters, setSubstationVoltageFilters] = useState<Record<string, boolean>>({
-    '765': true,
-    '400': true,
-    '220': true,
-    '132': true,
-    '66': true,
-    other: true,
-  })
+  const [voltageFilters, setVoltageFilters] = useState<Record<string, boolean>>(() =>
+    DEFAULT_PLACE_ID === 'india' ? { ...EXPLORER_VOLTAGE_FILTERS } : { ...ALL_VOLTAGE_FILTERS }
+  )
+  const [substationVoltageFilters, setSubstationVoltageFilters] = useState<Record<string, boolean>>(() =>
+    DEFAULT_PLACE_ID === 'india' ? { ...EXPLORER_VOLTAGE_FILTERS } : { ...ALL_VOLTAGE_FILTERS }
+  )
   const [labelsOn, setLabelsOn] = useState(true)
   const [intelPanelCollapsed, setIntelPanelCollapsed] = useState(false)
   const [controlRailCollapsed, setControlRailCollapsed] = useState(false)
@@ -146,6 +161,17 @@ export default function MapViewport({
     wildfire: false,
     labels: true,
   })
+
+  // Reset voltage defaults when switching India explorer ↔ state operations
+  useEffect(() => {
+    if (selectedPlaceId === 'india') {
+      setVoltageFilters({ ...EXPLORER_VOLTAGE_FILTERS })
+      setSubstationVoltageFilters({ ...EXPLORER_VOLTAGE_FILTERS })
+    } else {
+      setVoltageFilters({ ...ALL_VOLTAGE_FILTERS })
+      setSubstationVoltageFilters({ ...ALL_VOLTAGE_FILTERS })
+    }
+  }, [selectedPlaceId])
 
   // Surface corridor location above search/chrome for 2s when a line is focused
   useEffect(() => {
@@ -358,6 +384,7 @@ export default function MapViewport({
         offlineTowers={offlineTowers}
         collapsed={intelPanelCollapsed}
         onToggleCollapse={() => setIntelPanelCollapsed((v) => !v)}
+        interactionMode={interactionMode}
       />
 
       <MapOverlaysPanel
@@ -438,6 +465,7 @@ export default function MapViewport({
           focusTarget={focusTarget}
           onFocusConsumed={onFocusConsumed}
           highlightAssetId={highlightAssetId}
+          interactionMode={interactionMode}
         />
       ) : (
         <GISMap3D

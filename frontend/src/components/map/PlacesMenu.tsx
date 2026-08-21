@@ -137,30 +137,45 @@ export default function PlacesMenu({
 
       {open && (
         <div
-          className="absolute top-full right-0 mt-2 z-[8000] flex rounded-xl border border-slate-600 bg-[#0a1020] shadow-2xl shadow-black/60 overflow-hidden"
+          className="absolute top-full right-0 mt-2 z-[8000] flex flex-col rounded-xl border border-slate-600 bg-[#0a1020] shadow-2xl shadow-black/60 overflow-hidden"
           role="menu"
-          aria-label="Select state"
+          aria-label="Select place"
         >
-          <PlaceColumn
-            title="States"
-            nodes={STATE_NODES}
-            selectedPlaceId={selectedPlaceId}
-            activeId={activeState?.id ?? null}
-            onHover={(node) => setHoverState(node)}
-            onSelect={handleSelect}
-            assetCounts={assetCounts}
-          />
-          {cityNodes.length > 0 && (
+          <button
+            type="button"
+            onClick={() => handleSelect('india')}
+            className={`w-full flex items-center gap-2 px-3 py-2.5 text-left text-[11px] border-b border-slate-700/80 transition ${
+              selectedPlaceId === 'india'
+                ? 'bg-blue-600/30 text-blue-100 font-bold'
+                : 'text-slate-200 hover:bg-slate-800/80 hover:text-white'
+            }`}
+          >
+            <span className="text-sm leading-none shrink-0">🇮🇳</span>
+            <span className="flex-1 truncate font-bold">India</span>
+            <span className="text-[9px] text-slate-500 uppercase tracking-wider">Explorer</span>
+          </button>
+          <div className="flex">
             <PlaceColumn
-              title={activeState?.label ?? 'Cities'}
-              nodes={cityNodes}
+              title="States"
+              nodes={STATE_NODES}
               selectedPlaceId={selectedPlaceId}
-              activeId={path[path.length - 1]?.id === activeState?.id ? null : path[path.length - 1]?.id ?? null}
-              onHover={() => {}}
+              activeId={activeState?.id ?? null}
+              onHover={(node) => setHoverState(node)}
               onSelect={handleSelect}
               assetCounts={assetCounts}
             />
-          )}
+            {cityNodes.length > 0 && (
+              <PlaceColumn
+                title={activeState?.label ?? 'Cities'}
+                nodes={cityNodes}
+                selectedPlaceId={selectedPlaceId}
+                activeId={path[path.length - 1]?.id === activeState?.id ? null : path[path.length - 1]?.id ?? null}
+                onHover={() => {}}
+                onSelect={handleSelect}
+                assetCounts={assetCounts}
+              />
+            )}
+          </div>
         </div>
       )}
     </div>

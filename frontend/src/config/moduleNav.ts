@@ -13,6 +13,15 @@ export const MODULE_NAV_ITEMS: ModuleNavItem[] = [
   { href: '/health', label: 'Condition Monitoring', shortLabel: 'Health' },
   { href: '/maintenance', label: 'Maintenance Center', shortLabel: 'Maint' },
   { href: '/inspections', label: 'Inspection Portal', shortLabel: 'Inspect' },
+  { href: '/geotech', label: 'Geotech Investigations', shortLabel: 'Geotech' },
   { href: '/analytics', label: 'Analytics', shortLabel: 'Analytics' },
   { href: '/monitoring', label: 'Satellite Monitoring', shortLabel: 'Satellite' },
 ]
+
+/**
+ * Analyzer top-bar strip — map workspace only (no Operations Dashboard).
+ * Tower Performance /dashboard is reached from the landing card, not Analyzer.
+ */
+export const ANALYZER_STRIP_NAV_ITEMS: ModuleNavItem[] = MODULE_NAV_ITEMS.filter(
+  (item) => item.href !== '/dashboard'
+)

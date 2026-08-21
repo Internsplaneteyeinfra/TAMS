@@ -334,8 +334,8 @@ export const PLACES_TREE: PlaceNode[] = [
   },
 ]
 
-/** Open on Gujarat so KML towers/corridors are visible immediately */
-export const DEFAULT_PLACE_ID = 'gujarat'
+/** Open on full India explorer (state ops after PlacesMenu pick) */
+export const DEFAULT_PLACE_ID = 'india'
 
 export const INDIA_MAP_BOUNDS: [[number, number], [number, number]] = [
   [6.5, 68],
@@ -388,6 +388,16 @@ export function flattenPlaces(nodes: PlaceNode[] = PLACES_TREE): PlaceNode[] {
   return out
 }
 
+/** State names for `/assets?state=` — used to sample all-India corridors. */
+export function getIndiaStateFilters(): string[] {
+  const india = PLACES_TREE[0]
+  const names: string[] = []
+  for (const state of india?.children ?? []) {
+    if (state.stateOrCountry) names.push(state.stateOrCountry)
+  }
+  return names
+}
+
 /** Resolve API state filter from selected place id (walks parents for cities). */
 export function getStateFilterForPlace(placeId: string): string | undefined {
   if (placeId === 'india') return undefined
@@ -398,8 +408,9 @@ export function getStateFilterForPlace(placeId: string): string | undefined {
   return getPlaceById(placeId)?.stateOrCountry
 }
 
-/** Whether the selected place should load KML tower markers. */
+/** Whether the selected place should load KML tower markers (viewport bbox still gated). */
 export function placeShowsTowers(placeId: string): boolean {
+  if (placeId === 'india') return true
   const path = getPlacePath(placeId)
   const towerStates = new Set([
     'gujarat',

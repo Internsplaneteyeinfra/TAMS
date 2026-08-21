@@ -8,7 +8,7 @@ export default function LandingThemeToggle() {
 
   return (
     <div
-      className="tams-theme-toggle pointer-events-auto ml-auto flex shrink-0 items-center rounded-lg border border-white/10 bg-[#0e172a]/70 p-0.5 shadow-[0_4px_12px_rgba(3,10,20,0.35)]"
+      className="tams-theme-toggle pointer-events-auto ml-auto flex shrink-0 items-center rounded-lg border border-white/10 bg-[#0e172a]/45 p-0.5 shadow-none backdrop-blur-sm"
       role="group"
       aria-label="Color theme"
     >

@@ -15,7 +15,7 @@ import TopNavbar from '@/components/topbar/TopNavbar'
 import CommandPalette, { useCommandPaletteShortcut } from '@/components/ui/CommandPalette'
 import MonitoringResultModal from '@/components/ui/MonitoringResultModal'
 import AssetDetailDrawer from '@/components/map/AssetDetailDrawer'
-import { DEFAULT_PLACE_ID, getStateFilterForPlace } from '@/config/places'
+import { DEFAULT_PLACE_ID, getIndiaStateFilters, getStateFilterForPlace } from '@/config/places'
 import {
   fetchApi,
   fetchGisPlaceStats,
@@ -31,11 +31,13 @@ import { computeRegionStats, filterAlertsByPlace } from '@/lib/placeFilter'
 import { selectAsset, type RootState } from '@/lib/store'
 import type { MapStatusSnapshot } from '@/types/mapStatus'
 
+export type AnalyzerInteractionMode = 'explorer' | 'operations'
+
 const MapViewport = dynamic(() => import('@/components/MapViewport'), { ssr: false })
 
 export default function Home() {
   const [isClient, setIsClient] = useState(false)
-  const [isOperationsPanelOpen, setIsOperationsPanelOpen] = useState(true)
+  const [isOperationsPanelOpen, setIsOperationsPanelOpen] = useState(false)
   const [mapResizeSignal, setMapResizeSignal] = useState(0)
   const [mapStatus, setMapStatus] = useState<MapStatusSnapshot>({
     coordinates: null,
@@ -57,6 +59,9 @@ export default function Home() {
   const queryClient = useQueryClient()
   const selectedAssetId = useSelector((state: RootState) => state.assets.selected)
 
+  const isExplorerMode = selectedPlaceId === 'india'
+  const interactionMode: AnalyzerInteractionMode = isExplorerMode ? 'explorer' : 'operations'
+
   const handleMissionReport = useCallback(
     (payload: { result: MonitoringRunResult | null; error?: string | null }) => {
       setMissionResult(payload.result)
@@ -70,10 +75,26 @@ export default function Home() {
 
   const handleSelectAsset = useCallback(
     (id: string) => {
+      // India explorer: map clicks must not open ops drawer / Redux selection
+      if (selectedPlaceId === 'india') return
       if (id !== missionHighlightId) setMissionHighlightId(null)
       dispatch(selectAsset(id))
     },
-    [dispatch, missionHighlightId]
+    [dispatch, missionHighlightId, selectedPlaceId]
+  )
+
+  const handleSelectPlace = useCallback(
+    (placeId: string) => {
+      setSelectedPlaceId(placeId)
+      if (placeId === 'india') {
+        dispatch(selectAsset(null))
+        setMissionHighlightId(null)
+        setIsOperationsPanelOpen(false)
+      } else {
+        setIsOperationsPanelOpen(true)
+      }
+    },
+    [dispatch]
   )
 
   useEffect(() => {
@@ -101,11 +122,41 @@ export default function Home() {
 
   const stateFilter = getStateFilterForPlace(selectedPlaceId)
   const assetQueryKey = stateFilter ?? 'india'
+  const isIndiaOverview = !stateFilter
 
-  const fetchAssetsPage = (pageSize: number, signal?: AbortSignal) => {
+  /** ~30% national sample: small page per state so every state shows corridors. */
+  const INDIA_SAMPLE_PER_STATE = 90
+  const INDIA_SAMPLE_BATCH = 6
+
+  const fetchAssetsPage = (pageSize: number, signal?: AbortSignal, state?: string) => {
     const params = new URLSearchParams({ page_size: String(pageSize) })
-    if (stateFilter) params.set('state', stateFilter)
+    if (state) params.set('state', state)
     return fetchApi<Asset[]>(`/assets?${params}`, { signal })
+  }
+
+  const fetchIndiaOverviewSample = async (signal?: AbortSignal): Promise<Asset[]> => {
+    const states = getIndiaStateFilters()
+    const merged: Asset[] = []
+    const seen = new Set<string>()
+    for (let i = 0; i < states.length; i += INDIA_SAMPLE_BATCH) {
+      if (signal?.aborted) break
+      const batch = states.slice(i, i + INDIA_SAMPLE_BATCH)
+      const chunks = await Promise.all(
+        batch.map((state) =>
+          fetchAssetsPage(INDIA_SAMPLE_PER_STATE, signal, state).catch(() => [] as Asset[])
+        )
+      )
+      for (const chunk of chunks) {
+        for (const asset of chunk) {
+          if (seen.has(asset.id)) continue
+          seen.add(asset.id)
+          // Prefer corridors / substations for national overview (skip tower clutter)
+          if (asset.asset_type === 'tower') continue
+          merged.push(asset)
+        }
+      }
+    }
+    return merged
   }
 
   const {
@@ -115,8 +166,11 @@ export default function Home() {
     isError: assetsFastError,
     refetch: refetchAssetsFast,
   } = useQuery({
-    queryKey: ['assets', assetQueryKey, 'fast'],
-    queryFn: ({ signal }) => fetchAssetsPage(4000, signal),
+    queryKey: ['assets', assetQueryKey, isIndiaOverview ? 'india-sample' : 'fast'],
+    queryFn: ({ signal }) =>
+      isIndiaOverview
+        ? fetchIndiaOverviewSample(signal)
+        : fetchAssetsPage(4000, signal, stateFilter),
     enabled: isClient,
     placeholderData: undefined,
     staleTime: 5 * 60 * 1000,
@@ -137,21 +191,22 @@ export default function Home() {
     refetch: refetchAssetsFull,
   } = useQuery({
     queryKey: ['assets', assetQueryKey, 'full'],
-    queryFn: ({ signal }) => fetchAssetsPage(8000, signal),
-    enabled: isClient && Boolean(assetsFast && assetsFast.length > 0),
+    queryFn: ({ signal }) => fetchAssetsPage(8000, signal, stateFilter),
+    // Full 100% catalog only in state operations mode
+    enabled: isClient && !isIndiaOverview && Boolean(assetsFast && assetsFast.length > 0),
     placeholderData: undefined,
     staleTime: 5 * 60 * 1000,
     retry: 2,
     retryDelay: (n) => Math.min(1200 * (n + 1), 4000),
   })
 
-  const assets = assetsFull ?? assetsFast ?? []
+  const assets = isIndiaOverview ? assetsFast ?? [] : assetsFull ?? assetsFast ?? []
   const assetsLoading = assetsFastLoading && assets.length === 0
-  const assetsFetching = assetsFastFetching || assetsFullFetching
-  const assetsError = assets.length === 0 && (assetsFastError || assetsFullError)
+  const assetsFetching = assetsFastFetching || (!isIndiaOverview && assetsFullFetching)
+  const assetsError = assets.length === 0 && (assetsFastError || (!isIndiaOverview && assetsFullError))
   const refetchAssets = () => {
     void refetchAssetsFast()
-    if (assetsFast && assetsFast.length > 0) void refetchAssetsFull()
+    if (!isIndiaOverview && assetsFast && assetsFast.length > 0) void refetchAssetsFull()
   }
 
   const assetsReady = assets.length > 0
@@ -317,7 +372,7 @@ export default function Home() {
       .slice(0, 5)
   }, [assets, selectedAsset])
 
-  const assetDockOpen = Boolean(selectedAsset)
+  const assetDockOpen = Boolean(selectedAsset) && !isExplorerMode
   const showAssetsBootOverlay = assetsLoading && assets.length === 0
   const regionLoading =
     assetsFetching || regionKmlStatsFetching || Boolean(mapStatus.regionLoading)
@@ -349,6 +404,7 @@ export default function Home() {
         runs24h={monitoringKpis.runs24h}
         kmlHint={kmlHint}
         onOpenMission={handleOpenMission}
+        interactionMode={interactionMode}
       />
 
       <CommandPalette
@@ -356,13 +412,12 @@ export default function Home() {
         onClose={closeCommandPalette}
         assets={assets}
         onSelectAsset={handleSelectAsset}
-        onSelectPlace={setSelectedPlaceId}
+        onSelectPlace={handleSelectPlace}
       />
 
       {/* 2. LOWER THREE-PANEL CORE SYSTEM */}
       <div className="flex-1 flex min-h-0 w-full overflow-hidden">
 
-        {/* Left Intelligence Sidebar */}
         <LeftSidebar
           assets={assets}
           alerts={alerts}
@@ -379,7 +434,9 @@ export default function Home() {
             {showAssetsBootOverlay && (
               <div className="absolute top-3 left-1/2 z-[90] -translate-x-1/2 pointer-events-none">
                 <div className="rounded-full border border-cyan-500/30 bg-[#0b1224]/90 px-3 py-1.5 text-[11px] font-semibold text-cyan-200 shadow-lg backdrop-blur-sm">
-                  Loading corridor assets…
+                  {isExplorerMode
+                    ? 'Loading India corridor sample (~30%)…'
+                    : 'Loading corridor assets…'}
                 </div>
               </div>
             )}
@@ -397,13 +454,13 @@ export default function Home() {
             <MapViewport
               assets={assets}
               alerts={alerts}
-              selectedAssetId={selectedAssetId}
+              selectedAssetId={isExplorerMode ? null : selectedAssetId}
               alertAssetIds={alertAssetIds}
               onSelectAsset={handleSelectAsset}
               resizeSignal={mapResizeSignal}
               onMapStatusChange={handleMapStatusChange}
               selectedPlaceId={selectedPlaceId}
-              onSelectPlace={setSelectedPlaceId}
+              onSelectPlace={handleSelectPlace}
               regionKmlStats={regionKmlStats ?? null}
               placeAssetCounts={placeStatsMap}
               focusTarget={mapFocusTarget}
@@ -413,6 +470,7 @@ export default function Home() {
               showOpsReopen={!showRightRail}
               rightPanelOpen={showRightRail}
               onOpenOpsPanel={() => setIsOperationsPanelOpen(true)}
+              interactionMode={interactionMode}
             />
 
             <MonitoringResultModal

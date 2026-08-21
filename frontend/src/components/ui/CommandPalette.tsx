@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import { Command, MapPin, Navigation } from 'lucide-react'
 
 import type { Asset } from '@/lib/api'
-import { MODULE_NAV_ITEMS } from '@/config/moduleNav'
+import { ANALYZER_STRIP_NAV_ITEMS, MODULE_NAV_ITEMS } from '@/config/moduleNav'
 import { flattenPlaces, getPlacePath } from '@/config/places'
 
 export interface CommandItem {
@@ -36,7 +36,9 @@ export default function CommandPalette({
   const inputRef = useRef<HTMLInputElement>(null)
 
   const items = useMemo<CommandItem[]>(() => {
-    const navItems: CommandItem[] = MODULE_NAV_ITEMS.map((item) => ({
+    const navSource =
+      router.pathname === '/analyzer' ? ANALYZER_STRIP_NAV_ITEMS : MODULE_NAV_ITEMS
+    const navItems: CommandItem[] = navSource.map((item) => ({
       id: `nav-${item.href}`,
       label: item.label,
       hint: item.shortLabel,
