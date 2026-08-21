@@ -73,7 +73,12 @@ import type { TypographyProps } from '@mui/material/Typography'
  * union that overflows once react-three-fiber registers its elements.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Poly = { component?: string | ComponentType<any>; href?: string }
+type Poly = {
+  component?: string | ComponentType<any>
+  href?: string
+  target?: string
+  rel?: string
+}
 
 export const AppBar = MuiAppBar as ComponentType<AppBarProps & Poly>
 export const Badge = MuiBadge as ComponentType<BadgeProps & Poly>

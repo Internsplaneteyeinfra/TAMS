@@ -28,12 +28,68 @@ import {
   updateGeotech,
   type GeotechInvestigation,
   type GeotechPayload,
+  type GeotechSoilLayer,
 } from '@/lib/geotechApi'
 import {
   deleteSiteScore,
   fetchSiteScores,
   type SavedSiteScore,
 } from '@/lib/siteScoresApi'
+
+function asFiniteNumber(value: unknown, field: string): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) throw new Error(`soil_layers entry missing valid ${field}`)
+  return n
+}
+
+/** Parse editor JSON into typed soil layers (required depths validated). */
+function parseSoilLayersJson(raw: string): GeotechSoilLayer[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw || '[]')
+  } catch {
+    throw new Error('Invalid soil layers JSON')
+  }
+  if (!Array.isArray(parsed)) throw new Error('soil_layers must be a JSON array')
+
+  return parsed.map((row, index) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      throw new Error(`soil_layers[${index}] must be an object`)
+    }
+    const item = row as Record<string, unknown>
+    const layer: GeotechSoilLayer = {
+      depth_from_m: asFiniteNumber(item.depth_from_m, 'depth_from_m'),
+      depth_to_m: asFiniteNumber(item.depth_to_m, 'depth_to_m'),
+    }
+    const optionalNumberKeys = [
+      'gravel_pct',
+      'sand_pct',
+      'silt_pct',
+      'clay_pct',
+      'll',
+      'pl',
+      'pi',
+      'mdd',
+      'omc',
+      'dry_density',
+      'fsi',
+      'bulk_density',
+      'ucs',
+      'sg',
+      'sbc',
+      'cbr',
+    ] as const
+    for (const key of optionalNumberKeys) {
+      if (item[key] === undefined || item[key] === null || item[key] === '') continue
+      const n = Number(item[key])
+      if (!Number.isFinite(n)) throw new Error(`soil_layers[${index}].${key} must be a number`)
+      layer[key] = n
+    }
+    if (typeof item.soil_class === 'string') layer.soil_class = item.soil_class
+    if (typeof item.remarks === 'string') layer.remarks = item.remarks
+    return layer
+  })
+}
 
 const emptyForm = (): GeotechPayload => ({
   site_code: '',
@@ -112,14 +168,8 @@ export default function GeotechPage() {
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      let soil_layers: Record<string, unknown>[] = []
-      try {
-        soil_layers = JSON.parse(layersJson || '[]')
-        if (!Array.isArray(soil_layers)) throw new Error('soil_layers must be a JSON array')
-      } catch (e) {
-        throw new Error(e instanceof Error ? e.message : 'Invalid soil layers JSON')
-      }
-      const payload = { ...form, soil_layers }
+      const soil_layers = parseSoilLayersJson(layersJson)
+      const payload: GeotechPayload = { ...form, soil_layers }
       if (editing?.id) return updateGeotech(editing.id, payload)
       return createGeotech(payload)
     },
@@ -264,6 +314,7 @@ export default function GeotechPage() {
                       </Button>
                       <Button
                         size="small"
+                        component="a"
                         href={getGeotechReportUrl(r.id)}
                         target="_blank"
                         rel="noreferrer"
