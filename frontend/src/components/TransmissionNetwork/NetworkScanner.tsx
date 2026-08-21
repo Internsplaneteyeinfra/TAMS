@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { MutableRefObject } from 'react'
+import { sceneAppearance } from '@/theme/landingTheme'
 import type { NetProgress } from './types'
 import type { CorridorLayout } from './corridor'
 import { TOWER_HEIGHT } from './corridor'
-import { sceneAppearance } from '@/theme/landingTheme'
 
 const SCAN_DARK = new THREE.Color(sceneAppearance.dark.scan.color)
 const SCAN_LIGHT = new THREE.Color(sceneAppearance.light.scan.color)

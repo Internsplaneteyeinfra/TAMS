@@ -7,10 +7,10 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'meshoptimizer'
 import * as THREE from 'three'
 import type { MutableRefObject } from 'react'
+import { sceneAppearance } from '@/theme/landingTheme'
 import type { LandingModuleId, NetProgress } from './types'
 import type { CorridorLayout } from './corridor'
 import { TOWER_HEIGHT } from './corridor'
-import { sceneAppearance } from '@/theme/landingTheme'
 
 const MODEL_PATH = '/models/transmission_tower.glb'
 
@@ -33,7 +33,6 @@ const EMISSIVE_SCAN_LIGHT = new THREE.Color(sceneAppearance.light.tower.emissive
 const COLOR_DARK = new THREE.Color('#7a8698').lerp(new THREE.Color('#a3b4c6'), 0.3)
 const COLOR_LIGHT_LOCKED = new THREE.Color('#5E7180')
 const STEEL_MID = new THREE.Color('#4A5C6A')
-const STEEL_FAR = new THREE.Color('#627888')
 const STEEL_BACKGROUND = new THREE.Color('#7A92A4')
 const STEEL_DARK_FAR = new THREE.Color('#8aa0b0')
 const STEEL_DARK_BG = new THREE.Color('#7a92a4')

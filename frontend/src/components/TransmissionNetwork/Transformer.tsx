@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { MutableRefObject } from 'react'
+import { sceneAppearance } from '@/theme/landingTheme'
 import type { LandingModuleId, NetProgress } from './types'
 import type { CorridorLayout } from './corridor'
-import { sceneAppearance } from '@/theme/landingTheme'
 
 interface TransformerProps {
   layout: CorridorLayout

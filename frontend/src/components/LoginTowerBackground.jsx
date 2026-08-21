@@ -410,7 +410,6 @@ function RealisticTerrain() {
       const padR = 0.52 * ts
       const bermR = 0.95 * ts
       if (td < bermR) {
-        const u = td / bermR
         const pad = 1 - THREE.MathUtils.smoothstep(padR * 0.85, padR, td)
         const berm = Math.exp(-Math.pow((td - padR * 1.05) / (0.22 * ts), 2))
         y = y * (1 - pad * 0.85) - pad * 0.018 + berm * 0.055
@@ -1185,7 +1184,9 @@ export default function LoginTowerBackground({ onReady }) {
         }}
         style={{ width: '100%', height: '100%', display: 'block' }}
       >
-        <Scene reducedMotion={reducedMotion} mouseRef={mouseRef} />
+        <SceneErrorBoundary fallback={<RealisticEnvironment reducedMotion={reducedMotion} />}>
+          <Scene reducedMotion={reducedMotion} mouseRef={mouseRef} />
+        </SceneErrorBoundary>
       </Canvas>
       <OverlayGrade light={false} />
     </div>

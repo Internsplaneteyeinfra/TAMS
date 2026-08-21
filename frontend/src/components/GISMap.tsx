@@ -942,7 +942,8 @@ export default function GISMap({
       lastAssetClickRef.current = { id: asset.id, t: now }
       if (isExplorer) {
         if ('openPopup' in layer && typeof (layer as L.Path).openPopup === 'function') {
-          ;(layer as L.Path).openPopup()
+          const path = layer as L.Path
+          path.openPopup()
         }
         return
       }
