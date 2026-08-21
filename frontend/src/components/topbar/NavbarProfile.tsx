@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
-import { ChevronDown, LogOut, Settings, User } from 'lucide-react'
+import { ChevronDown, Settings, User } from 'lucide-react'
+
+import LogoutButton from '@/components/auth/LogoutButton'
 
 export default function NavbarProfile() {
   const [isOpen, setIsOpen] = useState(false)
@@ -26,17 +27,17 @@ export default function NavbarProfile() {
         title="Profile"
       >
         <span className="w-6 h-6 rounded-md bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-[10px] font-black text-white">
-          OP
+          AD
         </span>
-        <span className="hidden sm:block text-[10px] font-bold text-slate-300">Operator</span>
+        <span className="hidden sm:block text-[10px] font-bold text-slate-300">Admin</span>
         <ChevronDown className={`w-3 h-3 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
         <div className="absolute top-full right-0 mt-1.5 w-48 z-50 bg-[#0e172a]/95 backdrop-blur-xl border border-slate-700 rounded-xl shadow-2xl overflow-hidden">
           <div className="px-3 py-2 border-b border-slate-800">
-            <p className="text-[11px] font-bold text-white">Grid Operator</p>
-            <p className="text-[9px] text-slate-500">operations@tams.grid</p>
+            <p className="text-[11px] font-bold text-white">Admin</p>
+            <p className="text-[9px] text-slate-500">TAMS Operator</p>
           </div>
           <ul className="py-1">
             <li>
@@ -60,15 +61,7 @@ export default function NavbarProfile() {
               </button>
             </li>
             <li>
-              <Link
-                href="/"
-                className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-rose-200 hover:bg-slate-800/80 transition-colors"
-                onClick={() => setIsOpen(false)}
-                title="Back to module selection"
-              >
-                <LogOut className="w-3.5 h-3.5 text-rose-400" />
-                Logout
-              </Link>
+              <LogoutButton variant="menu" />
             </li>
           </ul>
         </div>

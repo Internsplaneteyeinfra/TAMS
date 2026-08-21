@@ -55,7 +55,7 @@ function stylize(root: THREE.Object3D): THREE.MeshStandardMaterial[] {
       const m = mat.clone()
       m.transparent = true
       m.opacity = 0
-      m.fog = false
+      ;(m as THREE.Material & { fog: boolean }).fog = false
       if ('color' in m && m.color instanceof THREE.Color) {
         m.color.set('#7a8698').lerp(new THREE.Color('#a3b4c6'), 0.3)
       }

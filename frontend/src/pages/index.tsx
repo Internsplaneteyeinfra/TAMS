@@ -8,6 +8,7 @@ import Head from 'next/head'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 import { Activity, ArrowLeft, MapPinned, RadioTower, X } from 'lucide-react'
+import LogoutButton from '@/components/auth/LogoutButton'
 import type { LandingModuleId, NetworkMode } from '@/components/TransmissionNetwork'
 import { LandingThemeProvider, useLandingTheme } from '@/theme/LandingThemeContext'
 import { landingLightCssVars } from '@/theme/landingTheme'
@@ -229,7 +230,10 @@ function LandingPageInner() {
             <p className="tams-landing-brand text-[10px] font-bold tracking-[0.28em] text-[#7d94a8] uppercase">PlanetEye · TAMS</p>
             <h1 className="tams-landing-title text-sm font-black tracking-widest text-[#F4F7FA]">Transmission Asset Intelligence</h1>
           </div>
-          <LandingThemeToggle />
+          <div className="ml-auto flex items-center gap-2">
+            <LandingThemeToggle />
+            <LogoutButton variant="dark" />
+          </div>
         </header>
 
         {/* Centered composition: the network sits behind, cards in the middle (lifted slightly) */}

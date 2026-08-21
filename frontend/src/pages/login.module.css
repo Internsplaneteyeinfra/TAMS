@@ -1,0 +1,132 @@
+/* Login page layout + tower4 3D background */
+
+.page {
+  position: relative;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #e2e8f0;
+  background: #050d17;
+}
+
+.content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.header {
+  flex-shrink: 0;
+  height: 3.5rem;
+  display: flex;
+  align-items: center;
+  padding: 0 1.25rem;
+  background: transparent;
+}
+
+@media (min-width: 640px) {
+  .header {
+    padding: 0 2rem;
+  }
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 2rem 1rem;
+}
+
+@media (min-width: 640px) {
+  .main {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .main {
+    padding-left: 3rem;
+    padding-right: 3rem;
+  }
+}
+
+.panel {
+  width: 100%;
+  max-width: 28rem;
+}
+
+.formCard {
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(12, 40, 58, 0.35) 48%,
+    rgba(8, 28, 42, 0.28) 100%
+  );
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow:
+    0 24px 60px -24px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  padding: 1.25rem 1.35rem;
+}
+
+@media (min-width: 640px) {
+  .formCard {
+    padding: 1.5rem;
+  }
+}
+
+.eyebrow {
+  color: #a5f3fc;
+  text-shadow: 0 2px 14px rgba(5, 13, 23, 0.95);
+}
+
+.title {
+  color: #ffffff;
+  text-shadow: 0 2px 18px rgba(5, 13, 23, 0.95);
+}
+
+.label {
+  color: rgba(226, 232, 240, 0.85);
+}
+
+.input {
+  width: 100%;
+  height: 2.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  padding-left: 2.5rem;
+  padding-right: 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  backdrop-filter: blur(8px);
+}
+
+.input::placeholder {
+  color: rgba(148, 163, 184, 0.8);
+}
+
+.input:focus {
+  outline: none;
+  border-color: rgba(103, 232, 249, 0.5);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.25);
+}
+
+.brandMuted {
+  color: rgba(207, 250, 254, 0.85);
+  text-shadow: 0 1px 10px rgba(5, 13, 23, 0.95);
+}
+
+.brandTitle {
+  color: #ffffff;
+  text-shadow: 0 1px 12px rgba(5, 13, 23, 0.95);
+}

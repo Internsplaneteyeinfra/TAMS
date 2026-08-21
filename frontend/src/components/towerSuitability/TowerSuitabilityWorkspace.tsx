@@ -5,12 +5,10 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import {
   Crosshair,
   Loader2,
-  LogOut,
   Navigation,
   Pencil,
   Save,
@@ -18,6 +16,7 @@ import {
   Undo2,
 } from 'lucide-react'
 
+import LogoutButton from '@/components/auth/LogoutButton'
 import { fetchGisTowers } from '@/lib/api'
 import {
   collectSiteSignals,
@@ -662,14 +661,7 @@ export default function TowerSuitabilityWorkspace() {
                 <Undo2 className="w-3.5 h-3.5" />
                 Undo
               </button>
-              <Link
-                href="/"
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-[#c75b50]/35 bg-[#c75b50]/10 text-xs font-bold text-[#c75b50] hover:bg-[#c75b50]/20 transition-colors"
-                title="Back to module selection"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                Logout
-              </Link>
+              <LogoutButton variant="light" />
               <input
                 ref={fileRef}
                 type="file"
