@@ -5,6 +5,28 @@
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { EARTH_DAY_URL } from './earthGlobePreload'
+
+function instantGlobeTexture() {
+  const c = document.createElement('canvas')
+  c.width = 256
+  c.height = 128
+  const g = c.getContext('2d')
+  if (!g) return null
+  g.fillStyle = '#0b4a6e'
+  g.fillRect(0, 0, 256, 128)
+  g.fillStyle = '#1a7a4a'
+  g.fillRect(28, 38, 42, 28)
+  g.fillRect(78, 48, 36, 22)
+  g.fillRect(150, 42, 70, 34)
+  g.fillRect(200, 78, 28, 18)
+  g.fillStyle = '#cfe7d8'
+  g.fillRect(0, 0, 256, 10)
+  g.fillRect(0, 118, 256, 10)
+  const tex = new THREE.CanvasTexture(c)
+  tex.colorSpace = THREE.SRGBColorSpace
+  return tex
+}
 
 function geoToSphere(lat: number, lon: number, radius: number) {
   const u = (lon + 180) / 360
@@ -24,9 +46,11 @@ function facingRotations(lat: number, lon: number) {
 
 export default function EarthZoomIndia({
   flyTo,
+  caption,
   onComplete,
 }: {
   flyTo: { lat: number; lon: number } | null
+  caption?: string
   onComplete: () => void
 }) {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -62,14 +86,14 @@ export default function EarthZoomIndia({
     let renderer: THREE.WebGLRenderer | null = null
 
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' })
+      renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: 'high-performance' })
     } catch {
       return undefined
     }
 
     const w = Math.max(8, host.clientWidth || window.innerWidth)
     const h = Math.max(8, host.clientHeight || window.innerHeight)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75))
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25))
     renderer.setSize(w, h, false)
     renderer.setClearColor(0x071018, 1)
     renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -90,28 +114,40 @@ export default function EarthZoomIndia({
     earthGroup.rotation.x = 0.18
     scene.add(earthGroup)
 
-    const globeMat = new THREE.MeshBasicMaterial({ color: 0x1d6a9a })
-    const globe = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 64), globeMat)
+    const placeholder = instantGlobeTexture()
+    const globeMat = new THREE.MeshBasicMaterial({
+      map: placeholder ?? undefined,
+      color: placeholder ? 0xffffff : 0x1d6a9a,
+    })
+    const globe = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32), globeMat)
     earthGroup.add(globe)
 
-    const loader = new THREE.TextureLoader()
-    const applyMap = (url: string) => {
-      loader.load(url, (tex) => {
-        if (cancelled) {
-          tex.dispose()
-          return
-        }
-        tex.colorSpace = THREE.SRGBColorSpace
-        tex.anisotropy = 8
-        globeMat.map = tex
-        globeMat.color.set(0xffffff)
-        globeMat.needsUpdate = true
-      })
+    const applyDayMap = (tex: THREE.Texture) => {
+      if (cancelled) {
+        tex.dispose()
+        return
+      }
+      tex.colorSpace = THREE.SRGBColorSpace
+      tex.anisotropy = 4
+      tex.needsUpdate = true
+      const prev = globeMat.map
+      globeMat.map = tex
+      globeMat.color.set(0xffffff)
+      globeMat.needsUpdate = true
+      if (prev && prev !== tex) prev.dispose()
     }
-    applyMap('/earth/earth_day_hi.jpg')
-    window.setTimeout(() => {
-      if (!cancelled && !globeMat.map) applyMap('/earth/earth_day.jpg')
-    }, 800)
+
+    const img = new Image()
+    img.decoding = 'async'
+    let dayApplied = false
+    const fromCacheOrLoad = () => {
+      if (dayApplied || cancelled || !img.naturalWidth) return
+      dayApplied = true
+      applyDayMap(new THREE.Texture(img))
+    }
+    img.onload = fromCacheOrLoad
+    img.src = EARTH_DAY_URL
+    if (img.complete) fromCacheOrLoad()
 
     let phase: 'spin' | 'fly' | 'hold' = 'spin'
     let flyT0 = 0
@@ -122,6 +158,8 @@ export default function EarthZoomIndia({
     let toX = 0
     const FLY_MS = 2200
     const HOLD_MS = 500
+    const MIN_SPIN_MS = 900
+    const spinStarted = performance.now()
 
     const tick = (now: number) => {
       if (cancelled || !renderer) return
@@ -129,7 +167,7 @@ export default function EarthZoomIndia({
       if (phase === 'spin') {
         earthGroup.rotation.y += 0.0022
         const target = flyToRef.current
-        if (target) {
+        if (target && now - spinStarted >= MIN_SPIN_MS) {
           const face = facingRotations(target.lat, target.lon)
           fromY = earthGroup.rotation.y
           fromX = earthGroup.rotation.x
@@ -204,7 +242,9 @@ export default function EarthZoomIndia({
       <div className="pointer-events-none absolute left-6 top-6">
         <p className="text-[10px] font-bold uppercase tracking-[0.32em] text-white/70">Satellite Earth</p>
         <p className="mt-1 text-lg font-semibold text-white">{status}</p>
-        <p className="mt-1 text-[11px] text-white/55">Keeps rotating until you press Go to lat/lon</p>
+        <p className="mt-1 text-[11px] text-white/55">
+          {caption || 'Keeps rotating until you press Go to lat/lon'}
+        </p>
       </div>
     </div>
   )

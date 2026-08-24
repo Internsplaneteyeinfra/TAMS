@@ -1,4 +1,6 @@
+import Head from 'next/head'
 import dynamic from 'next/dynamic'
+import { EARTH_DAY_URL } from '@/components/towerSuitability/earthGlobePreload'
 
 const TowerSuitabilityWorkspace = dynamic(
   () => import('@/components/towerSuitability/TowerSuitabilityWorkspace'),
@@ -13,5 +15,12 @@ const TowerSuitabilityWorkspace = dynamic(
 )
 
 export default function TowerSuitabilityPage() {
-  return <TowerSuitabilityWorkspace />
+  return (
+    <>
+      <Head>
+        <link rel="preload" as="image" href={EARTH_DAY_URL} />
+      </Head>
+      <TowerSuitabilityWorkspace />
+    </>
+  )
 }

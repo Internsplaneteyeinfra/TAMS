@@ -11,6 +11,7 @@ import dynamic from 'next/dynamic'
 import { Crosshair, Map, Navigation, Upload } from 'lucide-react'
 import { readLandingAppearance, type LandingAppearance } from '@/theme/landingTheme'
 import type { HubIntroEvent, HubIntroMode, HubTier } from './HubIntro3D'
+import { preloadEarthDayTexture } from './earthGlobePreload'
 
 const HubIntro3D = dynamic(() => import('./HubIntro3D'), { ssr: false })
 
@@ -47,6 +48,10 @@ export default function SuitabilityHub({
   const [appearance, setAppearance] = useState<LandingAppearance>('dark')
   const skipRef = useRef(false)
   const dark = appearance === 'dark'
+
+  useEffect(() => {
+    preloadEarthDayTexture()
+  }, [])
 
   useEffect(() => {
     setAppearance(readLandingAppearance())
@@ -111,19 +116,17 @@ export default function SuitabilityHub({
   const cardClass = () =>
     settled
       ? 'transition-all opacity-100 translate-y-0 scale-100'
-      : `transition-all duration-[600ms] ease-out ${
-          revealed
-            ? 'opacity-100 translate-y-0 scale-100'
-            : 'pointer-events-none opacity-0 translate-y-[25px] scale-[0.98]'
-        }`
+      : `transition-all duration-[600ms] ease-out ${revealed
+        ? 'opacity-100 translate-y-0 scale-100'
+        : 'pointer-events-none opacity-0 translate-y-[25px] scale-[0.98]'
+      }`
   const cardDelay = (idx: number): React.CSSProperties =>
     settled || !revealed ? {} : { transitionDelay: `${idx * 100}ms` }
 
   return (
     <div
-      className={`ts-suit-hub fixed inset-0 z-[210] flex flex-col overflow-hidden ${
-        dark ? 'bg-[#060B17] text-slate-100' : 'bg-[#F3F7FA] text-[#0B1726]'
-      }`}
+      className={`ts-suit-hub fixed inset-0 z-[210] flex flex-col overflow-hidden ${dark ? 'bg-[#060B17] text-slate-100' : 'bg-[#F3F7FA] text-[#0B1726]'
+        }`}
       data-ts-theme={appearance}
     >
       <div
@@ -142,9 +145,8 @@ export default function SuitabilityHub({
       )}
 
       <div
-        className={`pointer-events-none absolute inset-0 transition-opacity duration-1000 ${
-          revealed ? (dark ? 'bg-[#060B17] opacity-35' : 'bg-[#F3F7FA] opacity-25') : 'opacity-0'
-        }`}
+        className={`pointer-events-none absolute inset-0 transition-opacity duration-1000 ${revealed ? (dark ? 'bg-[#060B17] opacity-35' : 'bg-[#F3F7FA] opacity-25') : 'opacity-0'
+          }`}
       />
       <div
         className="pointer-events-none absolute inset-0"
@@ -159,11 +161,10 @@ export default function SuitabilityHub({
         <button
           type="button"
           onClick={onBack}
-          className={`absolute right-5 top-4 z-20 h-9 rounded-lg border px-3 text-xs font-bold shadow-sm backdrop-blur-sm ${
-            dark
+          className={`absolute right-5 top-4 z-20 h-9 rounded-lg border px-3 text-xs font-bold shadow-sm backdrop-blur-sm ${dark
               ? 'border-slate-600 bg-slate-950/80 text-slate-200 hover:bg-slate-900 hover:text-white'
               : 'border-[#9AA8B5] bg-white/85 text-[#2A3A48] hover:bg-white hover:text-[#0B1726]'
-          }`}
+            }`}
         >
           Back
         </button>
@@ -171,34 +172,29 @@ export default function SuitabilityHub({
 
       <div className="pointer-events-none absolute inset-x-0 top-[9%] z-10 px-4 text-center">
         <p
-          className={`text-[10px] font-black uppercase tracking-[0.3em] ${
-            dark ? 'text-slate-400' : 'text-[#60788A]'
-          }`}
+          className={`text-[10px] font-black uppercase tracking-[0.3em] ${dark ? 'text-slate-400' : 'text-[#60788A]'
+            }`}
         >
           Tower Site Suitability
         </p>
         {!revealed && status && (
           <p
             key={status}
-            className={`ts-hub-in mt-2 text-[10px] font-bold tracking-[0.28em] ${
-              dark ? 'text-cyan-300' : 'text-[#0891B2]'
-            }`}
+            className={`ts-hub-in mt-2 text-[10px] font-bold tracking-[0.28em] ${dark ? 'text-cyan-300' : 'text-[#0891B2]'
+              }`}
           >
             {status}
           </p>
         )}
         <p
-          className={`mt-2 text-xl font-black tracking-tight sm:text-2xl ${
-            dark
+          className={`mt-2 text-xl font-black tracking-tight sm:text-2xl ${dark
               ? 'text-slate-50 drop-shadow-[0_1px_10px_rgba(0,0,0,0.65)]'
               : 'text-[#0B1726] drop-shadow-[0_1px_8px_rgba(255,255,255,0.85)]'
-          } ${
-            settled
+            } ${settled
               ? 'transition-all'
-              : `transition-all duration-[600ms] ease-out ${
-                  revealed ? 'translate-y-0 opacity-100' : 'translate-y-[25px] opacity-0'
-                }`
-          }`}
+              : `transition-all duration-[600ms] ease-out ${revealed ? 'translate-y-0 opacity-100' : 'translate-y-[25px] opacity-0'
+              }`
+            }`}
         >
           How do you want to start?
         </p>
@@ -206,17 +202,15 @@ export default function SuitabilityHub({
 
       {markerShown && (
         <div
-          className={`pointer-events-none absolute left-1/2 top-[63%] z-10 -translate-x-1/2 transition-opacity duration-700 ${
-            revealed ? 'opacity-50' : 'opacity-100'
-          }`}
+          className={`pointer-events-none absolute left-1/2 top-[63%] z-10 -translate-x-1/2 transition-opacity duration-700 ${revealed ? 'opacity-50' : 'opacity-100'
+            }`}
           aria-hidden
         >
           <p
-            className={`ts-hub-in text-[8.5px] font-bold tracking-[0.26em] ${
-              dark
+            className={`ts-hub-in text-[8.5px] font-bold tracking-[0.26em] ${dark
                 ? 'text-cyan-300 drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]'
                 : 'text-[#0891B2] drop-shadow-[0_1px_4px_rgba(255,255,255,0.9)]'
-            }`}
+              }`}
           >
             PROPOSED SITE
           </p>
@@ -225,25 +219,22 @@ export default function SuitabilityHub({
 
       {hudShown && !revealed && (
         <div
-          className={`ts-hub-in pointer-events-none absolute left-[58%] top-[30%] z-10 hidden rounded-lg border px-3 py-2 shadow-sm backdrop-blur-sm sm:block ${
-            dark
+          className={`ts-hub-in pointer-events-none absolute left-[58%] top-[30%] z-10 hidden rounded-lg border px-3 py-2 shadow-sm backdrop-blur-sm sm:block ${dark
               ? 'border-cyan-500/35 bg-slate-950/85'
               : 'border-[#8BC9D7] bg-white/90'
-          }`}
+            }`}
           aria-hidden
         >
           <p
-            className={`text-[8.5px] font-black tracking-[0.24em] ${
-              dark ? 'text-slate-400' : 'text-[#60788A]'
-            }`}
+            className={`text-[8.5px] font-black tracking-[0.24em] ${dark ? 'text-slate-400' : 'text-[#60788A]'
+              }`}
           >
             SITE ANALYSIS
           </p>
           {!indicators ? (
             <p
-              className={`mt-1 text-[9px] font-bold tracking-[0.2em] ${
-                dark ? 'text-cyan-300' : 'text-[#0891B2]'
-              }`}
+              className={`mt-1 text-[9px] font-bold tracking-[0.2em] ${dark ? 'text-cyan-300' : 'text-[#0891B2]'
+                }`}
             >
               SCANNING…
             </p>
@@ -252,14 +243,12 @@ export default function SuitabilityHub({
               {HUD_FACTORS.map((f, i) => (
                 <p
                   key={f}
-                  className={`flex items-center gap-1.5 text-[8.5px] font-bold tracking-[0.18em] ${
-                    dark ? 'text-slate-300' : 'text-[#365467]'
-                  }`}
+                  className={`flex items-center gap-1.5 text-[8.5px] font-bold tracking-[0.18em] ${dark ? 'text-slate-300' : 'text-[#365467]'
+                    }`}
                 >
                   <span
-                    className={`ts-hub-in inline-block w-2.5 text-center ${
-                      dark ? 'text-cyan-300' : 'text-[#0891B2]'
-                    }`}
+                    className={`ts-hub-in inline-block w-2.5 text-center ${dark ? 'text-cyan-300' : 'text-[#0891B2]'
+                      }`}
                     style={{ animationDelay: `${i * 140}ms` }}
                   >
                     ✓
@@ -278,16 +267,14 @@ export default function SuitabilityHub({
             type="button"
             onClick={() => onChoose('draw')}
             style={cardDelay(0)}
-            className={`ts-hub-card group rounded-2xl border px-5 py-6 text-left backdrop-blur-md hover:-translate-y-0.5 md:py-8 ${cardClass()} ${
-              dark
+            className={`ts-hub-card group rounded-2xl border px-5 py-6 text-left backdrop-blur-md hover:-translate-y-0.5 md:py-8 ${cardClass()} ${dark
                 ? 'border-cyan-500/30 bg-slate-950/75 hover:border-cyan-400/55'
                 : 'border-[#8BC9D7] bg-white/90 hover:border-[#0891B2]'
-            }`}
+              }`}
           >
             <span
-              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border ${
-                dark ? 'border-cyan-500/35 bg-cyan-500/10' : 'border-[#8BC9D7] bg-[#E2F5F8]'
-              }`}
+              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border ${dark ? 'border-cyan-500/35 bg-cyan-500/10' : 'border-[#8BC9D7] bg-[#E2F5F8]'
+                }`}
             >
               <Map className={`h-6 w-6 ${dark ? 'text-cyan-300' : 'text-[#0891B2]'}`} />
             </span>
@@ -299,9 +286,8 @@ export default function SuitabilityHub({
               analysis.
             </p>
             <p
-              className={`mt-4 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider ${
-                dark ? 'text-cyan-300' : 'text-[#0891B2]'
-              }`}
+              className={`mt-4 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider ${dark ? 'text-cyan-300' : 'text-[#0891B2]'
+                }`}
             >
               <Crosshair className="h-3.5 w-3.5" />
               Lat/lon · click pin · draw
@@ -312,16 +298,14 @@ export default function SuitabilityHub({
             type="button"
             onClick={() => onChoose('live')}
             style={cardDelay(1)}
-            className={`ts-hub-card group rounded-2xl border px-5 py-6 text-left backdrop-blur-md hover:-translate-y-0.5 md:py-8 ${cardClass()} ${
-              dark
+            className={`ts-hub-card group rounded-2xl border px-5 py-6 text-left backdrop-blur-md hover:-translate-y-0.5 md:py-8 ${cardClass()} ${dark
                 ? 'border-emerald-500/30 bg-slate-950/75 hover:border-emerald-400/55'
                 : 'border-[#91D4C1] bg-white/90 hover:border-[#059669]'
-            }`}
+              }`}
           >
             <span
-              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border ${
-                dark ? 'border-emerald-500/35 bg-emerald-500/10' : 'border-[#91D4C1] bg-[#E3F7F0]'
-              }`}
+              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border ${dark ? 'border-emerald-500/35 bg-emerald-500/10' : 'border-[#91D4C1] bg-[#E3F7F0]'
+                }`}
             >
               <Navigation className={`h-6 w-6 ${dark ? 'text-emerald-300' : 'text-[#059669]'}`} />
             </span>
@@ -333,9 +317,8 @@ export default function SuitabilityHub({
               analysis.
             </p>
             <p
-              className={`mt-4 text-[11px] font-bold uppercase tracking-wider ${
-                dark ? 'text-emerald-300' : 'text-[#059669]'
-              }`}
+              className={`mt-4 text-[11px] font-bold uppercase tracking-wider ${dark ? 'text-emerald-300' : 'text-[#059669]'
+                }`}
             >
               Browser GPS · then draw
             </p>
@@ -345,16 +328,14 @@ export default function SuitabilityHub({
             type="button"
             onClick={() => onChoose('upload')}
             style={cardDelay(2)}
-            className={`ts-hub-card group rounded-2xl border px-5 py-6 text-left backdrop-blur-md hover:-translate-y-0.5 md:py-8 ${cardClass()} ${
-              dark
+            className={`ts-hub-card group rounded-2xl border px-5 py-6 text-left backdrop-blur-md hover:-translate-y-0.5 md:py-8 ${cardClass()} ${dark
                 ? 'border-amber-500/30 bg-slate-950/75 hover:border-amber-400/55'
                 : 'border-[#E7C77B] bg-[#FFFAF1]/95 hover:border-[#D97706]'
-            }`}
+              }`}
           >
             <span
-              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border ${
-                dark ? 'border-amber-500/35 bg-amber-500/10' : 'border-[#E7C77B] bg-[#FFF3D9]'
-              }`}
+              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border ${dark ? 'border-amber-500/35 bg-amber-500/10' : 'border-[#E7C77B] bg-[#FFF3D9]'
+                }`}
             >
               <Upload className={`h-6 w-6 ${dark ? 'text-amber-300' : 'text-[#D97706]'}`} />
             </span>
@@ -365,9 +346,8 @@ export default function SuitabilityHub({
               Upload an existing KML and get the full suitability score, towers, voltage, and report.
             </p>
             <p
-              className={`mt-4 text-[11px] font-bold uppercase tracking-wider ${
-                dark ? 'text-amber-300' : 'text-[#D97706]'
-              }`}
+              className={`mt-4 text-[11px] font-bold uppercase tracking-wider ${dark ? 'text-amber-300' : 'text-[#D97706]'
+                }`}
             >
               KML · instant screening
             </p>
@@ -381,9 +361,8 @@ export default function SuitabilityHub({
           onClick={() => {
             skipRef.current = true
           }}
-          className={`absolute bottom-5 right-5 z-20 text-[10px] font-bold tracking-[0.24em] transition-colors ${
-            dark ? 'text-slate-500 hover:text-cyan-300' : 'text-[#718396] hover:text-[#0891B2]'
-          }`}
+          className={`absolute bottom-5 right-5 z-20 text-[10px] font-bold tracking-[0.24em] transition-colors ${dark ? 'text-slate-500 hover:text-cyan-300' : 'text-[#718396] hover:text-[#0891B2]'
+            }`}
         >
           SKIP INTRO →
         </button>

@@ -13,6 +13,7 @@ import {
   Save,
   Sparkles,
   Undo2,
+  Upload,
 } from 'lucide-react'
 
 import LogoutButton from '@/components/auth/LogoutButton'
@@ -175,6 +176,8 @@ export default function TowerSuitabilityWorkspace() {
   const [entryMode, setEntryMode] = useState<SuitabilityEntryMode | null>(null)
   const [earthIntro, setEarthIntro] = useState(false)
   const [earthFlyTo, setEarthFlyTo] = useState<{ lat: number; lon: number } | null>(null)
+  const earthIntroRef = useRef(false)
+  earthIntroRef.current = earthIntro
   const [pendingFocus, setPendingFocus] = useState<{ lat: number; lon: number } | null>(null)
   const [latInput, setLatInput] = useState(String(SUGGESTED_START.lat))
   const [lonInput, setLonInput] = useState(String(SUGGESTED_START.lon))
@@ -182,6 +185,7 @@ export default function TowerSuitabilityWorkspace() {
   const fileRef = useRef<HTMLInputElement>(null)
   const analyzeSeq = useRef(0)
   const uploadAfterHub = useRef(false)
+  const pendingAnalyzeRef = useRef<{ lat: number; lon: number; label: string } | null>(null)
 
   const pushPlanningUndo = useCallback(() => {
     setUndoStack((s) =>
@@ -359,10 +363,10 @@ export default function TowerSuitabilityWorkspace() {
     setActivePanel(null)
     setPendingFocus(null)
     setDrawMode('pin')
-    if (earthIntro) {
+    if (earthIntroRef.current) {
       setEarthFlyTo({ lat: nextLat, lon: nextLon })
     }
-  }, [latInput, lonInput, pushPlanningUndo, earthIntro])
+  }, [latInput, lonInput, pushPlanningUndo])
 
   const goLiveLocation = useCallback(() => {
     if (!navigator.geolocation) {
@@ -388,7 +392,7 @@ export default function TowerSuitabilityWorkspace() {
         setKmlFeatures([])
         setDrawMode('line')
         setGeoBusy(false)
-        if (earthIntro) setEarthFlyTo({ lat: nextLat, lon: nextLon })
+        if (earthIntroRef.current) setEarthFlyTo({ lat: nextLat, lon: nextLon })
       },
       (err) => {
         setGeoBusy(false)
@@ -396,7 +400,7 @@ export default function TowerSuitabilityWorkspace() {
       },
       { enableHighAccuracy: true, timeout: 20000 }
     )
-  }, [pushPlanningUndo, earthIntro])
+  }, [pushPlanningUndo])
 
   const analyzePendingGeometry = useCallback(() => {
     if (!kmlFeatures.length || !pendingFocus) return
@@ -435,22 +439,30 @@ export default function TowerSuitabilityWorkspace() {
         setDrawMode('pin')
         setSiteLabel('Set start with lat/lon or map click, then draw')
         setPhase('work')
+        earthIntroRef.current = true
         setEarthIntro(true)
         setEarthFlyTo(null)
         return
       }
-      setPhase('work')
       if (mode === 'live') {
         setDrawMode('line')
         setSiteLabel('Getting live location…')
-        // defer GPS until mounted map
+        setPhase('work')
+        earthIntroRef.current = true
+        setEarthIntro(true)
+        setEarthFlyTo(null)
         window.setTimeout(() => goLiveLocation(), 200)
-      } else {
-        setDrawMode('pin')
-        setSiteLabel('Upload a KML to analyze')
-        uploadAfterHub.current = true
-        window.setTimeout(() => fileRef.current?.click(), 250)
+        return
       }
+      setPhase('work')
+      setDrawMode('pin')
+      setSiteLabel('Upload a KML to analyze')
+      earthIntroRef.current = true
+      setEarthIntro(true)
+      setEarthFlyTo(null)
+      pendingAnalyzeRef.current = null
+      uploadAfterHub.current = true
+      window.setTimeout(() => fileRef.current?.click(), 400)
     },
     [goLiveLocation]
   )
@@ -461,14 +473,17 @@ export default function TowerSuitabilityWorkspace() {
       return
     }
     setError(null)
-    setAnalyzing(true)
-    setProgress({ message: 'Reading KML…', percent: 4 })
+    const flyThenAnalyze = earthIntroRef.current
+    if (!flyThenAnalyze) {
+      setAnalyzing(true)
+      setProgress({ message: 'Reading KML…', percent: 4 })
+    }
     try {
       const text = await file.text()
-      setProgress({ message: 'Parsing KML outlines…', percent: 7 })
+      if (!flyThenAnalyze) setProgress({ message: 'Parsing KML outlines…', percent: 7 })
       const parsed = parseKmlDocument(text)
       if (!parsed) {
-        setAnalyzing(false)
+        if (!flyThenAnalyze) setAnalyzing(false)
         setError('Could not read KML geometry. Use Point, LineString, or Polygon placemarks.')
         return
       }
@@ -476,6 +491,19 @@ export default function TowerSuitabilityWorkspace() {
       const label = file.name.replace(/\.kml$/i, '')
       setKmlFileName(label)
       setPendingFocus(null)
+      setLat(parsed.focus.lat)
+      setLon(parsed.focus.lon)
+      setLatInput(parsed.focus.lat.toFixed(6))
+      setLonInput(parsed.focus.lon.toFixed(6))
+      if (earthIntroRef.current) {
+        pendingAnalyzeRef.current = {
+          lat: parsed.focus.lat,
+          lon: parsed.focus.lon,
+          label,
+        }
+        setEarthFlyTo({ lat: parsed.focus.lat, lon: parsed.focus.lon })
+        return
+      }
       await runAnalyze(parsed.focus.lat, parsed.focus.lon, label)
     } catch (e) {
       setAnalyzing(false)
@@ -827,9 +855,20 @@ export default function TowerSuitabilityWorkspace() {
       {earthIntro && (
         <EarthZoomIndia
           flyTo={earthFlyTo}
+          caption={
+            entryMode === 'live'
+              ? 'Keeps rotating until GPS lock — or press Go to lat/lon'
+              : entryMode === 'upload'
+                ? 'Keeps rotating until your KML is read, then flies to the corridor'
+                : 'Keeps rotating until you press Go to lat/lon'
+          }
           onComplete={() => {
             setEarthIntro(false)
+            earthIntroRef.current = false
             setEarthFlyTo(null)
+            const pending = pendingAnalyzeRef.current
+            pendingAnalyzeRef.current = null
+            if (pending) void runAnalyze(pending.lat, pending.lon, pending.label)
           }}
         />
       )}
@@ -927,8 +966,8 @@ export default function TowerSuitabilityWorkspace() {
                       <span
                         key={stage}
                         className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${on
-                            ? 'bg-[#17879a] text-white shadow-[0_0_0_3px_rgba(23,135,154,0.22)]'
-                            : 'bg-white/55 text-[#126b79]/55'
+                          ? 'bg-[#17879a] text-white shadow-[0_0_0_3px_rgba(23,135,154,0.22)]'
+                          : 'bg-white/55 text-[#126b79]/55'
                           }`}
                       >
                         {stage}
@@ -950,7 +989,13 @@ export default function TowerSuitabilityWorkspace() {
           )}
 
           {error && (
-            <div className="shrink-0 z-30 px-4 py-2.5 bg-[#f8e4e1] border-b border-[#c75b50]/30 text-sm text-[#c75b50]">
+            <div
+              className={
+                earthIntro
+                  ? 'fixed top-4 left-1/2 z-[5001] w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 rounded-xl bg-[#f8e4e1] px-4 py-2.5 text-sm text-[#c75b50] shadow-lg'
+                  : 'shrink-0 z-30 px-4 py-2.5 bg-[#f8e4e1] border-b border-[#c75b50]/30 text-sm text-[#c75b50]'
+              }
+            >
               {error}
             </div>
           )}
@@ -990,7 +1035,28 @@ export default function TowerSuitabilityWorkspace() {
               onGeometryDrawn={onGeometryDrawn}
             />
 
-            {workspaceMode === 'planning' && !analyzing && (
+            {earthIntro && entryMode === 'upload' && !earthFlyTo && (
+              <div className="absolute bottom-6 left-1/2 z-[5000] w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 pointer-events-auto">
+                <div className="ts-glass ts-glass-see p-3 text-center">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-[#263238]">
+                    Upload KML
+                  </p>
+                  <p className="mt-1 text-xs text-[#66727a] leading-snug">
+                    Pick a KML. The globe flies to that corridor, then analysis starts.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="mt-2 inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-lg bg-[#17879a] text-xs font-bold text-white hover:bg-[#126b79]"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    Choose KML file
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {workspaceMode === 'planning' && !analyzing && entryMode !== 'upload' && (
               <div
                 className={`absolute bottom-3 left-3 pointer-events-none ${earthIntro ? 'z-[5000]' : 'z-[1150]'
                   }`}
@@ -1136,7 +1202,7 @@ export default function TowerSuitabilityWorkspace() {
               </div>
             )}
 
-            {workspaceMode === 'planning' && !result && !analyzing && !pendingFocus && (
+            {workspaceMode === 'planning' && !result && !analyzing && !pendingFocus && !earthIntro && (
               <div className="absolute bottom-[7.5rem] left-3 z-10 pointer-events-none ts-glass px-3 py-2 text-sm text-[#263238] max-w-sm">
                 {entryMode === 'live'
                   ? 'Live location set — draw a line or polygon, then Save KML or Analyze'
