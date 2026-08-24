@@ -8,7 +8,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import {
   Crosshair,
-  Loader2,
   Navigation,
   Pencil,
   Save,
@@ -66,8 +65,20 @@ import FactorsPanel from './analysis/FactorsPanel'
 import ControlsPanel from './analysis/ControlsPanel'
 import ScoreBreakdownPanel from './analysis/ScoreBreakdownPanel'
 import SuggestionsDetailPanel from './analysis/SuggestionsDetailPanel'
+import EarthZoomIndia from './EarthZoomIndia'
 
 const MapPane = dynamic(() => import('./TowerSuitabilityMap'), { ssr: false })
+
+const ANALYZE_STAGES = ['DEM', 'OSM', 'Roads', 'Weather', 'Grid', 'Score'] as const
+type AnalyzeStage = (typeof ANALYZE_STAGES)[number]
+
+function activeAnalyzeStage(percent: number, message: string, tick: number): AnalyzeStage {
+  if (percent >= 96 || /finaliz|score/i.test(message)) return 'Score'
+  if (percent >= 88 || /slope|soil|screening/i.test(message)) return 'Grid'
+  if (percent >= 78 || /merging|grid|power assets/i.test(message)) return 'Grid'
+  if (/kml|resolv|location/i.test(message) && percent < 12) return 'DEM'
+  return (['DEM', 'OSM', 'Roads', 'Weather'] as const)[tick % 4]
+}
 
 function isGenericSiteLabel(label: string): boolean {
   const value = label.trim().toLowerCase()
@@ -117,8 +128,8 @@ function SearchRadiusPicker({
             title={`Search existing grid within ${km} km of the focus point`}
             onClick={() => onChange(km)}
             className={`h-8 rounded-lg text-[10px] font-black border ${value === km
-                ? 'bg-[#17879a] text-white border-[#126b79]'
-                : 'bg-white/55 text-[#263238] border-[rgba(51,65,85,0.16)] hover:border-[#17879a]'
+              ? 'bg-[#17879a] text-white border-[#126b79]'
+              : 'bg-white/55 text-[#263238] border-[rgba(51,65,85,0.16)] hover:border-[#17879a]'
               }`}
           >
             {km} km
@@ -139,6 +150,7 @@ export default function TowerSuitabilityWorkspace() {
   const [lon, setLon] = useState<number | null>(null)
   const [siteLabel, setSiteLabel] = useState('Set start, draw, or upload KML')
   const [analyzing, setAnalyzing] = useState(false)
+  const [analyzeStageTick, setAnalyzeStageTick] = useState(0)
   const [progress, setProgress] = useState({ message: '', percent: 0 })
   const [result, setResult] = useState<SuitabilityResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -161,6 +173,8 @@ export default function TowerSuitabilityWorkspace() {
   const [drawMode, setDrawMode] = useState<DrawMode>('pin')
   const [phase, setPhase] = useState<'hub' | 'work'>('hub')
   const [entryMode, setEntryMode] = useState<SuitabilityEntryMode | null>(null)
+  const [earthIntro, setEarthIntro] = useState(false)
+  const [earthFlyTo, setEarthFlyTo] = useState<{ lat: number; lon: number } | null>(null)
   const [pendingFocus, setPendingFocus] = useState<{ lat: number; lon: number } | null>(null)
   const [latInput, setLatInput] = useState(String(SUGGESTED_START.lat))
   const [lonInput, setLonInput] = useState(String(SUGGESTED_START.lon))
@@ -345,7 +359,10 @@ export default function TowerSuitabilityWorkspace() {
     setActivePanel(null)
     setPendingFocus(null)
     setDrawMode('pin')
-  }, [latInput, lonInput, pushPlanningUndo])
+    if (earthIntro) {
+      setEarthFlyTo({ lat: nextLat, lon: nextLon })
+    }
+  }, [latInput, lonInput, pushPlanningUndo, earthIntro])
 
   const goLiveLocation = useCallback(() => {
     if (!navigator.geolocation) {
@@ -371,6 +388,7 @@ export default function TowerSuitabilityWorkspace() {
         setKmlFeatures([])
         setDrawMode('line')
         setGeoBusy(false)
+        if (earthIntro) setEarthFlyTo({ lat: nextLat, lon: nextLon })
       },
       (err) => {
         setGeoBusy(false)
@@ -378,7 +396,7 @@ export default function TowerSuitabilityWorkspace() {
       },
       { enableHighAccuracy: true, timeout: 20000 }
     )
-  }, [pushPlanningUndo])
+  }, [pushPlanningUndo, earthIntro])
 
   const analyzePendingGeometry = useCallback(() => {
     if (!kmlFeatures.length || !pendingFocus) return
@@ -399,7 +417,6 @@ export default function TowerSuitabilityWorkspace() {
   const onHubChoose = useCallback(
     (mode: SuitabilityEntryMode) => {
       setEntryMode(mode)
-      setPhase('work')
       setError(null)
       setResult(null)
       setWorkspaceMode('planning')
@@ -417,7 +434,13 @@ export default function TowerSuitabilityWorkspace() {
       if (mode === 'draw') {
         setDrawMode('pin')
         setSiteLabel('Set start with lat/lon or map click, then draw')
-      } else if (mode === 'live') {
+        setPhase('work')
+        setEarthIntro(true)
+        setEarthFlyTo(null)
+        return
+      }
+      setPhase('work')
+      if (mode === 'live') {
         setDrawMode('line')
         setSiteLabel('Getting live location…')
         // defer GPS until mounted map
@@ -538,6 +561,15 @@ export default function TowerSuitabilityWorkspace() {
   ])
 
   useEffect(() => {
+    if (!analyzing) {
+      setAnalyzeStageTick(0)
+      return
+    }
+    const id = window.setInterval(() => setAnalyzeStageTick((n) => n + 1), 850)
+    return () => window.clearInterval(id)
+  }, [analyzing])
+
+  useEffect(() => {
     if (!kmlFeatures.length) {
       setInferredVoltage(null)
       return
@@ -646,48 +678,48 @@ export default function TowerSuitabilityWorkspace() {
           placeLabel: result.signals.placeLabel,
           soilScreening: result.signals.soilScreening
             ? {
-                textureClass: result.signals.soilScreening.textureClass,
-                confidencePct: result.signals.soilScreening.confidencePct,
-                indicativeSbcTm2: result.signals.soilScreening.indicativeSbcTm2,
-              }
+              textureClass: result.signals.soilScreening.textureClass,
+              confidencePct: result.signals.soilScreening.confidencePct,
+              indicativeSbcTm2: result.signals.soilScreening.indicativeSbcTm2,
+            }
             : null,
           geotech: result.signals.geotech || null,
           nearbyPower: result.signals.nearbyPower
             ? {
-                suggestedVoltageKv: result.signals.nearbyPower.suggestedVoltageKv,
-                powerNetworkVerdict: result.signals.nearbyPower.powerNetworkVerdict,
-                nearestTower: result.signals.nearbyPower.nearestTower
-                  ? {
-                      name: result.signals.nearbyPower.nearestTower.name,
-                      distanceKm: result.signals.nearbyPower.nearestTower.distanceKm,
-                      voltageKv: result.signals.nearbyPower.nearestTower.voltageKv,
-                    }
-                  : null,
-                nearestSubstation: result.signals.nearbyPower.nearestSubstation
-                  ? {
-                      name: result.signals.nearbyPower.nearestSubstation.name,
-                      distanceKm: result.signals.nearbyPower.nearestSubstation.distanceKm,
-                      voltageKv: result.signals.nearbyPower.nearestSubstation.voltageKv,
-                    }
-                  : null,
-              }
+              suggestedVoltageKv: result.signals.nearbyPower.suggestedVoltageKv,
+              powerNetworkVerdict: result.signals.nearbyPower.powerNetworkVerdict,
+              nearestTower: result.signals.nearbyPower.nearestTower
+                ? {
+                  name: result.signals.nearbyPower.nearestTower.name,
+                  distanceKm: result.signals.nearbyPower.nearestTower.distanceKm,
+                  voltageKv: result.signals.nearbyPower.nearestTower.voltageKv,
+                }
+                : null,
+              nearestSubstation: result.signals.nearbyPower.nearestSubstation
+                ? {
+                  name: result.signals.nearbyPower.nearestSubstation.name,
+                  distanceKm: result.signals.nearbyPower.nearestSubstation.distanceKm,
+                  voltageKv: result.signals.nearbyPower.nearestSubstation.voltageKv,
+                }
+                : null,
+            }
             : null,
         },
         corridorAdvice: corridorAdvice
           ? {
-              voltageLabel: corridorAdvice.voltageLabel,
-              canPlaceCount: corridorAdvice.canPlaceCount,
-              plannedCount: corridorAdvice.plannedCount,
-              lineSuitability: corridorAdvice.lineSuitability,
-              powerConnect: corridorAdvice.powerConnect
-                ? {
-                    bestPadIndex: corridorAdvice.powerConnect.bestPadIndex,
-                    stationToPadKm: corridorAdvice.powerConnect.stationToPadKm,
-                    confidencePct: corridorAdvice.powerConnect.confidencePct,
-                    stationName: corridorAdvice.powerConnect.station.name,
-                  }
-                : null,
-            }
+            voltageLabel: corridorAdvice.voltageLabel,
+            canPlaceCount: corridorAdvice.canPlaceCount,
+            plannedCount: corridorAdvice.plannedCount,
+            lineSuitability: corridorAdvice.lineSuitability,
+            powerConnect: corridorAdvice.powerConnect
+              ? {
+                bestPadIndex: corridorAdvice.powerConnect.bestPadIndex,
+                stationToPadKm: corridorAdvice.powerConnect.stationToPadKm,
+                confidencePct: corridorAdvice.powerConnect.confidencePct,
+                stationName: corridorAdvice.powerConnect.station.name,
+              }
+              : null,
+          }
           : null,
       },
       notes: 'Saved from Tower Suitability workspace',
@@ -780,15 +812,24 @@ export default function TowerSuitabilityWorkspace() {
 
   return (
     <div
-      className={`fixed inset-0 z-[200] flex flex-col overflow-hidden ${
-        phase === 'work' ? 'ts-workspace' : 'bg-[#060B17] text-slate-200'
-      }`}
+      className={`fixed inset-0 z-[200] flex flex-col overflow-hidden ${phase === 'work' ? 'ts-workspace' : 'bg-[#060B17] text-slate-200'
+        }`}
     >
       {phase === 'hub' && (
         <SuitabilityHub
           onChoose={onHubChoose}
           onBack={() => {
             window.location.href = '/'
+          }}
+        />
+      )}
+
+      {earthIntro && (
+        <EarthZoomIndia
+          flyTo={earthFlyTo}
+          onComplete={() => {
+            setEarthIntro(false)
+            setEarthFlyTo(null)
           }}
         />
       )}
@@ -873,17 +914,37 @@ export default function TowerSuitabilityWorkspace() {
 
           {analyzing && (
             <div className="shrink-0 z-30 border-b border-[#17879a]/25 bg-[#dff0e8] px-4 py-2.5">
-              <div className="flex items-center gap-2 text-sm text-[#126b79]">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="font-semibold">Analyzing…</span>
-                <span className="truncate">{progress.message}</span>
-                <span className="ml-auto tabular-nums font-semibold">{progress.percent}%</span>
+              <div className="flex items-center gap-2.5 text-sm text-[#126b79]">
+                <span className="relative flex h-2.5 w-2.5 shrink-0">
+                  <span className="absolute inset-0 rounded-full bg-[#17879a] opacity-60 animate-ping" />
+                  <span className="relative h-2.5 w-2.5 rounded-full bg-[#17879a]" />
+                </span>
+                <span className="font-semibold shrink-0">Analyzing</span>
+                <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
+                  {ANALYZE_STAGES.map((stage) => {
+                    const on = stage === activeAnalyzeStage(progress.percent, progress.message, analyzeStageTick)
+                    return (
+                      <span
+                        key={stage}
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${on
+                            ? 'bg-[#17879a] text-white shadow-[0_0_0_3px_rgba(23,135,154,0.22)]'
+                            : 'bg-white/55 text-[#126b79]/55'
+                          }`}
+                      >
+                        {stage}
+                      </span>
+                    )
+                  })}
+                </div>
+                <span className="ml-auto tabular-nums font-semibold shrink-0">{progress.percent}%</span>
               </div>
               <div className="mt-2 h-1.5 rounded-full bg-white/70 overflow-hidden">
                 <div
-                  className="h-full bg-[#17879a] transition-all duration-300"
+                  className="h-full relative overflow-hidden bg-[#17879a] transition-all duration-300"
                   style={{ width: `${progress.percent}%` }}
-                />
+                >
+                  <span className="pointer-events-none absolute inset-0 ts-analyze-shimmer" />
+                </div>
               </div>
             </div>
           )}
@@ -918,6 +979,7 @@ export default function TowerSuitabilityWorkspace() {
                 null
               }
               powerConnect={corridorAdvice?.powerConnect ?? null}
+              analyzing={analyzing}
               drawMode={drawMode}
               drawingEnabled={workspaceMode === 'planning' && !analyzing}
               focusTick={focusTick}
@@ -929,7 +991,10 @@ export default function TowerSuitabilityWorkspace() {
             />
 
             {workspaceMode === 'planning' && !analyzing && (
-              <div className="absolute bottom-3 left-3 z-[1150] pointer-events-none">
+              <div
+                className={`absolute bottom-3 left-3 pointer-events-none ${earthIntro ? 'z-[5000]' : 'z-[1150]'
+                  }`}
+              >
                 <div className="pointer-events-auto ts-glass ts-glass-see p-3 w-[min(360px,calc(100vw-1.5rem))]">
                   <p className="text-[10px] font-black uppercase tracking-wider text-[#263238] mb-2">
                     Start projection · lat / lon
@@ -1025,11 +1090,10 @@ export default function TowerSuitabilityWorkspace() {
                       key={p.id}
                       type="button"
                       onClick={() => setSpanPolicy(p.id)}
-                      className={`h-8 rounded-lg text-[10px] font-black border ${
-                        spanPolicy === p.id
-                          ? 'bg-[#b97816] text-white border-[#b97816]'
-                          : 'bg-white/55 text-[#263238] border-[rgba(51,65,85,0.16)]'
-                      }`}
+                      className={`h-8 rounded-lg text-[10px] font-black border ${spanPolicy === p.id
+                        ? 'bg-[#b97816] text-white border-[#b97816]'
+                        : 'bg-white/55 text-[#263238] border-[rgba(51,65,85,0.16)]'
+                        }`}
                     >
                       {p.label}
                     </button>

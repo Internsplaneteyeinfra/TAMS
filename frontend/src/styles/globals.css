@@ -487,6 +487,30 @@ body {
   border-top-color: #fbbf24 !important;
 }
 
+@keyframes tsAnalyzeShimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+.ts-analyze-shimmer {
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.55) 45%,
+      transparent 100%);
+  animation: tsAnalyzeShimmer 1.15s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ts-analyze-shimmer {
+    animation: none;
+  }
+}
+
 .leaflet-bar {
   border: none !important;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;

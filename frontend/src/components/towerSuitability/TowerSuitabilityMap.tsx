@@ -43,6 +43,59 @@ function centroidOf(pts: KmlLatLng[]): { lat: number; lon: number } {
   return { lat: lat / n, lon: lon / n }
 }
 
+type PathMetrics = { pts: L.LatLng[]; dists: number[]; total: number }
+
+function pathMetrics(pts: L.LatLng[]): PathMetrics | null {
+  if (pts.length < 2) return null
+  const dists = [0]
+  let total = 0
+  for (let i = 1; i < pts.length; i++) {
+    total += pts[i - 1].distanceTo(pts[i])
+    dists.push(total)
+  }
+  if (total < 1) return null
+  return { pts, dists, total }
+}
+
+function alongPath(m: PathMetrics, distM: number): L.LatLng {
+  let d = distM % m.total
+  if (d < 0) d += m.total
+  for (let i = 1; i < m.pts.length; i++) {
+    if (d <= m.dists[i]) {
+      const span = Math.max(m.dists[i] - m.dists[i - 1], 1e-6)
+      const t = (d - m.dists[i - 1]) / span
+      const a = m.pts[i - 1]
+      const b = m.pts[i]
+      return L.latLng(a.lat + (b.lat - a.lat) * t, a.lng + (b.lng - a.lng) * t)
+    }
+  }
+  return m.pts[m.pts.length - 1]
+}
+
+function slicePath(m: PathMetrics, fromM: number, toM: number): L.LatLng[] {
+  const wrap = fromM < 0
+  if (wrap) {
+    return [...slicePath(m, m.total + fromM, m.total), ...slicePath(m, 0, toM)]
+  }
+  const out: L.LatLng[] = [alongPath(m, fromM)]
+  for (let i = 0; i < m.pts.length; i++) {
+    if (m.dists[i] > fromM && m.dists[i] < toM) out.push(m.pts[i])
+  }
+  out.push(alongPath(m, toM))
+  return out
+}
+
+function corridorScanPoints(plannedTowers: PlannedTower[], kmlFeatures: KmlFeature[]): L.LatLng[] {
+  if (plannedTowers.length >= 2) {
+    return plannedTowers.map((t) => L.latLng(t.lat, t.lon))
+  }
+  const line = kmlFeatures.find((f) => f.type === 'LineString' && f.latlngs.length >= 2)
+  if (line) return line.latlngs.map(([la, lo]) => L.latLng(la, lo))
+  const poly = kmlFeatures.find((f) => f.type === 'Polygon' && f.latlngs.length >= 3)
+  if (poly) return poly.latlngs.map(([la, lo]) => L.latLng(la, lo))
+  return []
+}
+
 export default function TowerSuitabilityMap({
   lat,
   lon,
@@ -58,6 +111,7 @@ export default function TowerSuitabilityMap({
   highlightTowerId = null,
   highlightStationId = null,
   powerConnect = null,
+  analyzing = false,
   drawMode,
   drawingEnabled = true,
   focusTick = 0,
@@ -84,6 +138,7 @@ export default function TowerSuitabilityMap({
   highlightStationId?: string | null
   /** Station ↔ best new pad (+ existing tower) connect suggestion */
   powerConnect?: PowerConnectSuggestion | null
+  analyzing?: boolean
   drawMode: DrawMode
   drawingEnabled?: boolean
   focusTick?: number
@@ -442,28 +497,22 @@ export default function TowerSuitabilityMap({
           className: 'ts-tower-label',
         })
         .bindPopup(
-          `<strong>${isBest ? '★ Best new transmission pad ' : 'Suggested pad '}T${
-            tower.index
-          }</strong><br/>${voltageLabel(voltageKv)}<br/>${spanM ? `${spanM} m span` : ''}<br/>${
-            isBest && powerConnect
-              ? `<b style="color:#0f766e">Suggested power take-off toward “${
-                  powerConnect.station.name
-                }” (~${powerConnect.stationToPadKm.toFixed(2)} km) · ~${
-                  powerConnect.confidencePct
-                }% screening confidence</b><br/>`
-              : ''
-          }${
-            advice
-              ? `<b>${
-                  advice.verdict === 'place'
-                    ? 'Suggestion: place OK'
-                    : advice.verdict === 'skip_existing'
-                      ? 'Suggestion: skip / reuse existing'
-                      : advice.verdict === 'too_close'
-                        ? 'Suggestion: shift (under min span)'
-                        : 'Suggestion: review first'
-                }</b><br/>${advice.reason}<br/><em>Not an order — change kV anytime.</em><br/>`
-              : ''
+          `<strong>${isBest ? '★ Best new transmission pad ' : 'Suggested pad '}T${tower.index
+          }</strong><br/>${voltageLabel(voltageKv)}<br/>${spanM ? `${spanM} m span` : ''}<br/>${isBest && powerConnect
+            ? `<b style="color:#0f766e">Suggested power take-off toward “${powerConnect.station.name
+            }” (~${powerConnect.stationToPadKm.toFixed(2)} km) · ~${powerConnect.confidencePct
+            }% screening confidence</b><br/>`
+            : ''
+          }${advice
+            ? `<b>${advice.verdict === 'place'
+              ? 'Suggestion: place OK'
+              : advice.verdict === 'skip_existing'
+                ? 'Suggestion: skip / reuse existing'
+                : advice.verdict === 'too_close'
+                  ? 'Suggestion: shift (under min span)'
+                  : 'Suggestion: review first'
+            }</b><br/>${advice.reason}<br/><em>Not an order — change kV anytime.</em><br/>`
+            : ''
           }${tower.lat.toFixed(5)}, ${tower.lon.toFixed(5)}`
         )
         .addTo(layer)
@@ -474,6 +523,121 @@ export default function TowerSuitabilityMap({
       map.fitBounds(bounds.pad(0.2), { animate: false, maxZoom: 16 })
     }
   }, [kmlFeatures, plannedTowers, voltageKv, spanM, placementAdvice, corridorLineColor, powerConnect, mapReady])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!analyzing || !isMapAlive(map) || !mapReady) return
+
+    if (!map.getPane('ts-scan')) {
+      map.createPane('ts-scan')
+      const pane = map.getPane('ts-scan')
+      if (pane) pane.style.zIndex = '450'
+    }
+
+    const group = L.layerGroup([], { pane: 'ts-scan' }).addTo(map)
+    const scanOpts = { pane: 'ts-scan' as const }
+    let raf = 0
+
+    const corridor = corridorScanPoints(plannedTowers, kmlFeatures)
+    const metrics = pathMetrics(corridor)
+    const pulseAt =
+      plannedTowers.length > 0
+        ? plannedTowers.map((t) => L.latLng(t.lat, t.lon))
+        : corridor.filter((_, i) => i === 0 || i === corridor.length - 1 || i % 3 === 0)
+
+    const pulses = pulseAt.map((ll) =>
+      L.circleMarker(ll, {
+        ...scanOpts,
+        radius: 14,
+        color: '#5eead4',
+        weight: 2,
+        fillColor: '#22d3ee',
+        fillOpacity: 0.18,
+      }).addTo(group)
+    )
+
+    if (metrics) {
+      L.polyline(metrics.pts, {
+        ...scanOpts,
+        color: '#5eead4',
+        weight: 10,
+        opacity: 0.22,
+        lineCap: 'round',
+        lineJoin: 'round',
+      }).addTo(group)
+
+      const beam = L.polyline([metrics.pts[0], metrics.pts[1] ?? metrics.pts[0]], {
+        ...scanOpts,
+        color: '#22d3ee',
+        weight: 6,
+        opacity: 0.95,
+        lineCap: 'round',
+        lineJoin: 'round',
+      }).addTo(group)
+
+      const head = L.circleMarker(metrics.pts[0], {
+        ...scanOpts,
+        radius: 10,
+        color: '#ffffff',
+        weight: 2,
+        fillColor: '#22d3ee',
+        fillOpacity: 1,
+      }).addTo(group)
+
+      const LOOP_MS = 2800
+      const beamM = Math.max(metrics.total * 0.12, 80)
+      const t0 = performance.now()
+      const tick = (now: number) => {
+        const u = ((now - t0) % LOOP_MS) / LOOP_MS
+        const d = u * metrics.total
+        const from = d - beamM
+        beam.setLatLngs(slicePath(metrics, from, d))
+        head.setLatLng(alongPath(metrics, d))
+        pulses.forEach((p, i) => {
+          const wave = 0.5 + 0.5 * Math.sin(now / 280 + i * 0.9)
+          p.setRadius(11 + wave * 8)
+          p.setStyle({ fillOpacity: 0.1 + wave * 0.22, opacity: 0.45 + wave * 0.45 })
+        })
+        raf = requestAnimationFrame(tick)
+      }
+      raf = requestAnimationFrame(tick)
+    } else if (lat != null && lon != null && Number.isFinite(lat) && Number.isFinite(lon)) {
+      const maxM = Math.max(searchRadiusKm, 8) * 1000
+      const rings = [0, 0.45].map(() =>
+        L.circle([lat, lon], {
+          ...scanOpts,
+          radius: 80,
+          color: '#22d3ee',
+          weight: 2,
+          fillColor: '#22d3ee',
+          fillOpacity: 0.08,
+        }).addTo(group)
+      )
+      const t0 = performance.now()
+      const LOOP_MS = 2400
+      const tick = (now: number) => {
+        rings.forEach((ring, i) => {
+          const u = ((now - t0) / LOOP_MS + i * 0.45) % 1
+          ring.setRadius(60 + u * maxM)
+          ring.setStyle({
+            opacity: 0.55 * (1 - u),
+            fillOpacity: 0.12 * (1 - u),
+          })
+        })
+        pulses.forEach((p, i) => {
+          const wave = 0.5 + 0.5 * Math.sin(now / 280 + i)
+          p.setRadius(12 + wave * 7)
+        })
+        raf = requestAnimationFrame(tick)
+      }
+      raf = requestAnimationFrame(tick)
+    }
+
+    return () => {
+      cancelAnimationFrame(raf)
+      group.remove()
+    }
+  }, [analyzing, plannedTowers, kmlFeatures, lat, lon, mapReady, searchRadiusKm])
 
   useEffect(() => {
     const map = mapRef.current
@@ -592,21 +756,20 @@ export default function TowerSuitabilityMap({
 
       marker
         .bindTooltip(
-          `${roleLabel}${powerKindLabel(asset.kind)}${
-            asset.voltageKv != null ? ` · ${asset.voltageKv} kV` : ' · Unknown V'
+          `${roleLabel}${powerKindLabel(asset.kind)}${asset.voltageKv != null ? ` · ${asset.voltageKv} kV` : ' · Unknown V'
           } · ${distText}`,
           { direction: 'top', offset: [0, -6], sticky: true }
         )
         .bindPopup(
           `<strong>${asset.name}</strong><br/>` +
-            (roleLabel
-              ? `<b style="color:${isHiStation ? '#7e22ce' : '#1d4ed8'}">${roleLabel.trim()}</b><br/>`
-              : '') +
-            `ID: ${asset.id}<br/>` +
-            `${powerKindLabel(asset.kind)} · ${distText} (Haversine)<br/>` +
-            `Voltage: ${voltageText}<br/>` +
-            `Source: ${asset.source === 'tams' ? 'TAMS GIS' : 'OSM'} · Confidence: ${conf}<br/>` +
-            `<span style="opacity:.7">Existing infrastructure — suggestion reference only</span>`
+          (roleLabel
+            ? `<b style="color:${isHiStation ? '#7e22ce' : '#1d4ed8'}">${roleLabel.trim()}</b><br/>`
+            : '') +
+          `ID: ${asset.id}<br/>` +
+          `${powerKindLabel(asset.kind)} · ${distText} (Haversine)<br/>` +
+          `Voltage: ${voltageText}<br/>` +
+          `Source: ${asset.source === 'tams' ? 'TAMS GIS' : 'OSM'} · Confidence: ${conf}<br/>` +
+          `<span style="opacity:.7">Existing infrastructure — suggestion reference only</span>`
         )
         .addTo(layer)
 
@@ -708,10 +871,9 @@ export default function TowerSuitabilityMap({
           }
         )
           .bindTooltip(
-            `Suggested connect direction · ${
-              nearest.distanceKm < 1
-                ? `${Math.round(nearest.distanceKm * 1000)} m`
-                : `${nearest.distanceKm.toFixed(2)} km`
+            `Suggested connect direction · ${nearest.distanceKm < 1
+              ? `${Math.round(nearest.distanceKm * 1000)} m`
+              : `${nearest.distanceKm.toFixed(2)} km`
             } direct (Haversine)`,
             { sticky: true }
           )
@@ -818,76 +980,75 @@ export default function TowerSuitabilityMap({
       <div ref={containerRef} className="absolute inset-0 w-full h-full ts-suitability-map" />
 
       {drawingEnabled && (
-      <div className="absolute top-3 left-1/2 z-[1200] -translate-x-1/2 w-[min(640px,calc(100%-1.5rem))] pointer-events-auto">
-        <div className="ts-glass px-3 py-2.5">
-          <div className="flex flex-wrap items-center justify-center gap-1.5">
-            {(
-              [
-                {
-                  id: 'pin' as const,
-                  label: 'Set Start',
-                  title: 'Click the map to place the start. Does not run analysis.',
-                },
-                { id: 'line' as const, label: 'Draw Line', title: 'Click vertices to draw a corridor, then Finish.' },
-                { id: 'polygon' as const, label: 'Draw Polygon', title: 'Click corners to draw a site, then Finish.' },
-                {
-                  id: 'point' as const,
-                  label: 'Analyze Pad',
-                  title: 'Click the map to run live analysis on that pad immediately.',
-                },
-              ] as const
-            ).map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                aria-label={m.title}
-                title={m.title}
-                aria-pressed={drawMode === m.id}
-                onClick={() => onDrawModeChange(m.id)}
-                className={`h-9 px-3 rounded-xl text-xs font-black border transition-colors ${
-                  drawMode === m.id
-                    ? 'bg-[#17879a] text-white border-[#126b79]'
-                    : 'bg-white/55 text-[#263238] border-[rgba(51,65,85,0.16)] hover:border-[#17879a]'
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-            {(drawMode === 'line' || drawMode === 'polygon') && (
-              <>
+        <div className="absolute top-3 left-1/2 z-[1200] -translate-x-1/2 w-[min(640px,calc(100%-1.5rem))] pointer-events-auto">
+          <div className="ts-glass px-3 py-2.5">
+            <div className="flex flex-wrap items-center justify-center gap-1.5">
+              {(
+                [
+                  {
+                    id: 'pin' as const,
+                    label: 'Set Start',
+                    title: 'Click the map to place the start. Does not run analysis.',
+                  },
+                  { id: 'line' as const, label: 'Draw Line', title: 'Click vertices to draw a corridor, then Finish.' },
+                  { id: 'polygon' as const, label: 'Draw Polygon', title: 'Click corners to draw a site, then Finish.' },
+                  {
+                    id: 'point' as const,
+                    label: 'Analyze Pad',
+                    title: 'Click the map to run live analysis on that pad immediately.',
+                  },
+                ] as const
+              ).map((m) => (
                 <button
+                  key={m.id}
                   type="button"
-                  disabled={!canFinish}
-                  onClick={() => finishDraftRef.current()}
-                  className="h-9 px-3 rounded-xl text-xs font-black border border-[#27856b]/50 bg-[#dff0e8] text-[#126b79] disabled:opacity-40"
+                  aria-label={m.title}
+                  title={m.title}
+                  aria-pressed={drawMode === m.id}
+                  onClick={() => onDrawModeChange(m.id)}
+                  className={`h-9 px-3 rounded-xl text-xs font-black border transition-colors ${drawMode === m.id
+                      ? 'bg-[#17879a] text-white border-[#126b79]'
+                      : 'bg-white/55 text-[#263238] border-[rgba(51,65,85,0.16)] hover:border-[#17879a]'
+                    }`}
                 >
-                  Finish drawing
+                  {m.label}
                 </button>
-                <button
-                  type="button"
-                  disabled={draftCount === 0}
-                  onClick={() => clearDraftRef.current()}
-                  className="h-9 px-3 rounded-xl text-xs font-bold border border-[rgba(51,65,85,0.16)] text-[#66727a] disabled:opacity-40 hover:bg-white/50"
-                >
-                  Clear draft
-                </button>
-              </>
+              ))}
+              {(drawMode === 'line' || drawMode === 'polygon') && (
+                <>
+                  <button
+                    type="button"
+                    disabled={!canFinish}
+                    onClick={() => finishDraftRef.current()}
+                    className="h-9 px-3 rounded-xl text-xs font-black border border-[#27856b]/50 bg-[#dff0e8] text-[#126b79] disabled:opacity-40"
+                  >
+                    Finish drawing
+                  </button>
+                  <button
+                    type="button"
+                    disabled={draftCount === 0}
+                    onClick={() => clearDraftRef.current()}
+                    className="h-9 px-3 rounded-xl text-xs font-bold border border-[rgba(51,65,85,0.16)] text-[#66727a] disabled:opacity-40 hover:bg-white/50"
+                  >
+                    Clear draft
+                  </button>
+                </>
+              )}
+            </div>
+            <p className="mt-1.5 text-center text-[11px] font-semibold text-[#263238]">{hint}</p>
+            {plannedTowers.length > 0 && (
+              <p className="mt-1 text-center text-sm font-black text-[#b97816] tabular-nums">
+                {plannedTowers.length} towers · {voltageLabel(voltageKv)}
+                {spanM != null ? ` · ${spanM} m` : ''}
+              </p>
+            )}
+            {lat != null && lon != null && (
+              <p className="mt-0.5 text-center text-[10px] font-bold text-[#17879a] tabular-nums">
+                Live search {searchRadiusKm} km
+              </p>
             )}
           </div>
-          <p className="mt-1.5 text-center text-[11px] font-semibold text-[#263238]">{hint}</p>
-          {plannedTowers.length > 0 && (
-            <p className="mt-1 text-center text-sm font-black text-[#b97816] tabular-nums">
-              {plannedTowers.length} towers · {voltageLabel(voltageKv)}
-              {spanM != null ? ` · ${spanM} m` : ''}
-            </p>
-          )}
-          {lat != null && lon != null && (
-            <p className="mt-0.5 text-center text-[10px] font-bold text-[#17879a] tabular-nums">
-              Live search {searchRadiusKm} km
-            </p>
-          )}
         </div>
-      </div>
       )}
     </div>
   )
