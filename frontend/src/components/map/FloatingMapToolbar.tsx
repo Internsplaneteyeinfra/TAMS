@@ -46,9 +46,9 @@ function QuickBtn({
       type="button"
       title={title}
       onClick={onClick}
-      className={`flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-xl border transition-all duration-200 ${
+            className={`tams-tool-btn flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-xl border ${
         active
-          ? 'border-blue-500/50 bg-blue-600/30 text-blue-200 shadow-lg shadow-blue-500/20'
+          ? 'tams-tool-btn-active border-blue-500/50 bg-blue-600/30 text-blue-200'
           : 'border-slate-700/60 bg-slate-950/50 text-slate-400 hover:border-slate-500 hover:bg-slate-800 hover:text-white'
       }`}
     >

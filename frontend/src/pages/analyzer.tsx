@@ -49,6 +49,7 @@ export default function Home() {
   const [missionOpen, setMissionOpen] = useState(false)
   const [missionResult, setMissionResult] = useState<MonitoringRunResult | null>(null)
   const [missionError, setMissionError] = useState<string | null>(null)
+  const [loadToast, setLoadToast] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const [mapFocusTarget, setMapFocusTarget] = useState<{
     id: string
     latitude: number
@@ -210,6 +211,46 @@ export default function Home() {
   }
 
   const assetsReady = assets.length > 0
+  const loadToastPlaceRef = React.useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!isClient) return
+    try {
+      if (assetsError) {
+        setLoadToast({
+          tone: 'error',
+          text: 'Asset load failed — retry from the map banner',
+        })
+        loadToastPlaceRef.current = null
+        return
+      }
+      if (!assetsLoading && assetsReady && loadToastPlaceRef.current !== selectedPlaceId) {
+        loadToastPlaceRef.current = selectedPlaceId
+        setLoadToast({
+          tone: 'ok',
+          text: isExplorerMode
+            ? 'India corridor sample ready'
+            : `Loaded ${assets.length.toLocaleString()} corridor assets`,
+        })
+      }
+    } catch {
+      /* ignore toast errors */
+    }
+  }, [
+    isClient,
+    assetsError,
+    assetsLoading,
+    assetsReady,
+    assets.length,
+    isExplorerMode,
+    selectedPlaceId,
+  ])
+
+  useEffect(() => {
+    if (!loadToast) return
+    const t = window.setTimeout(() => setLoadToast(null), 2200)
+    return () => window.clearTimeout(t)
+  }, [loadToast])
 
   const { data: alerts = [] } = useQuery({
     queryKey: ['alerts'],
@@ -433,10 +474,27 @@ export default function Home() {
           <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
             {showAssetsBootOverlay && (
               <div className="absolute top-3 left-1/2 z-[90] -translate-x-1/2 pointer-events-none">
-                <div className="rounded-full border border-cyan-500/30 bg-[#0b1224]/90 px-3 py-1.5 text-[11px] font-semibold text-cyan-200 shadow-lg backdrop-blur-sm">
-                  {isExplorerMode
-                    ? 'Loading India corridor sample (~30%)…'
-                    : 'Loading corridor assets…'}
+                <div className="tams-toast-in rounded-full border border-cyan-500/30 bg-[#0b1224]/90 px-3 py-1.5 text-[11px] font-semibold text-cyan-200 shadow-lg backdrop-blur-sm overflow-hidden relative">
+                  <span className="tams-shimmer absolute inset-0 opacity-30 pointer-events-none" aria-hidden />
+                  <span className="relative">
+                    {isExplorerMode
+                      ? 'Loading India corridor sample (~30%)…'
+                      : 'Loading corridor assets…'}
+                  </span>
+                </div>
+              </div>
+            )}
+            {loadToast && !showAssetsBootOverlay && (
+              <div className="absolute top-3 left-1/2 z-[90] -translate-x-1/2 pointer-events-none">
+                <div
+                  role="status"
+                  className={`tams-toast-in rounded-full border px-3 py-1.5 text-[11px] font-semibold shadow-lg backdrop-blur-sm ${
+                    loadToast.tone === 'ok'
+                      ? 'border-emerald-500/35 bg-[#0b1224]/92 text-emerald-200'
+                      : 'border-amber-500/40 bg-[#0b1224]/95 text-amber-200'
+                  }`}
+                >
+                  {loadToast.text}
                 </div>
               </div>
             )}
@@ -445,7 +503,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => void refetchAssets()}
-                  className="rounded-full border border-amber-500/40 bg-[#0b1224]/95 px-3 py-1.5 text-[11px] font-semibold text-amber-200 shadow-lg backdrop-blur-sm hover:border-amber-400/60"
+                  className="tams-toast-in rounded-full border border-amber-500/40 bg-[#0b1224]/95 px-3 py-1.5 text-[11px] font-semibold text-amber-200 shadow-lg backdrop-blur-sm hover:border-amber-400/60"
                 >
                   No map assets loaded — click to retry (is the API reachable?)
                 </button>

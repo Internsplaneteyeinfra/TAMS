@@ -79,7 +79,13 @@ export default function LeftSidebar({
 }: LeftSidebarProps) {
   const [searchQuery, setSearchQuery] = React.useState('')
   const [isCollapsed, setIsCollapsed] = React.useState(false)
-  const [isHidden, setIsHidden] = React.useState(false)
+  const [isHidden, setIsHidden] = React.useState(true)
+
+  React.useEffect(() => {
+    onHiddenChange?.(true)
+    // Notify once on mount so map layout matches default-hidden Core panel
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [networkFilters, setNetworkFilters] = React.useState<NetworkFilterValues>({
     ...EMPTY_NETWORK_FILTERS,
   })
@@ -154,7 +160,7 @@ export default function LeftSidebar({
   if (isHidden) {
     return (
       <div
-        className="relative shrink-0 h-full overflow-hidden transition-[width] duration-300 ease-in-out border-r border-slate-800/90"
+        className="relative shrink-0 h-full overflow-hidden tams-sidebar-ease border-r border-slate-800/90"
         style={{ width: '2.75rem' }}
       >
         <button
@@ -186,27 +192,25 @@ export default function LeftSidebar({
     >
       <div className="w-full h-full flex flex-col min-h-0 overflow-hidden select-none">
         {/* Sidebar Header / Logo */}
-        <div className="px-3 py-2.5 border-b border-slate-800/80 bg-[#070b14] flex items-center justify-between gap-2">
-          <div className="min-w-0">
+        <div className="px-3 py-2.5 border-b border-slate-800/80 bg-[#070b14] flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleHide}
+            title="Hide TAMS Core panel"
+            aria-label="Hide TAMS Core panel"
+            className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300 hover:text-white hover:border-slate-500 hover:bg-slate-800 transition"
+          >
+            <Menu className="w-4 h-4" />
+          </button>
+          <div className="min-w-0 flex-1">
             <h1 className="text-sm font-bold tracking-wide text-slate-100 leading-tight">
               TAMS <span className="text-blue-400">CORE</span>
             </h1>
             <p className="text-[9px] text-slate-500 uppercase tracking-[0.14em] font-medium">Grid Intelligence</p>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <div className="flex items-center gap-1 bg-emerald-500/8 border border-emerald-500/25 px-1.5 py-0.5 rounded text-[9px] font-semibold text-emerald-400">
-              <span className="w-1 h-1 rounded-full bg-emerald-400" />
-              Online
-            </div>
-            <button
-              type="button"
-              onClick={handleHide}
-              title="Hide TAMS Core panel"
-              aria-label="Hide TAMS Core panel"
-              className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300 hover:text-white hover:border-slate-500 hover:bg-slate-800 transition"
-            >
-              <Menu className="w-4 h-4" />
-            </button>
+          <div className="flex items-center gap-1 bg-emerald-500/8 border border-emerald-500/25 px-1.5 py-0.5 rounded text-[9px] font-semibold text-emerald-400 shrink-0">
+            <span className="w-1 h-1 rounded-full bg-emerald-400 tams-online-pulse" />
+            Online
           </div>
         </div>
 
@@ -266,11 +270,12 @@ export default function LeftSidebar({
                     </button>
                   </div>
                 ) : (
-                  filteredAssetsList.slice(0, 200).map((asset) => (
+                  filteredAssetsList.slice(0, 200).map((asset, index) => (
                     <button
                       key={asset.id}
                       onClick={() => onSelectAsset(asset.id)}
-                      className="w-full p-2.5 bg-slate-900/50 hover:bg-slate-900 border border-slate-850 hover:border-slate-800 rounded-lg flex items-center justify-between text-left transition-all"
+                      style={{ animationDelay: `${Math.min(index, 12) * 18}ms` }}
+                      className="tams-row-in w-full p-2.5 bg-slate-900/50 hover:bg-slate-900 border border-slate-850 hover:border-slate-800 rounded-lg flex items-center justify-between text-left transition-all"
                     >
                       <div className="space-y-1 min-w-0">
                         <p className="text-xs font-bold text-slate-200 truncate max-w-[140px]">{asset.name}</p>

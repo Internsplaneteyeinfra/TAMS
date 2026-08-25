@@ -144,12 +144,12 @@ export default function CommandPalette({
     <div className="fixed inset-0 z-[5000] flex items-start justify-center pt-[12vh] px-4">
       <button
         type="button"
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
         aria-label="Close command palette"
         onClick={onClose}
       />
 
-      <div className="relative w-full max-w-xl bg-[#0e172a]/95 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl">
+      <div className="relative w-full max-w-xl bg-[#0e172a]/95 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl tams-palette-in">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-800">
           <Command className="w-4 h-4 text-slate-500 shrink-0" />
           <input
