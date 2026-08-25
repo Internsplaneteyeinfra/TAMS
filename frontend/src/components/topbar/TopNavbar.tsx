@@ -50,6 +50,17 @@ export default function TopNavbar({
   return (
     <header className="relative z-[80] shrink-0 bg-[#0e172a] border-b border-white/10 select-none">
       <div className="h-10 flex items-center gap-3 px-4">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/favicon.png"
+          alt="TAMS"
+          width={28}
+          height={28}
+          className="h-7 w-7 rounded-md object-cover shrink-0"
+          onError={(e) => {
+            e.currentTarget.src = '/favicon.svg'
+          }}
+        />
         <div className="flex flex-col min-w-[120px] shrink-0">
           <h1 className="text-xs font-black tracking-widest text-white leading-none">TAMS GRID COMMAND</h1>
           <span className="text-[8px] text-slate-500 font-extrabold uppercase mt-0.5 tracking-wider">
@@ -80,7 +91,7 @@ export default function TopNavbar({
             }`}
           >
             <span
-              className={`w-2 h-2 rounded-full animate-ping ${
+              className={`w-2 h-2 rounded-full tams-breathe ${
                 gridStatus === 'ok' ? 'bg-emerald-500' : 'bg-amber-500'
               }`}
             />

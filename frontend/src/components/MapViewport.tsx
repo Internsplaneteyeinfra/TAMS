@@ -3,6 +3,7 @@ import dynamic from 'next/dynamic'
 
 import AIAssistantFab from '@/components/map/AIAssistantFab'
 import CorridorFocusOverlay from '@/components/map/CorridorFocusOverlay'
+import MapEarthIntro from '@/components/map/MapEarthIntro'
 import MapIntelPanel from '@/components/map/MapIntelPanel'
 import MapRegionLoader from '@/components/map/MapRegionLoader'
 import MapTopChrome from '@/components/map/MapTopChrome'
@@ -105,6 +106,10 @@ export default function MapViewport({
   interactionMode: externalInteractionMode,
 }: MapViewportProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('2d')
+  const [earthIntroDone, setEarthIntroDone] = useState(false)
+  const handleEarthIntroComplete = useCallback(() => {
+    setEarthIntroDone(true)
+  }, [])
   const [internalPlaceId, setInternalPlaceId] = useState(DEFAULT_PLACE_ID)
   const selectedPlaceId = externalPlaceId ?? internalPlaceId
   const onSelectPlace = externalOnSelectPlace ?? setInternalPlaceId
@@ -129,7 +134,7 @@ export default function MapViewport({
   )
   const [labelsOn, setLabelsOn] = useState(true)
   const [intelPanelCollapsed, setIntelPanelCollapsed] = useState(false)
-  const [controlRailCollapsed, setControlRailCollapsed] = useState(false)
+  const [controlRailCollapsed, setControlRailCollapsed] = useState(true)
   const placesHidRailRef = React.useRef(false)
   const handlePlacesOpenChange = React.useCallback((open: boolean) => {
     if (open) {
@@ -334,13 +339,15 @@ export default function MapViewport({
 
   return (
     <div className="absolute inset-0 w-full h-full bg-[#060B17] overflow-hidden">
+      {!earthIntroDone && <MapEarthIntro onComplete={handleEarthIntroComplete} />}
+
       <CorridorFocusOverlay
         brief={corridorBrief}
         showToken={corridorShowToken}
         onClose={handleCloseCorridorOverlay}
       />
 
-      {onSelectAsset && (
+      {onSelectAsset && earthIntroDone && (
         <MapTopChrome
           assets={filterAssetsByPlace(assets, selectedPlaceId)}
           selectedPlaceId={selectedPlaceId}
@@ -359,80 +366,86 @@ export default function MapViewport({
         />
       )}
 
-      <MapRegionLoader
-        loading={regionLoading}
-        intelPanelCollapsed={intelPanelCollapsed}
-      />
-
-      <MapIntelPanel
-        stats={regionStats}
-        typeFilters={typeFilters}
-        onToggleType={toggleType}
-        voltageFilters={voltageFilters}
-        onToggleVoltage={toggleVoltage}
-        substationVoltageFilters={substationVoltageFilters}
-        onToggleSubstationVoltage={toggleSubstationVoltage}
-        heatMapMode={heatMapMode}
-        onHeatMapMode={setHeatMapMode}
-        corridorsOn={layers.corridors}
-        onToggleCorridors={() => toggleLayer('corridors')}
-        labelsOn={labelsOn}
-        onToggleLabels={() => setLabelsOn((v) => !v)}
-        selectedPlaceId={selectedPlaceId}
-        onSelectPlace={onSelectPlace}
-        resolvedToday={resolvedCount}
-        offlineTowers={offlineTowers}
-        collapsed={intelPanelCollapsed}
-        onToggleCollapse={() => setIntelPanelCollapsed((v) => !v)}
-        interactionMode={interactionMode}
-      />
-
-      <MapOverlaysPanel
-        intelPanelCollapsed={intelPanelCollapsed}
-        wildfireOn={showWildfireRisk}
-        floodOn={showFloodRisk}
-        onToggleWildfire={() => setShowWildfireRisk((v) => !v)}
-        onToggleFlood={() => setShowFloodRisk((v) => !v)}
-      />
-
-      <MapControlRail
-        mapZoom={viewMode === '2d' ? mapZoom : null}
-        layers={layers}
-        onToggle={toggleLayer}
-        onFullscreen={handleFullscreen}
-        basemapMode={basemapMode}
-        onBasemapMode={setBasemapMode}
-        collapsed={controlRailCollapsed}
-        onCollapsedChange={setControlRailCollapsed}
-        rightPanelOpen={rightPanelOpen}
-        onLocate={() => {
-          if (typeof navigator !== 'undefined' && navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(() => { })
-          }
-        }}
-      />
-
-      {layers.weather && (
-        <div
-          className="absolute bottom-20 z-[1150]"
-          style={{ right: mapOverlayRight(controlRailCollapsed) }}
-        >
-          <WeatherLayerBar active={weatherLayers} onToggle={toggleWeather} />
-        </div>
+      {earthIntroDone && (
+        <MapRegionLoader
+          loading={regionLoading}
+          intelPanelCollapsed={intelPanelCollapsed}
+        />
       )}
 
-      <AIAssistantFab
-        rightOffset={mapOverlayRight(controlRailCollapsed)}
-        onPrompt={(text) => {
-          if (text.toLowerCase().includes('maharashtra')) onSelectPlace('maharashtra')
-          if (text.toLowerCase().includes('critical')) {
-            const critical = filterAssetsByPlace(assets, selectedPlaceId).find(
-              (a) => a.health_score === 'critical'
-            )
-            if (critical) handleSelectAsset(critical.id)
-          }
-        }}
-      />
+      {earthIntroDone && (
+        <>
+          <MapIntelPanel
+            stats={regionStats}
+            typeFilters={typeFilters}
+            onToggleType={toggleType}
+            voltageFilters={voltageFilters}
+            onToggleVoltage={toggleVoltage}
+            substationVoltageFilters={substationVoltageFilters}
+            onToggleSubstationVoltage={toggleSubstationVoltage}
+            heatMapMode={heatMapMode}
+            onHeatMapMode={setHeatMapMode}
+            corridorsOn={layers.corridors}
+            onToggleCorridors={() => toggleLayer('corridors')}
+            labelsOn={labelsOn}
+            onToggleLabels={() => setLabelsOn((v) => !v)}
+            selectedPlaceId={selectedPlaceId}
+            onSelectPlace={onSelectPlace}
+            resolvedToday={resolvedCount}
+            offlineTowers={offlineTowers}
+            collapsed={intelPanelCollapsed}
+            onToggleCollapse={() => setIntelPanelCollapsed((v) => !v)}
+            interactionMode={interactionMode}
+          />
+
+          <MapOverlaysPanel
+            intelPanelCollapsed={intelPanelCollapsed}
+            wildfireOn={showWildfireRisk}
+            floodOn={showFloodRisk}
+            onToggleWildfire={() => setShowWildfireRisk((v) => !v)}
+            onToggleFlood={() => setShowFloodRisk((v) => !v)}
+          />
+
+          <MapControlRail
+            mapZoom={viewMode === '2d' ? mapZoom : null}
+            layers={layers}
+            onToggle={toggleLayer}
+            onFullscreen={handleFullscreen}
+            basemapMode={basemapMode}
+            onBasemapMode={setBasemapMode}
+            collapsed={controlRailCollapsed}
+            onCollapsedChange={setControlRailCollapsed}
+            rightPanelOpen={rightPanelOpen}
+            onLocate={() => {
+              if (typeof navigator !== 'undefined' && navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(() => { })
+              }
+            }}
+          />
+
+          {layers.weather && (
+            <div
+              className="absolute bottom-20 z-[1150]"
+              style={{ right: mapOverlayRight(controlRailCollapsed) }}
+            >
+              <WeatherLayerBar active={weatherLayers} onToggle={toggleWeather} />
+            </div>
+          )}
+
+          <AIAssistantFab
+            rightOffset={mapOverlayRight(controlRailCollapsed)}
+            onPrompt={(text) => {
+              if (text.toLowerCase().includes('maharashtra')) onSelectPlace('maharashtra')
+              if (text.toLowerCase().includes('critical')) {
+                const critical = filterAssetsByPlace(assets, selectedPlaceId).find(
+                  (a) => a.health_score === 'critical'
+                )
+                if (critical) handleSelectAsset(critical.id)
+              }
+            }}
+          />
+        </>
+      )}
 
       <div
         className="pointer-events-none absolute inset-0 z-[500] opacity-[0.025]"
@@ -466,6 +479,7 @@ export default function MapViewport({
           onFocusConsumed={onFocusConsumed}
           highlightAssetId={highlightAssetId}
           interactionMode={interactionMode}
+          cinematicReady={earthIntroDone}
         />
       ) : (
         <GISMap3D

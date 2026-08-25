@@ -295,7 +295,7 @@ export default function TransmissionNetworkFilters({
               key={c.key}
               type="button"
               onClick={() => onChange({ ...filters, [c.key]: null })}
-              className="inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded-md text-[9px] font-semibold bg-slate-900 border border-slate-700 text-slate-200 hover:border-red-500/40 hover:text-red-300 transition"
+              className="tams-chip-pop inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded-md text-[9px] font-semibold bg-slate-900 border border-slate-700 text-slate-200 hover:border-red-500/40 hover:text-red-300 transition"
               title="Remove filter"
             >
               <span className="truncate">{c.label}</span>

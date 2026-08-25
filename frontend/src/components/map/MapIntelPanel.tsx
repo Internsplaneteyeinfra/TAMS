@@ -9,6 +9,7 @@ import {
   MAP_INTEL_WIDTH,
 } from '@/components/map/mapLayout'
 import PanelMinimizeButton from '@/components/ui/PanelMinimizeButton'
+import AnimatedNumber from '@/components/ui/AnimatedNumber'
 import type { HeatMapMode } from '@/components/map/HeatMapModeToggle'
 import { getPlaceById, getPlacePath } from '@/config/places'
 import type { RegionStats } from '@/lib/placeFilter'
@@ -159,10 +160,30 @@ export default function MapIntelPanel({
           </p>
         )}
         <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-2 text-[10px]">
-          <Metric label="Assets" value={stats.totalAssets} />
-          <Metric label="Alerts" value={stats.openAlerts} accent={stats.openAlerts > 0 ? 'text-amber-400' : 'text-emerald-400'} />
-          <Metric label="Coverage" value={`${stats.coveragePct}%`} accent="text-cyan-300" />
-          <Metric label="Healthy" value={`${stats.healthyPct}%`} accent="text-emerald-400" />
+          <Metric label="Assets" value={<AnimatedNumber value={stats.totalAssets} />} />
+          <Metric
+            label="Alerts"
+            value={<AnimatedNumber value={stats.openAlerts} />}
+            accent={stats.openAlerts > 0 ? 'text-amber-400' : 'text-emerald-400'}
+          />
+          <Metric
+            label="Coverage"
+            value={
+              <>
+                <AnimatedNumber value={stats.coveragePct} integer={false} format={(n) => n.toFixed(1)} />%
+              </>
+            }
+            accent="text-cyan-300"
+          />
+          <Metric
+            label="Healthy"
+            value={
+              <>
+                <AnimatedNumber value={stats.healthyPct} integer={false} format={(n) => n.toFixed(0)} />%
+              </>
+            }
+            accent="text-emerald-400"
+          />
         </div>
         <p className="mt-1.5 text-[8px] leading-relaxed text-slate-500">
           Assets = towers + lines + substations (
@@ -201,12 +222,13 @@ export default function MapIntelPanel({
 
       {/* Active filter group */}
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-3 py-2.5">
+        <div key={tab} className="tams-panel-in">
         {tab === 'assets' && (
           <div className="space-y-0.5">
             {isExplorer ? (
               <>
                 <GroupHint>India KML totals (counts only)</GroupHint>
-                <p className="mb-2 text-[9px] leading-relaxed text-slate-500">
+                <p className="mb-2 text-[9px] leading-relaxed text-slate-500 tams-panel-in">
                   Full inventory for India. Select a state in Places for that state’s tower, line, and
                   substation counts with map filters.
                 </p>
@@ -221,7 +243,7 @@ export default function MapIntelPanel({
                 <div className="mt-2 rounded-md border border-slate-800 bg-slate-950/60 px-2 py-1.5 text-[9px] text-slate-400">
                   Total assets:{' '}
                   <span className="font-mono font-bold text-slate-200">
-                    {stats.totalAssets.toLocaleString()}
+                    <AnimatedNumber value={stats.totalAssets} />
                   </span>
                 </div>
                 <div className="mt-2 space-y-0.5 border-t border-slate-800/70 pt-2">
@@ -359,6 +381,7 @@ export default function MapIntelPanel({
             <LocationSelector selectedPlaceId={selectedPlaceId} onSelectPlace={onSelectPlace} />
           )
         )}
+        </div>
       </div>
 
       {/* Today digest */}
@@ -414,7 +437,7 @@ function CountRow({
       <span className="flex-1 text-[10px] font-medium text-slate-200">{label}</span>
       {count != null && (
         <span className="font-mono text-[10px] font-bold tabular-nums text-slate-200">
-          {count.toLocaleString()}
+          <AnimatedNumber value={count} />
         </span>
       )}
     </div>
@@ -459,7 +482,7 @@ function CheckRow({
       <span className={`flex-1 text-[10px] font-medium transition ${checked ? 'text-slate-100' : 'text-slate-500'}`}>{label}</span>
       {count != null && (
         <span className={`font-mono text-[10px] font-bold tabular-nums transition ${checked ? 'text-slate-200' : 'text-slate-600'}`}>
-          {count.toLocaleString()}
+          <AnimatedNumber value={count} />
         </span>
       )}
     </button>
@@ -521,7 +544,9 @@ function Row({ label, value, className, icon }: { label: string; value: number; 
   return (
     <div className="flex items-center justify-between">
       <span className="text-slate-500 font-semibold flex items-center gap-1">{icon}{label}</span>
-      <span className={`font-mono font-bold ${className}`}>{value}</span>
+      <span className={`font-mono font-bold ${className}`}>
+        <AnimatedNumber value={value} />
+      </span>
     </div>
   )
 }

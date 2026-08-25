@@ -71,7 +71,7 @@ export default function SidebarNav({ collapsed = false, onAssetTypeFilter }: Sid
               <li key={item.id}>
                 <Link
                   href={item.href!}
-                  className={`relative flex items-center gap-2 px-2 py-1.5 rounded-md text-[10px] font-medium transition-colors ${isActive
+                  className={`tams-nav-hover relative flex items-center gap-2 px-2 py-1.5 rounded-md text-[10px] font-medium transition-colors ${isActive
                     ? 'bg-blue-600/12 text-blue-200 border border-blue-500/20'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 border border-transparent'
                     }`}
@@ -79,7 +79,7 @@ export default function SidebarNav({ collapsed = false, onAssetTypeFilter }: Sid
                   {isActive && (
                     <span className="absolute left-0 top-1/2 -translate-y-1/2 h-3.5 w-0.5 rounded-full bg-blue-400" />
                   )}
-                  <Icon className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                  <Icon className="tams-nav-icon w-3.5 h-3.5 shrink-0 opacity-80" />
                   <span className="truncate">{item.label}</span>
                 </Link>
               </li>

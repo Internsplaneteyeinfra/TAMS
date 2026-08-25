@@ -47,9 +47,9 @@ export default function MapViewModeBar({ mode, onChange, variant = 'floating' }:
                 : isInline
                   ? 'px-1.5 py-1.5'
                   : 'px-2 py-1.5'
-            } flex items-center justify-center gap-1 text-[9px] font-extrabold uppercase tracking-wider transition ${
+            } tams-tool-btn flex items-center justify-center gap-1 text-[9px] font-extrabold uppercase tracking-wider ${
               mode === m.id
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                ? 'tams-tool-btn-active tams-mode-flash bg-blue-600 text-white'
                 : 'text-slate-400 hover:bg-slate-800 hover:text-white'
             }`}
           >

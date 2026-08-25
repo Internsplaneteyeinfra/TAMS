@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 
 import type { Alert, WorkOrder } from '@/lib/api'
+import AnimatedNumber from '@/components/ui/AnimatedNumber'
 
 const OPEN_WO_STATUSES = new Set(['Draft', 'Approved', 'Scheduled', 'Assigned', 'InProgress'])
 
@@ -47,7 +48,7 @@ interface DropdownAnchor {
 function MiniSpark({ color = '#34d399' }: { color?: string }) {
   const path = 'M0,14 L4,11 L8,12 L12,7 L16,9 L20,4 L24,6 L28,3 L32,5'
   return (
-    <svg viewBox="0 0 32 16" className="h-4 w-10 opacity-80" aria-hidden>
+    <svg viewBox="0 0 32 16" className="tams-spark-draw h-4 w-10 opacity-80" aria-hidden>
       <path d={path} fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
@@ -102,6 +103,7 @@ function KpiCard({
   onClick,
   titleAttr,
   expanded = false,
+  alertGlow = false,
 }: {
   title: string
   value: React.ReactNode
@@ -114,6 +116,7 @@ function KpiCard({
   onClick?: () => void
   titleAttr?: string
   expanded?: boolean
+  alertGlow?: boolean
 }) {
   const glowMap: Record<Glow, string> = {
     emerald: 'hover:shadow-emerald-500/20 hover:border-emerald-500/30',
@@ -154,9 +157,9 @@ function KpiCard({
       }
       title={titleAttr}
       aria-expanded={interactive ? expanded : undefined}
-      className={`group relative flex w-full flex-col justify-center rounded-xl border border-white/5 bg-slate-950/50 px-2.5 py-2 text-left backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg ${glowMap[glow]} ${
+      className={`group relative flex w-full flex-col justify-center rounded-xl border border-white/5 bg-slate-950/50 px-2.5 py-2 text-left backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg ${glowMap[glow]} ${
         interactive ? 'cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/50' : ''
-      } ${expanded ? 'border-cyan-500/40 ring-1 ring-cyan-500/20' : ''}`}
+      } ${expanded ? 'border-cyan-500/40 ring-1 ring-cyan-500/20' : ''} ${alertGlow ? 'tams-alert-glow' : ''}`}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
@@ -169,7 +172,7 @@ function KpiCard({
           <MiniSpark color={sparkColor} />
           {interactive && (
             <ChevronDown
-              className={`h-3 w-3 text-slate-500 transition-transform duration-[1500ms] ease-in-out ${
+              className={`h-3 w-3 text-slate-500 transition-transform duration-200 ease-out ${
                 expanded ? 'rotate-180 text-cyan-400' : ''
               }`}
             />
@@ -272,7 +275,7 @@ function KpiDropdownOverlay({
   return createPortal(
     <>
       <div
-        className={`fixed inset-0 z-[4990] bg-black/20 transition-opacity duration-[1500ms] ease-in-out ${
+        className={`fixed inset-0 z-[4990] bg-black/20 transition-opacity duration-200 ease-out ${
           visible ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
         onClick={onClose}
@@ -282,7 +285,7 @@ function KpiDropdownOverlay({
         role="dialog"
         aria-label={config.title}
         style={{ top: anchor.top, left: anchor.left, width: anchor.width }}
-        className={`fixed z-[5000] overflow-hidden rounded-xl border bg-[#0e172a] shadow-2xl shadow-black/60 transition-all duration-[1500ms] ease-in-out ${config.accent} ${
+        className={`fixed z-[5000] overflow-hidden rounded-xl border bg-[#0e172a] shadow-2xl shadow-black/60 transition-all duration-200 ease-out ${config.accent} ${
           visible ? 'translate-y-0 opacity-100' : 'pointer-events-none -translate-y-3 opacity-0'
         }`}
       >
@@ -453,7 +456,7 @@ export default function DashboardKpiStrip({
 
   const closeDropdown = () => {
     setOpenDropdown(null)
-    window.setTimeout(() => setAnchor(null), 1500)
+    window.setTimeout(() => setAnchor(null), 220)
   }
 
   useEffect(() => {
@@ -486,7 +489,7 @@ export default function DashboardKpiStrip({
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
         <KpiCard
           title="Monitored Assets"
-          value={formatCount(assetsCount)}
+          value={<AnimatedNumber value={assetsCount} format={formatCount} />}
           trend="KML"
           icon={Boxes}
           glow="emerald"
@@ -498,7 +501,7 @@ export default function DashboardKpiStrip({
         <div ref={activeCardRef}>
           <KpiCard
             title="Active Alerts"
-            value={formatCount(activeAlertsCount)}
+            value={<AnimatedNumber value={activeAlertsCount} format={formatCount} />}
             trend={activeAlertsCount > 0 ? 'Live' : 'Clear'}
             trendUp={activeAlertsCount === 0}
             icon={AlertTriangle}
@@ -507,6 +510,7 @@ export default function DashboardKpiStrip({
             sparkColor="#fbbf24"
             onClick={isExplorer ? undefined : () => toggleDropdown('active')}
             expanded={!isExplorer && openDropdown === 'active'}
+            alertGlow={activeAlertsCount > 0}
             titleAttr={
               isExplorer
                 ? 'Select a state to drill into active alerts'
@@ -518,7 +522,7 @@ export default function DashboardKpiStrip({
         <div ref={criticalCardRef}>
           <KpiCard
             title="Critical Alerts"
-            value={formatCount(criticalAlertsCount)}
+            value={<AnimatedNumber value={criticalAlertsCount} format={formatCount} />}
             trend={criticalAlertsCount > 0 ? 'Action' : 'OK'}
             trendUp={criticalAlertsCount === 0}
             icon={ShieldCheck}
@@ -527,6 +531,7 @@ export default function DashboardKpiStrip({
             sparkColor="#f87171"
             onClick={isExplorer ? undefined : () => toggleDropdown('critical')}
             expanded={!isExplorer && openDropdown === 'critical'}
+            alertGlow={criticalAlertsCount > 0}
             titleAttr={
               isExplorer
                 ? 'Select a state to drill into critical alerts'
@@ -537,7 +542,11 @@ export default function DashboardKpiStrip({
 
         <KpiCard
           title="Coverage %"
-          value={`${coveragePct}%`}
+          value={
+            <>
+              <AnimatedNumber value={coveragePct} integer={false} format={(n) => n.toFixed(1)} />%
+            </>
+          }
           trend="Live"
           icon={Radar}
           glow="cyan"
@@ -547,7 +556,7 @@ export default function DashboardKpiStrip({
         />
         <KpiCard
           title="AI Detections"
-          value={formatCount(aiDetections24h)}
+          value={<AnimatedNumber value={aiDetections24h} format={formatCount} />}
           trend="24h"
           icon={BrainCircuit}
           glow="indigo"
@@ -558,7 +567,7 @@ export default function DashboardKpiStrip({
         />
         <KpiCard
           title="Runs (24H)"
-          value={formatCount(runs24h)}
+          value={<AnimatedNumber value={runs24h} format={formatCount} />}
           trend="Sat"
           icon={Activity}
           glow="blue"
@@ -570,7 +579,9 @@ export default function DashboardKpiStrip({
         <div ref={workOrdersCardRef}>
           <KpiCard
             title="Work Orders"
-            value={openWorkOrders != null ? formatCount(openWorkOrders) : '—'}
+            value={
+              openWorkOrders != null ? <AnimatedNumber value={openWorkOrders} format={formatCount} /> : '—'
+            }
             trend={openWorkOrders && openWorkOrders > 0 ? 'Open' : 'Hold'}
             trendUp={!openWorkOrders}
             icon={ClipboardList}

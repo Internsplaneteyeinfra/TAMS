@@ -259,7 +259,7 @@ function makeAssetIcon(asset: Asset, isSelected: boolean, hasAlert: boolean, isM
     className: '',
     iconSize: [Math.max(w, 90), totalH],
     iconAnchor: [Math.max(w, 90) / 2, h / 2],
-    html: `<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;${selectRing}">
+    html: `<div class="tams-asset-marker${isSelected ? ' tams-asset-selected' : ''}${isMissionFocus ? ' tams-asset-focus-ring' : ''}" style="display:flex;flex-direction:column;align-items:center;cursor:pointer;${selectRing}">
       <div style="border:3px solid ${ring};border-radius:6px;padding:2px;background:rgba(0,0,0,0.45);position:relative;">
         ${symbol}
       </div>
@@ -478,6 +478,7 @@ export default function GISMap({
   onFocusConsumed,
   highlightAssetId = null,
   interactionMode = 'operations',
+  cinematicReady = true,
 }: {
   assets: Asset[]
   selectedAssetId?: string | null
@@ -507,6 +508,8 @@ export default function GISMap({
   /** Unique color highlight after mission-report View */
   highlightAssetId?: string | null
   interactionMode?: 'explorer' | 'operations'
+  /** When false, hold India fly-in until Earth intro overlay finishes. */
+  cinematicReady?: boolean
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -687,7 +690,7 @@ export default function GISMap({
         const maxZoom = placeId === 'india' ? 6 : place.stateOrCountry ? 8 : 12
         map.flyToBounds(
           L.latLngBounds([south, west], [north, east]),
-          { padding: [56, 56], maxZoom, duration: 1.4 }
+          { padding: [56, 56], maxZoom, duration: 0.72, easeLinearity: 0.25 }
         )
         return
       }
@@ -695,7 +698,7 @@ export default function GISMap({
       if (assetList.length === 0) return
       const bounds = collectBounds(assetList)
       if (!bounds) return
-      map.flyToBounds(bounds, { padding: [56, 56], maxZoom: 8, duration: 1.4 })
+      map.flyToBounds(bounds, { padding: [56, 56], maxZoom: 8, duration: 0.72, easeLinearity: 0.25 })
     },
     []
   )
@@ -720,7 +723,7 @@ export default function GISMap({
 
       // Click pins settle without stealing the view; GPS/manual still fly in
       if (source !== 'map_click') {
-        map.flyTo([lat, lng], Math.max(map.getZoom(), 14), { duration: 1.0 })
+        map.flyTo([lat, lng], Math.max(map.getZoom(), 14), { duration: 0.65, easeLinearity: 0.25 })
       }
 
       const isGps = source === 'gps'
@@ -891,6 +894,9 @@ export default function GISMap({
       spiderfyOnMaxZoom: true,
       showCoverageOnHover: false,
       disableClusteringAtZoom: 14,
+      animate: true,
+      animateAddingMarkers: false,
+      chunkedLoading: true,
       iconCreateFunction: (cluster) => {
         const count = cluster.getChildCount()
         const size = count > 100 ? 48 : count > 50 ? 44 : count > 15 ? 38 : 32
@@ -898,7 +904,7 @@ export default function GISMap({
         const bg = clusterHealthColor(childMarkers)
         const glow = clusterHealthGlow(childMarkers)
         return L.divIcon({
-          html: `<div style="
+          html: `<div class="tams-cluster-icon" style="
             width:${size}px;height:${size}px;border-radius:10px;
             display:flex;align-items:center;justify-content:center;
             background:${bg};
@@ -941,9 +947,9 @@ export default function GISMap({
       }
       lastAssetClickRef.current = { id: asset.id, t: now }
       if (isExplorer) {
-        if ('openPopup' in layer && typeof (layer as L.Path).openPopup === 'function') {
-          const path = layer as L.Path
-          path.openPopup()
+        const pathLayer = layer as L.Path
+        if (typeof pathLayer.openPopup === 'function') {
+          pathLayer.openPopup()
         }
         return
       }
@@ -988,6 +994,14 @@ export default function GISMap({
         // Prefer solid strokes at national zoom so corridors read as a backbone
         const dashArray =
           isCorridorFocus || explorerOverview || (kv != null && kv >= 400) ? undefined : '8 6'
+        const isEhv = kv != null && kv >= 220
+        const lineClass = [
+          isCorridorFocus ? 'tams-mission-focus-line' : 'tams-line-flow',
+          'tams-map-fade-in',
+          isEhv && !isCorridorFocus ? 'tams-ehv-flow' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')
 
         if (isCorridorFocus) {
           // Very dark black border casing so the corridor is unmistakable
@@ -998,7 +1012,7 @@ export default function GISMap({
             lineCap: 'round',
             lineJoin: 'round',
             interactive: false,
-            className: 'tams-mission-focus-border',
+            className: 'tams-mission-focus-border tams-map-fade-in',
           }).addTo(map)
           overlaysRef.current.push(border)
         }
@@ -1007,8 +1021,8 @@ export default function GISMap({
           color: lineColor,
           weight: baseWeight,
           opacity: baseOpacity,
-          dashArray,
-          className: isCorridorFocus ? 'tams-mission-focus-line' : 'tams-line-flow',
+          dashArray: isEhv && !isCorridorFocus ? '10 14' : dashArray,
+          className: lineClass,
           interactive: true,
           lineCap: 'round',
           lineJoin: 'round',
@@ -1125,7 +1139,7 @@ export default function GISMap({
             className: '',
             iconSize: [10, 10],
             iconAnchor: [5, 5],
-            html: `<div style="width:10px;height:10px;border-radius:50%;background:${cfg.color};border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.45)"></div>`,
+            html: `<div class="tams-asset-marker${isSelected ? ' tams-asset-selected' : ''}" style="width:10px;height:10px;border-radius:50%;background:${cfg.color};border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.45)"></div>`,
           }),
           zIndexOffset: 150,
         }) as L.Marker & { assetRef?: Asset }
@@ -1135,7 +1149,7 @@ export default function GISMap({
             className: '',
             iconSize: [18, 18],
             iconAnchor: [9, 9],
-            html: `<div style="width:16px;height:16px;border-radius:50%;background:${MISSION_FOCUS_COLOR};border:3px solid ${MISSION_FOCUS_BORDER}"></div>`,
+            html: `<div class="tams-asset-focus-ring" style="width:16px;height:16px;border-radius:50%;background:${MISSION_FOCUS_COLOR};border:3px solid ${MISSION_FOCUS_BORDER}"></div>`,
           }),
           zIndexOffset: 800,
         }) as L.Marker & { assetRef?: Asset }
@@ -1175,6 +1189,7 @@ export default function GISMap({
           weight: 1,
           opacity: 0.45,
           dashArray: '6 8',
+          className: 'tams-map-fade-in',
         }).addTo(map)
         overlaysRef.current.push(circle)
       }
@@ -1201,6 +1216,7 @@ export default function GISMap({
           weight: 1,
           opacity: 0.4,
           dashArray: '6 8',
+          className: 'tams-map-fade-in',
         }).addTo(map)
         overlaysRef.current.push(circle)
       }
@@ -1214,6 +1230,7 @@ export default function GISMap({
           radius: 4000,
           weight: 1,
           opacity: 0.35,
+          className: 'tams-map-fade-in',
         }).addTo(map)
         overlaysRef.current.push(circle)
       }
@@ -1246,17 +1263,25 @@ export default function GISMap({
     isExplorer,
   ])
 
-  // Cinematic intro: frame the world, fly to India, then settle on the region.
-  // Runs once; afterwards the user can pan/zoom anywhere freely.
+  // Cinematic intro: world → brief spin → India → settle on region.
+  // Waits for Earth overlay (cinematicReady) so stars/spin hand off cleanly.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || mapStatus !== 'ready' || introDoneRef.current) return
+    if (!map || mapStatus !== 'ready' || !cinematicReady || introDoneRef.current) return
     introDoneRef.current = true
 
     const settle = () => {
-      fitToPlace(selectedPlaceId, filteredAssets)
-      lastFitKeyRef.current = fitKey
-      hasInitialFitRef.current = true
+      try {
+        fitToPlace(selectedPlaceId, filteredAssets)
+        lastFitKeyRef.current = fitKey
+        hasInitialFitRef.current = true
+      } catch {
+        try {
+          map.setView([22.5, 79], 4.5, { animate: true })
+        } catch {
+          /* map torn down */
+        }
+      }
     }
 
     const reduceMotion =
@@ -1268,15 +1293,41 @@ export default function GISMap({
       return
     }
 
-    map.setView([18, 40], 2.4, { animate: false })
-    const toIndia = setTimeout(() => map.flyTo([22.5, 79], 4.2, { duration: 1.5 }), 400)
-    const toRegion = setTimeout(settle, 2200)
+    const timers: number[] = []
+    try {
+      // Deep space / world frame
+      map.setView([10, -40], 1.8, { animate: false })
+      // Spin east toward India (longitude pan)
+      timers.push(
+        window.setTimeout(() => {
+          try {
+            map.flyTo([12, 20], 2.2, { duration: 0.85, easeLinearity: 0.3 })
+          } catch {
+            /* ignore */
+          }
+        }, 80)
+      )
+      // Spot India
+      timers.push(
+        window.setTimeout(() => {
+          try {
+            map.flyTo([22.5, 79], 4.4, { duration: 1.05, easeLinearity: 0.25 })
+          } catch {
+            /* ignore */
+          }
+        }, 1000)
+      )
+      // Settle on place bounds / assets
+      timers.push(window.setTimeout(settle, 2300))
+    } catch {
+      settle()
+    }
+
     return () => {
-      clearTimeout(toIndia)
-      clearTimeout(toRegion)
+      timers.forEach((t) => window.clearTimeout(t))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapStatus])
+  }, [mapStatus, cinematicReady])
 
   // Fit map only when the region changes — never on user zoom or filter toggles
   useEffect(() => {

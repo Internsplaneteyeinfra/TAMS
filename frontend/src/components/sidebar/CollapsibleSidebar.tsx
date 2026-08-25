@@ -19,11 +19,11 @@ export default function CollapsibleSidebar({
 }: CollapsibleSidebarProps) {
   return (
     <div
-      className="relative shrink-0 h-full overflow-hidden transition-[width] duration-300 ease-in-out"
+      className="relative shrink-0 h-full overflow-hidden tams-sidebar-ease"
       style={{ width: isCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED }}
     >
       <div
-        className={`absolute inset-y-0 left-0 flex flex-col bg-[#070b14] border-r border-slate-800/90 transition-transform duration-300 ease-in-out ${isCollapsed ? '-translate-x-full' : 'translate-x-0'
+        className={`absolute inset-y-0 left-0 flex flex-col bg-[#070b14] border-r border-slate-800/90 tams-sidebar-ease ${isCollapsed ? '-translate-x-full' : 'translate-x-0'
           }`}
         style={{ width: SIDEBAR_WIDTH_EXPANDED }}
       >
@@ -32,7 +32,7 @@ export default function CollapsibleSidebar({
 
       {isCollapsed && collapsedRail && (
         <div
-          className="absolute inset-0 flex flex-col bg-[#070b14] border-r border-slate-800/90"
+          className="absolute inset-0 flex flex-col bg-[#070b14] border-r border-slate-800/90 tams-panel-in"
           style={{ width: SIDEBAR_WIDTH_COLLAPSED }}
         >
           {collapsedRail}
@@ -44,7 +44,7 @@ export default function CollapsibleSidebar({
         title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         onClick={onToggle}
-        className={`absolute top-1/2 z-30 w-5 h-8 flex items-center justify-center bg-[#070b14] border border-slate-700/80 rounded-r-md text-slate-400 hover:text-slate-100 hover:border-slate-500 shadow-md transition-[left] duration-300 ease-in-out -translate-y-1/2 -translate-x-px`}
+        className={`absolute top-1/2 z-30 w-5 h-8 flex items-center justify-center bg-[#070b14] border border-slate-700/80 rounded-r-md text-slate-400 hover:text-slate-100 hover:border-slate-500 shadow-md tams-sidebar-ease -translate-y-1/2 -translate-x-px`}
         style={{ left: isCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED }}
       >
         {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}

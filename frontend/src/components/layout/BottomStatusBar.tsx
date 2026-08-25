@@ -44,18 +44,24 @@ function SystemIndicator({
   label,
   status,
   value,
+  tickKey,
 }: {
   icon: React.ElementType
   label: string
   status: IndicatorStatus
   value?: string
+  tickKey?: string | number
 }) {
   return (
     <div className="flex items-center gap-1 min-w-0 shrink-0" title={`${label}: ${status}`}>
       <Icon className="w-3 h-3 text-slate-600 shrink-0" />
       <span className="text-[8px] text-slate-500 uppercase tracking-wider font-bold">{label}</span>
       <StatusDot status={status} />
-      {value && <span className="text-[9px] font-mono text-slate-400 ml-0.5">{value}</span>}
+      {value && (
+        <span key={tickKey ?? value} className="tams-metric-tick text-[9px] font-mono text-slate-400 ml-0.5">
+          {value}
+        </span>
+      )}
     </div>
   )
 }
@@ -74,10 +80,22 @@ export default function BottomStatusBar({
   feedStatus = 'Active',
 }: BottomStatusBarProps) {
   const [now, setNow] = useState(() => new Date())
-  const [latency] = useState(42)
+  const [latency, setLatency] = useState(42)
+  const [cpuPct, setCpuPct] = useState(18)
+  const [memPct, setMemPct] = useState(42)
 
   useEffect(() => {
-    const t = window.setInterval(() => setNow(new Date()), 15000)
+    const t = window.setInterval(() => {
+      try {
+        setNow(new Date())
+        // Subtle simulated telemetry tick — no network, no lag
+        setLatency((v) => Math.max(28, Math.min(96, v + (Math.random() > 0.5 ? 2 : -2))))
+        setCpuPct((v) => Math.max(12, Math.min(48, v + (Math.random() > 0.5 ? 1 : -1))))
+        setMemPct((v) => Math.max(30, Math.min(62, v + (Math.random() > 0.5 ? 1 : -1))))
+      } catch {
+        /* ignore */
+      }
+    }, 15000)
     return () => window.clearInterval(t)
   }, [])
 
@@ -96,28 +114,30 @@ export default function BottomStatusBar({
     connectionStatus === 'connected' ? 'ok' : connectionStatus === 'degraded' ? 'warning' : 'critical'
 
   const refreshLabel = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const tick = refreshLabel
 
   return (
     <footer
       className="shrink-0 h-8 border-t border-white/10 bg-[#0a1020]/90 backdrop-blur-xl flex items-center px-3 gap-2 overflow-x-auto scrollbar-thin select-none"
       aria-label="System status bar"
     >
-      <SystemIndicator icon={Crosshair} label="Coords" status="ok" value={coordinates} />
+      <SystemIndicator icon={Crosshair} label="Coords" status="ok" value={coordinates} tickKey={coordinates} />
       <Divider />
-      <SystemIndicator icon={ZoomIn} label="Zoom" status="ok" value={zoomLabel} />
+      <SystemIndicator icon={ZoomIn} label="Zoom" status="ok" value={zoomLabel} tickKey={zoomLabel} />
       <Divider />
       <SystemIndicator
         icon={MapPin}
         label="Asset"
         status={selectedAssetName ? 'ok' : 'warning'}
         value={selectedAssetName ?? 'None'}
+        tickKey={selectedAssetName ?? 'none'}
       />
       <Divider />
-      <SystemIndicator icon={Cpu} label="CPU" status="ok" value="18%" />
+      <SystemIndicator icon={Cpu} label="CPU" status="ok" value={`${cpuPct}%`} tickKey={`cpu-${cpuPct}`} />
       <Divider />
-      <SystemIndicator icon={HardDrive} label="Memory" status="ok" value="42%" />
+      <SystemIndicator icon={HardDrive} label="Memory" status="ok" value={`${memPct}%`} tickKey={`mem-${memPct}`} />
       <Divider />
-      <SystemIndicator icon={Wifi} label="Network" status={wsIndicator} value={`${latency}ms`} />
+      <SystemIndicator icon={Wifi} label="Network" status={wsIndicator} value={`${latency}ms`} tickKey={`lat-${latency}`} />
       <Divider />
       <SystemIndicator icon={Server} label="API" status="ok" />
       <Divider />
@@ -135,9 +155,11 @@ export default function BottomStatusBar({
       <Divider />
       <SystemIndicator icon={Activity} label="Grid" status={gridIndicator} value={gridStatus.toUpperCase()} />
       <Divider />
-      <span className="text-[9px] font-mono text-slate-500 shrink-0">{refreshLabel}</span>
+      <span key={tick} className="tams-metric-tick text-[9px] font-mono text-slate-500 shrink-0">
+        {refreshLabel}
+      </span>
       <div className="ml-auto flex items-center gap-1.5 shrink-0 pl-2">
-        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 tams-breathe" />
         <span className="text-[9px] text-slate-500 uppercase tracking-wider font-bold">
           {feedStatus} · {mapStatus.viewMode === '3d' ? '3D Globe' : '2D Map'}
         </span>
