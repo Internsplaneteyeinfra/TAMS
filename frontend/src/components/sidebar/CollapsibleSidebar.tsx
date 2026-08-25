@@ -23,7 +23,7 @@ export default function CollapsibleSidebar({
       style={{ width: isCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED }}
     >
       <div
-        className={`absolute inset-y-0 left-0 flex flex-col bg-[#070b14] border-r border-slate-800/90 tams-sidebar-ease ${isCollapsed ? '-translate-x-full' : 'translate-x-0'
+        className={`absolute inset-y-0 left-0 flex flex-col bg-[#070b14] border-r border-slate-800/90 tams-sidebar-ease tams-az-rail ${isCollapsed ? '-translate-x-full' : 'translate-x-0'
           }`}
         style={{ width: SIDEBAR_WIDTH_EXPANDED }}
       >
@@ -32,7 +32,7 @@ export default function CollapsibleSidebar({
 
       {isCollapsed && collapsedRail && (
         <div
-          className="absolute inset-0 flex flex-col bg-[#070b14] border-r border-slate-800/90 tams-panel-in"
+          className="absolute inset-0 flex flex-col bg-[#070b14] border-r border-slate-800/90 tams-panel-in tams-az-rail"
           style={{ width: SIDEBAR_WIDTH_COLLAPSED }}
         >
           {collapsedRail}

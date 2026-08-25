@@ -1,8 +1,6 @@
 import React, { useState } from 'react'
 import { Bot, Send, X } from 'lucide-react'
 
-import { MAP_BOTTOM_INSET } from '@/components/map/mapLayout'
-
 const SUGGESTIONS = [
   'Show critical towers',
   'Show Maharashtra alerts',
@@ -13,10 +11,9 @@ const SUGGESTIONS = [
 
 interface AIAssistantFabProps {
   onPrompt?: (text: string) => void
-  rightOffset?: string
 }
 
-export default function AIAssistantFab({ onPrompt, rightOffset = '1rem' }: AIAssistantFabProps) {
+export default function AIAssistantFab({ onPrompt }: AIAssistantFabProps) {
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState('')
 
@@ -27,10 +24,7 @@ export default function AIAssistantFab({ onPrompt, rightOffset = '1rem' }: AIAss
   }
 
   return (
-    <div
-      className="absolute z-[2000] flex flex-col items-end gap-2"
-      style={{ right: rightOffset, bottom: MAP_BOTTOM_INSET }}
-    >
+    <div className="relative z-[2000] flex flex-col items-end gap-2">
       {open && (
         <div className="w-72 rounded-lg bg-[#0b1220] border border-slate-700 overflow-hidden">
           <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between bg-[#080d18]">
@@ -77,7 +71,7 @@ export default function AIAssistantFab({ onPrompt, rightOffset = '1rem' }: AIAss
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-10 h-10 rounded-lg bg-[#0b1220] border border-slate-700 flex items-center justify-center text-slate-200 hover:border-slate-500 hover:text-white transition"
+        className="tams-az-float w-10 h-10 rounded-lg bg-[#0b1220] border border-slate-700 flex items-center justify-center text-slate-200 hover:border-slate-500 hover:text-white transition"
         title="AI Assistant"
       >
         <Bot className="w-4.5 h-4.5" />

@@ -763,6 +763,7 @@ export default function GISMap({
         center: [18, 40],
         zoom: 2.4,
         zoomControl: false,
+        attributionControl: false,
         minZoom: 2,
         maxZoom: HIGH_ZOOM.maxZoom,
         worldCopyJump: true,
@@ -1182,15 +1183,16 @@ export default function GISMap({
       // Wildfire Risk overlay — thin outline only
       if (wildfireOn && (asset.health_score === 'critical' || asset.health_score === 'attention_required')) {
         const circle = L.circle([asset.latitude, asset.longitude], {
-          color: '#f97316',
-          fillColor: '#ea580c',
-          fillOpacity: 0,
+          color: '#ea580c',
+          fillColor: '#f97316',
+          fillOpacity: 0.18,
           radius: 5000,
-          weight: 1,
-          opacity: 0.45,
-          dashArray: '6 8',
+          weight: 2,
+          opacity: 0.85,
+          dashArray: '4 6',
           className: 'tams-map-fade-in',
         }).addTo(map)
+        circle.bindTooltip('Wildfire risk proxy · attention/critical health', { sticky: true })
         overlaysRef.current.push(circle)
       }
 
@@ -1209,15 +1211,16 @@ export default function GISMap({
         name.includes('anakapalle')
       if (floodOn && isFloodProne) {
         const circle = L.circle([asset.latitude, asset.longitude], {
-          color: '#06b6d4',
-          fillColor: '#0891b2',
-          fillOpacity: 0,
+          color: '#0891b2',
+          fillColor: '#22d3ee',
+          fillOpacity: 0.16,
           radius: 6000,
-          weight: 1,
-          opacity: 0.4,
-          dashArray: '6 8',
+          weight: 2,
+          opacity: 0.85,
+          dashArray: '4 6',
           className: 'tams-map-fade-in',
         }).addTo(map)
+        circle.bindTooltip('Flood hazard proxy · coastal / river site', { sticky: true })
         overlaysRef.current.push(circle)
       }
 

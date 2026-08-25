@@ -86,7 +86,7 @@ export default function EarthZoomIndia({
     let renderer: THREE.WebGLRenderer | null = null
 
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: 'high-performance' })
+      renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, powerPreference: 'high-performance' })
     } catch {
       return undefined
     }
@@ -95,7 +95,7 @@ export default function EarthZoomIndia({
     const h = Math.max(8, host.clientHeight || window.innerHeight)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25))
     renderer.setSize(w, h, false)
-    renderer.setClearColor(0x071018, 1)
+    renderer.setClearColor(0x000000, 0)
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.domElement.style.width = '100%'
     renderer.domElement.style.height = '100%'
@@ -121,6 +121,16 @@ export default function EarthZoomIndia({
     })
     const globe = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32), globeMat)
     earthGroup.add(globe)
+
+    const atmosphereMat = new THREE.MeshBasicMaterial({
+      color: 0x9ad4de,
+      transparent: true,
+      opacity: 0.28,
+      side: THREE.BackSide,
+      depthWrite: false,
+    })
+    const atmosphere = new THREE.Mesh(new THREE.SphereGeometry(1.08, 32, 24), atmosphereMat)
+    earthGroup.add(atmosphere)
 
     const applyDayMap = (tex: THREE.Texture) => {
       if (cancelled) {
@@ -222,6 +232,8 @@ export default function EarthZoomIndia({
       globe.geometry.dispose()
       globeMat.map?.dispose()
       globeMat.dispose()
+      atmosphere.geometry.dispose()
+      atmosphereMat.dispose()
       renderer?.dispose()
       if (renderer?.domElement.parentNode === host) host.removeChild(renderer.domElement)
     }
@@ -230,19 +242,23 @@ export default function EarthZoomIndia({
 
   return (
     <div
-      className="fixed inset-0 bg-[#071018]"
+      className="fixed inset-0"
       style={{
         zIndex: 4000,
         opacity: fading ? 0 : 1,
         transition: 'opacity 0.45s ease',
-        pointerEvents: fading ? 'none' : 'none',
+        pointerEvents: 'none',
+        background:
+          'radial-gradient(ellipse 70% 60% at 50% 42%, #f8fbfb 0%, #e4f1f3 48%, #d5e8eb 100%)',
       }}
     >
       <div ref={hostRef} className="absolute inset-0" />
-      <div className="pointer-events-none absolute left-6 top-6">
-        <p className="text-[10px] font-bold uppercase tracking-[0.32em] text-white/70">Satellite Earth</p>
-        <p className="mt-1 text-lg font-semibold text-white">{status}</p>
-        <p className="mt-1 text-[11px] text-white/55">
+      <div className="pointer-events-none absolute left-6 top-6 max-w-md">
+        <p className="text-[10px] font-bold uppercase tracking-[0.32em] text-[#17879a]">
+          Satellite Earth
+        </p>
+        <p className="mt-1 text-lg font-semibold text-[#263238]">{status}</p>
+        <p className="mt-1 text-[11px] font-medium text-[#37474f]">
           {caption || 'Keeps rotating until you press Go to lat/lon'}
         </p>
       </div>

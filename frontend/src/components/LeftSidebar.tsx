@@ -3,6 +3,7 @@ import {
   ShieldAlert,
   Search,
   Menu,
+  Radio,
 } from 'lucide-react'
 import type { Alert, Asset } from '@/lib/api'
 import CollapsibleSidebar, { SidebarCollapseHeader } from '@/components/sidebar/CollapsibleSidebar'
@@ -23,6 +24,9 @@ interface LeftSidebarProps {
   isLoading: boolean
   onCollapsedChange?: (collapsed: boolean) => void
   onHiddenChange?: (hidden: boolean) => void
+  hideSignal?: number
+  networkFilters: NetworkFilterValues
+  onNetworkFiltersChange: (next: NetworkFilterValues) => void
 }
 
 const HEALTH_COLORS: Record<string, string> = {
@@ -76,6 +80,9 @@ export default function LeftSidebar({
   isLoading,
   onCollapsedChange,
   onHiddenChange,
+  hideSignal = 0,
+  networkFilters,
+  onNetworkFiltersChange,
 }: LeftSidebarProps) {
   const [searchQuery, setSearchQuery] = React.useState('')
   const [isCollapsed, setIsCollapsed] = React.useState(false)
@@ -86,20 +93,29 @@ export default function LeftSidebar({
     // Notify once on mount so map layout matches default-hidden Core panel
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  const [networkFilters, setNetworkFilters] = React.useState<NetworkFilterValues>({
-    ...EMPTY_NETWORK_FILTERS,
-  })
   const [openFilterPanel, setOpenFilterPanel] = React.useState<FilterPanelId | null>(null)
+  const [sidebarSection, setSidebarSection] = React.useState<'core' | 'network'>('core')
 
   const handleHide = () => {
     setIsHidden(true)
     onHiddenChange?.(true)
   }
 
-  const handleShow = () => {
+  const handleShow = (section: 'core' | 'network' = 'core') => {
+    setSidebarSection(section)
     setIsHidden(false)
     onHiddenChange?.(false)
   }
+
+  React.useEffect(() => {
+    if (hideSignal > 0) handleHide()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hideSignal])
+
+  React.useEffect(() => {
+    if (window.matchMedia('(max-width: 767px)').matches) handleHide()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleToggleCollapse = () => {
     setIsCollapsed((prev) => {
@@ -110,18 +126,28 @@ export default function LeftSidebar({
   }
 
   const handleAssetTypeFilter = (type: 'tower' | 'line' | 'substation' | null) => {
-    setNetworkFilters((prev) => ({ ...prev, assetType: type }))
+    onNetworkFiltersChange({ ...networkFilters, assetType: type })
     setOpenFilterPanel(type ? 'assetType' : null)
+    if (type) {
+      setSidebarSection('network')
+      setIsHidden(false)
+      onHiddenChange?.(false)
+    }
     onSelectAsset('')
   }
 
   const handleNetworkFiltersChange = (next: NetworkFilterValues) => {
-    setNetworkFilters(next)
+    onNetworkFiltersChange(next)
   }
 
   const selectedAsset = useMemo(() => {
     return assets.find((a) => a.id === selectedAssetId)
   }, [assets, selectedAssetId])
+
+  const mapMatchCount = useMemo(
+    () => applyNetworkFilters(assets, networkFilters, alerts, '').length,
+    [assets, networkFilters, alerts]
+  )
 
   const filteredAssetsList = useMemo(
     () => applyNetworkFilters(assets, networkFilters, alerts, searchQuery),
@@ -163,18 +189,32 @@ export default function LeftSidebar({
         className="relative shrink-0 h-full overflow-hidden tams-sidebar-ease border-r border-slate-800/90"
         style={{ width: '2.75rem' }}
       >
-        <button
-          type="button"
-          onClick={handleShow}
-          title="Show TAMS Core panel"
-          aria-label="Show TAMS Core panel"
-          className="w-full h-full flex flex-col items-center pt-3 gap-2 bg-[#070b14] text-slate-400 hover:text-white hover:bg-slate-900/80 transition"
-        >
-          <Menu className="w-5 h-5" />
-          <span className="text-[7px] font-bold uppercase tracking-widest text-slate-500 [writing-mode:vertical-rl] rotate-180">
-            Core
-          </span>
-        </button>
+        <div className="w-full h-full flex flex-col bg-[#070b14] tams-az-rail">
+          <button
+            type="button"
+            onClick={() => handleShow('core')}
+            title="Open Core"
+            aria-label="Open Core"
+            className="flex-1 flex flex-col items-center pt-3 gap-2 text-slate-400 hover:text-white hover:bg-slate-900/80 transition border-b border-slate-800/80"
+          >
+            <Menu className="w-5 h-5" />
+            <span className="text-[7px] font-bold uppercase tracking-widest text-slate-500 [writing-mode:vertical-rl] rotate-180">
+              Core
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleShow('network')}
+            title="Open Network"
+            aria-label="Open Network"
+            className="flex-1 flex flex-col items-center pt-3 gap-2 text-slate-400 hover:text-cyan-200 hover:bg-slate-900/80 transition"
+          >
+            <Radio className="w-5 h-5" />
+            <span className="text-[7px] font-bold uppercase tracking-widest text-slate-500 [writing-mode:vertical-rl] rotate-180">
+              Network
+            </span>
+          </button>
+        </div>
       </div>
     )
   }
@@ -196,17 +236,22 @@ export default function LeftSidebar({
           <button
             type="button"
             onClick={handleHide}
-            title="Hide TAMS Core panel"
-            aria-label="Hide TAMS Core panel"
+            title="Hide sidebar"
+            aria-label="Hide sidebar"
             className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300 hover:text-white hover:border-slate-500 hover:bg-slate-800 transition"
           >
             <Menu className="w-4 h-4" />
           </button>
           <div className="min-w-0 flex-1">
             <h1 className="text-sm font-bold tracking-wide text-slate-100 leading-tight">
-              TAMS <span className="text-blue-400">CORE</span>
+              TAMS{' '}
+              <span className={sidebarSection === 'network' ? 'text-cyan-400' : 'text-blue-400'}>
+                {sidebarSection === 'network' ? 'NETWORK' : 'CORE'}
+              </span>
             </h1>
-            <p className="text-[9px] text-slate-500 uppercase tracking-[0.14em] font-medium">Grid Intelligence</p>
+            <p className="text-[9px] text-slate-500 uppercase tracking-[0.14em] font-medium">
+              {sidebarSection === 'network' ? 'Map filters' : 'Grid Intelligence'}
+            </p>
           </div>
           <div className="flex items-center gap-1 bg-emerald-500/8 border border-emerald-500/25 px-1.5 py-0.5 rounded text-[9px] font-semibold text-emerald-400 shrink-0">
             <span className="w-1 h-1 rounded-full bg-emerald-400 tams-online-pulse" />
@@ -214,20 +259,25 @@ export default function LeftSidebar({
           </div>
         </div>
 
-        <SidebarNav onAssetTypeFilter={handleAssetTypeFilter} />
+        {sidebarSection === 'core' && <SidebarNav onAssetTypeFilter={handleAssetTypeFilter} />}
 
         <div className="flex-1 overflow-y-auto scrollbar-thin divide-y divide-slate-900">
 
-          {/* SECTION 1: Asset Picker / Asset List */}
-          {!selectedAsset ? (
-            <div className="p-3 space-y-2.5">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Transmission Network</h2>
-                <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded font-mono">
-                  {filteredAssetsList.length.toLocaleString()} Units
+          {sidebarSection === 'network' && (
+            <div className="tams-az-network p-3 space-y-2.5 bg-[#0a1220]">
+              <div className="flex justify-between items-start gap-2">
+                <div>
+                  <h2 className="text-xs font-bold text-cyan-300/90 uppercase tracking-wider">
+                    Transmission network
+                  </h2>
+                  <p className="text-[9px] text-slate-500 mt-0.5 leading-snug">
+                    Filters towers, lines, and substations on the map
+                  </p>
+                </div>
+                <span className="text-[10px] bg-cyan-950/50 text-cyan-300 border border-cyan-800/50 px-1.5 py-0.5 rounded font-mono shrink-0">
+                  {mapMatchCount.toLocaleString()} on map
                 </span>
               </div>
-
               <TransmissionNetworkFilters
                 assets={assets}
                 alerts={alerts}
@@ -235,10 +285,16 @@ export default function LeftSidebar({
                 onChange={handleNetworkFiltersChange}
                 openPanel={openFilterPanel}
                 onOpenPanel={setOpenFilterPanel}
-                matchCount={filteredAssetsList.length}
+                matchCount={mapMatchCount}
               />
+            </div>
+          )}
 
-              {/* Search Input */}
+          {sidebarSection === 'network' && !selectedAsset && (
+            <div className="p-3 space-y-2.5">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Asset list</h2>
+              </div>
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-500" />
                 <input
@@ -260,7 +316,7 @@ export default function LeftSidebar({
                     <button
                       type="button"
                       onClick={() => {
-                        setNetworkFilters({ ...EMPTY_NETWORK_FILTERS })
+                        onNetworkFiltersChange({ ...EMPTY_NETWORK_FILTERS })
                         setSearchQuery('')
                         setOpenFilterPanel(null)
                       }}
@@ -307,7 +363,9 @@ export default function LeftSidebar({
                 )}
               </div>
             </div>
-          ) : (
+          )}
+
+          {selectedAsset && (
             /* Detail View: Active Asset Intelligence */
             <div className="p-3 space-y-3">
               <div className="flex items-center justify-between">

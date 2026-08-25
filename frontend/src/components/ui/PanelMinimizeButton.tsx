@@ -16,6 +16,10 @@ interface PanelMinimizeButtonProps {
 
   variant?: 'icon' | 'hide' | 'close'
 
+  openLabel?: string
+
+  closeLabel?: string
+
 }
 
 
@@ -31,6 +35,10 @@ export default function PanelMinimizeButton({
   'aria-label': ariaLabel,
 
   variant = 'icon',
+
+  openLabel = 'Open',
+
+  closeLabel = 'Hide',
 
 }: PanelMinimizeButtonProps) {
 
@@ -58,7 +66,7 @@ export default function PanelMinimizeButton({
 
         {minimized ? <Maximize2 className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
 
-        <span className="text-[8px] font-bold uppercase tracking-wider">{minimized ? 'Show' : 'Hide'}</span>
+        <span className="text-[8px] font-bold uppercase tracking-wider">{minimized ? openLabel : closeLabel}</span>
 
       </button>
 

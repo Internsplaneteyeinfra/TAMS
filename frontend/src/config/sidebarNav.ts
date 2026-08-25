@@ -58,3 +58,20 @@ export const SIDEBAR_NAV_ITEMS: SidebarNavItem[] = [
   // Settings route TBD — keep Analyzer map; Ops KPIs are /dashboard via landing only
   { id: 'settings', label: 'Settings', href: '/analyzer', icon: Settings },
 ]
+
+/** Analyzer GIS only — Tower Performance / ops routes stay on /dashboard. */
+export const ANALYZER_SIDEBAR_NAV_ITEMS: SidebarNavItem[] = [
+  { id: 'dashboard', label: 'Map', href: '/analyzer', icon: LayoutDashboard },
+  {
+    id: 'assets',
+    label: 'Assets',
+    icon: Layers,
+    children: [
+      { label: 'Substations', href: '/analyzer', assetType: 'substation' },
+      { label: 'Towers', href: '/analyzer', assetType: 'tower' },
+      { label: 'Lines', href: '/analyzer', assetType: 'line' },
+      { label: 'Tower Types 3D', href: '/tower-types' },
+    ],
+  },
+  { id: 'tower-types', label: 'Tower Types 3D', href: '/tower-types', icon: RadioTower },
+]

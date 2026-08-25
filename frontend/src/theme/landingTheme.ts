@@ -275,4 +275,7 @@ export function persistLandingAppearance(value: LandingAppearance) {
   } catch {
     /* storage unavailable */
   }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('tams-theme-change'))
+  }
 }

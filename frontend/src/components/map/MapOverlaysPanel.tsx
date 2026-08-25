@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
+import { ChevronDown, Maximize2 } from 'lucide-react'
 
-import { MAP_OVERLAYS_BOTTOM, mapOverlaysLeft } from '@/components/map/mapLayout'
-import PanelMinimizeButton from '@/components/ui/PanelMinimizeButton'
+import { MAP_INTEL_WIDTH } from '@/components/map/mapLayout'
 
 interface MapOverlaysPanelProps {
   intelPanelCollapsed?: boolean
@@ -18,23 +18,25 @@ export default function MapOverlaysPanel({
   onToggleWildfire,
   onToggleFlood,
 }: MapOverlaysPanelProps) {
-  const [minimized, setMinimized] = useState(false)
+  const [minimized, setMinimized] = useState(true)
 
   return (
     <div
-      className="absolute z-[1050] pointer-events-none"
-      style={{ bottom: MAP_OVERLAYS_BOTTOM, left: mapOverlaysLeft(intelPanelCollapsed) }}
+      className="tams-az-float rounded-xl border border-slate-700/90 bg-[#0a1020]/95 backdrop-blur-xl shadow-lg text-[10px] overflow-hidden"
+      style={{ width: intelPanelCollapsed ? '9rem' : MAP_INTEL_WIDTH }}
     >
-      <div className="pointer-events-auto rounded-xl border border-slate-700/90 bg-[#0a1020]/95 backdrop-blur-xl shadow-lg text-[10px] min-w-[8.75rem] overflow-hidden">
-        <div className="flex items-center justify-between gap-2 px-2 py-1.5 border-b border-slate-800/80 bg-slate-950/80">
-          <p className="text-slate-300 font-bold uppercase tracking-wider text-[8px]">Overlays</p>
-          <PanelMinimizeButton
-            variant="hide"
-            minimized={minimized}
-            onClick={() => setMinimized((v) => !v)}
-            title={minimized ? 'Show overlays' : 'Hide overlays'}
-          />
-        </div>
+        <button
+          type="button"
+          onClick={() => setMinimized((v) => !v)}
+          className="flex w-full items-center justify-between gap-2 px-2 py-1.5 border-b border-slate-800/80 bg-slate-950/80 text-left hover:bg-slate-900/80 transition"
+          title={minimized ? 'Open map overlays' : 'Hide map overlays'}
+          aria-expanded={!minimized}
+        >
+          <p className="font-bold uppercase tracking-wider text-[8px] text-slate-300">Map overlays</p>
+          <span className="h-6 w-6 flex items-center justify-center rounded-md border border-slate-600 bg-slate-800 text-slate-300 shrink-0">
+            {minimized ? <Maximize2 className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </span>
+        </button>
         {!minimized && (
           <div className="p-2 space-y-1">
             <button
@@ -53,9 +55,13 @@ export default function MapOverlaysPanel({
               <span className={`w-2 h-2 rounded-full shrink-0 ${floodOn ? 'bg-cyan-500' : 'bg-slate-700'}`} />
               Flood
             </button>
+            <p className="pt-1 text-[8px] leading-snug text-slate-500">
+              {wildfireOn || floodOn
+                ? 'On 2D map: orange = health-risk sites, cyan = flood-keyword sites.'
+                : 'Turn a layer on — rings draw on the 2D map around matching assets.'}
+            </p>
           </div>
         )}
-      </div>
     </div>
   )
 }

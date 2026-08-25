@@ -57,21 +57,11 @@ th,td{border:1px solid #cbd5e1;padding:5px 7px;text-align:left} th{background:#e
 </style></head><body>
 <h1>${esc(title)}</h1>
 <p class="meta">
-  <span class="badge">OPEN GIS SCREENING</span>
-  <span class="badge badge-warn">Confidence ~${soil.confidencePct}%</span><br/>
-  <strong>Location name:</strong> ${esc(siteLabel)}<br/>
+  <span class="badge-warn">Confidence ~${soil.confidencePct}%</span><br/>
+  <strong>Location:</strong> ${esc(siteLabel)}<br/>
   <strong>Coordinates:</strong> ${lat.toFixed(6)}°N, ${lon.toFixed(6)}°E<br/>
-  ${soil.placeName ? `<strong>Place (OSM):</strong> ${esc(soil.placeName)}<br/>` : ''}
-  <strong>Provider:</strong> ${esc(soil.provider)}<br/>
-  <strong>Resolution:</strong> ${esc(soil.resolutionNote)}<br/>
   Generated: ${esc(new Date().toLocaleString())}
 </p>
-
-<div class="note">
-  <strong>Important:</strong> This is a <em>suitability screening</em> soil snapshot from open global soil maps
-  (satellite / GIS models). It is <strong>not</strong> a borehole or lab certificate.
-  Indicative SBC / CBR ranges are for planning only. Field investigation raises confidence for foundation design.
-</div>
 
 <h2>1. Soil texture summary (0–30 cm average)</h2>
 <p class="meta">
@@ -81,7 +71,7 @@ th,td{border:1px solid #cbd5e1;padding:5px 7px;text-align:left} th{background:#e
   Report confidence: <strong>~${soil.confidencePct}%</strong> — ${esc(soil.confidenceNote)}
 </p>
 
-<h2>2. Depth-wise SoilGrids properties</h2>
+<h2>2. Depth-wise properties</h2>
 <table>
 <thead><tr><th>Depth</th><th>Sand %</th><th>Silt %</th><th>Clay %</th><th>Bulk dens. (g/cm³)</th><th>pH</th><th>Coarse frag. %</th></tr></thead>
 <tbody>${layers}</tbody>
@@ -105,7 +95,7 @@ th,td{border:1px solid #cbd5e1;padding:5px 7px;text-align:left} th{background:#e
         : 'No field investigation within 5 km. Enter lab data at /geotech to raise confidence.')
   )}</p>
 
-<p class="meta" style="margin-top:28px;color:#64748b">TAMS Tower Suitability · SoilReport-(${esc(siteLabel)}) · ISRIC SoilGrids open data</p>
+<p class="meta" style="margin-top:28px;color:#64748b">TAMS Tower Suitability · SoilReport-(${esc(siteLabel)})</p>
 </body></html>`
 }
 

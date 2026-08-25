@@ -9,6 +9,11 @@ import { useDispatch, useSelector } from 'react-redux'
 
 import LeftSidebar from '@/components/LeftSidebar'
 import RightSidebar from '@/components/RightSidebar'
+import {
+  applyNetworkFilters,
+  EMPTY_NETWORK_FILTERS,
+  type NetworkFilterValues,
+} from '@/components/sidebar/TransmissionNetworkFilters'
 import BottomStatusBar from '@/components/layout/BottomStatusBar'
 import DashboardSkeleton from '@/components/layout/DashboardSkeleton'
 import TopNavbar from '@/components/topbar/TopNavbar'
@@ -30,13 +35,17 @@ import {
 import { computeRegionStats, filterAlertsByPlace } from '@/lib/placeFilter'
 import { selectAsset, type RootState } from '@/lib/store'
 import type { MapStatusSnapshot } from '@/types/mapStatus'
+import { landingLightCssVars } from '@/theme/landingTheme'
+import { useTamsAppearance } from '@/theme/useTamsAppearance'
 
 export type AnalyzerInteractionMode = 'explorer' | 'operations'
 
 const MapViewport = dynamic(() => import('@/components/MapViewport'), { ssr: false })
 
 export default function Home() {
+  const { appearance } = useTamsAppearance()
   const [isClient, setIsClient] = useState(false)
+  const [coreHideSignal, setCoreHideSignal] = useState(0)
   const [isOperationsPanelOpen, setIsOperationsPanelOpen] = useState(false)
   const [mapResizeSignal, setMapResizeSignal] = useState(0)
   const [mapStatus, setMapStatus] = useState<MapStatusSnapshot>({
@@ -45,6 +54,9 @@ export default function Home() {
     viewMode: '2d',
   })
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [networkFilters, setNetworkFilters] = useState<NetworkFilterValues>({
+    ...EMPTY_NETWORK_FILTERS,
+  })
   const [selectedPlaceId, setSelectedPlaceId] = useState(DEFAULT_PLACE_ID)
   const [missionOpen, setMissionOpen] = useState(false)
   const [missionResult, setMissionResult] = useState<MonitoringRunResult | null>(null)
@@ -92,7 +104,8 @@ export default function Home() {
         setMissionHighlightId(null)
         setIsOperationsPanelOpen(false)
       } else {
-        setIsOperationsPanelOpen(true)
+        setIsOperationsPanelOpen(false)
+        setCoreHideSignal((n) => n + 1)
       }
     },
     [dispatch]
@@ -258,6 +271,11 @@ export default function Home() {
     enabled: isClient && assetsReady,
     staleTime: 45_000,
   })
+
+  const mapAssets = useMemo(
+    () => applyNetworkFilters(assets, networkFilters, alerts, ''),
+    [assets, networkFilters, alerts]
+  )
 
   const { data: maintenanceDash } = useQuery({
     queryKey: ['dashboard-maintenance'],
@@ -426,7 +444,13 @@ export default function Home() {
   }
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#060B17] text-slate-100 antialiased font-sans overflow-hidden">
+    <div
+      className={`tams-analyzer flex flex-col h-screen w-screen antialiased font-sans overflow-hidden ${
+        appearance === 'light' ? 'bg-[#F3F7FA] text-[#0B1726]' : 'bg-[#060B17] text-slate-100'
+      }`}
+      data-tams-theme={appearance}
+      style={appearance === 'light' ? landingLightCssVars() : undefined}
+    >
 
       <TopNavbar
         assets={assets}
@@ -467,6 +491,9 @@ export default function Home() {
           isLoading={assetsLoading}
           onCollapsedChange={handleLeftSidebarCollapsedChange}
           onHiddenChange={handleCoreSidebarHiddenChange}
+          hideSignal={coreHideSignal}
+          networkFilters={networkFilters}
+          onNetworkFiltersChange={setNetworkFilters}
         />
 
         {/* Center GIS Viewport + Operations Panel — flex siblings, no overlap */}
@@ -510,7 +537,7 @@ export default function Home() {
               </div>
             )}
             <MapViewport
-              assets={assets}
+              assets={mapAssets}
               alerts={alerts}
               selectedAssetId={isExplorerMode ? null : selectedAssetId}
               alertAssetIds={alertAssetIds}

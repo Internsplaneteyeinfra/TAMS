@@ -157,7 +157,7 @@ function KpiCard({
       }
       title={titleAttr}
       aria-expanded={interactive ? expanded : undefined}
-      className={`group relative flex w-full flex-col justify-center rounded-xl border border-white/5 bg-slate-950/50 px-2.5 py-2 text-left backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg ${glowMap[glow]} ${
+      className={`group relative flex w-full min-w-0 flex-col justify-center rounded-xl border border-white/5 bg-slate-950/50 px-2.5 py-2 text-left backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg ${glowMap[glow]} ${
         interactive ? 'cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/50' : ''
       } ${expanded ? 'border-cyan-500/40 ring-1 ring-cyan-500/20' : ''} ${alertGlow ? 'tams-alert-glow' : ''}`}
     >
@@ -168,8 +168,10 @@ function KpiCard({
           </span>
           <span className="truncate text-[8px] font-bold uppercase tracking-wider text-slate-500">{title}</span>
         </div>
-        <div className="flex items-center gap-1">
-          <MiniSpark color={sparkColor} />
+        <div className="flex items-center gap-1 shrink-0">
+          <span className="hidden sm:inline">
+            <MiniSpark color={sparkColor} />
+          </span>
           {interactive && (
             <ChevronDown
               className={`h-3 w-3 text-slate-500 transition-transform duration-200 ease-out ${
@@ -285,7 +287,7 @@ function KpiDropdownOverlay({
         role="dialog"
         aria-label={config.title}
         style={{ top: anchor.top, left: anchor.left, width: anchor.width }}
-        className={`fixed z-[5000] overflow-hidden rounded-xl border bg-[#0e172a] shadow-2xl shadow-black/60 transition-all duration-200 ease-out ${config.accent} ${
+        className={`fixed z-[5000] tams-az-portal overflow-hidden rounded-xl border bg-[#0e172a] shadow-2xl shadow-black/60 transition-all duration-200 ease-out ${config.accent} ${
           visible ? 'translate-y-0 opacity-100' : 'pointer-events-none -translate-y-3 opacity-0'
         }`}
       >
@@ -479,14 +481,16 @@ export default function DashboardKpiStrip({
   }, [openDropdown])
 
   return (
-    <div className="space-y-1">
+    <div className="flex items-stretch gap-2 min-w-0">
       {placeLabel && (
-        <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
-          Region: <span className="text-blue-400">{placeLabel}</span>
-          {kmlHint ? <span className="ml-2 normal-case tracking-normal text-slate-600">· {kmlHint}</span> : null}
+        <p className="hidden xl:flex max-w-[11rem] shrink-0 flex-col justify-center text-[9px] font-bold uppercase tracking-wider text-slate-500 leading-snug">
+          <span>
+            Region: <span className="text-blue-400">{placeLabel}</span>
+          </span>
+          {kmlHint ? <span className="normal-case tracking-normal text-slate-600 font-semibold">{kmlHint}</span> : null}
         </p>
       )}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+      <div className="grid flex-1 grid-cols-7 gap-1.5 min-w-0">
         <KpiCard
           title="Monitored Assets"
           value={<AnimatedNumber value={assetsCount} format={formatCount} />}

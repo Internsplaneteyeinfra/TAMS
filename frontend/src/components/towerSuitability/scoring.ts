@@ -475,8 +475,7 @@ export function scoreSiteSignals(signals: SiteSignals): SuitabilityResult {
     confidencePct,
     factors,
     signals,
-    disclaimer:
-      'Live screening from Open-Meteo DEM/wind, OSRM roads, OSM Overpass, and TAMS grid. Not a substitute for borehole, lab SBC/pile, CBR, or earth-resistivity investigation (~65–80% site-ranking confidence).',
+    disclaimer: '',
     fetchedAt: signals.fetchedAt || new Date().toISOString(),
   }
 }
@@ -512,6 +511,8 @@ export interface SuitabilitySuggestions {
   pointsToAccepted: number
   items: ImprovementSuggestion[]
   summary: string
+  /** Factors we could not score (missing live data). */
+  couldNotCheck?: string[]
   /** Where to place / how to tap existing towers — with accuracy notes */
   placementTips?: Array<{ title: string; detail: string; accuracy: string }>
   interconnectEase?: 'easy' | 'moderate' | 'hard'
@@ -522,113 +523,58 @@ const IMPROVE_COPY: Record<
   { why: (f: FactorResult, s: SiteSignals) => string; how: (f: FactorResult, s: SiteSignals) => string }
 > = {
   slope: {
-    why: (f) =>
-      f.score >= 9
-        ? 'Slope is already strong for a tower pad.'
-        : `Current slope score ${f.score.toFixed(1)}/10 (${f.rawLabel}) — steeper grades raise grading and foundation cost.`,
-    how: () =>
-      'Cut/fill to flatten the pad (<~5–8°), add retaining where needed, or shift the tower a short distance to flatter ground.',
+    why: (f) => (f.score >= 9 ? 'Pad slope is already good.' : `Ground is steep (${f.rawLabel}).`),
+    how: () => 'Flatten the pad or shift a few metres to flatter ground.',
   },
   elevation: {
-    why: (f) =>
-      f.score >= 9
-        ? 'Elevation is within a favourable logistics band.'
-        : `Elevation ${f.rawLabel} scores ${f.score.toFixed(1)}/10 — very low (flood) or very high (access) sites lose points.`,
-    how: () =>
-      'Prefer pads ~20–800 m AMSL when possible; avoid floodplains and extreme highland without access roads.',
+    why: (f) => (f.score >= 9 ? 'Height is in a workable band.' : `Height ${f.rawLabel} is too low or too high.`),
+    how: () => 'Avoid floodplains and very high sites without a road.',
   },
   road: {
-    why: (f) =>
-      f.score >= 8
-        ? 'Road access is already favourable.'
-        : `Access is weak (${f.rawLabel}, score ${f.score.toFixed(1)}) — distant or unmapped roads slow erection & maintenance.`,
-    how: () =>
-      'Build/upgrade an access track to the pad, use existing ROW roads, or relocate closer to a highway/track before construction.',
+    why: (f) => (f.score >= 8 ? 'Road access is good.' : `Road is far (${f.rawLabel}).`),
+    how: () => 'Add an access track or move closer to an existing road.',
   },
   water: {
-    why: (f) =>
-      f.score >= 8
-        ? 'Water buffer looks acceptable on open data.'
-        : `Water/flood factor is ${f.score.toFixed(1)}/10 (${f.rawLabel}) — proximity to channels raises scour & flood risk.`,
-    how: () =>
-      'Move the pad upslope away from water, raise foundation level, add drainage/bunds, and confirm HFL with local records.',
+    why: (f) => (f.score >= 8 ? 'Water distance is OK.' : `Too close to water (${f.rawLabel}).`),
+    how: () => 'Move upslope and raise the foundation.',
   },
   clearance: {
-    why: (f) =>
-      f.score >= 8
-        ? 'Settlement clearance is acceptable on mapped data.'
-        : `Clearance score ${f.score.toFixed(1)}/10 (${f.rawLabel}) — nearby buildings increase social / ROW conflict.`,
-    how: () =>
-      'Increase setback from settlements, negotiate ROW, or pick an alternate angle tower location with more open buffer.',
+    why: (f) => (f.score >= 8 ? 'Buildings are far enough.' : `Houses/buildings nearby (${f.rawLabel}).`),
+    how: () => 'Increase setback or pick a more open pad.',
   },
   power_connectivity: {
-    why: (f, s) => {
-      if (!s.nearbyPower?.dataAvailable) {
-        return 'Power data unavailable — connectivity cannot be scored from open APIs yet.'
-      }
-      const pole = s.nearbyPower?.nearestPole
+    why: (_f, s) => {
+      if (!s.nearbyPower?.dataAvailable) return 'Grid map was not available.'
       const p = s.nearbyPower?.nearest
-      const tw = s.nearbyPower?.nearestTower
-      if (pole && pole.distanceKm <= 0.35)
-        return `Existing distribution poles along your corridor (~${Math.round(pole.distanceKm * 1000)} m).`
-      if (tw && tw.distanceKm <= 2)
-        return `Existing tower only ${tw.distanceKm.toFixed(2)} km away — power take-off is comparatively simple.`
-      if (f.score >= 8 && p)
-        return `Strong tie-in option: ${p.name} (${p.distanceKm.toFixed(1)} km) on live maps.`
-      if (!p) return 'No mapped tower/pole/line/SS nearby — long greenfield extension to grid.'
-      return `Nearest "${p.name}" is ${p.distanceKm.toFixed(1)} km — ${s.nearbyPower?.suggestedVoltageKv ?? 'unknown'} kV on map.`
+      if (!p) return 'No mapped line, tower, or substation nearby.'
+      return `Nearest grid is ${p.distanceKm.toFixed(1)} km (${p.name}).`
     },
-    how: (_f, s) => {
-      const tip = s.nearbyPower?.placementTips?.[0]
-      if (tip) return tip.detail
-      return 'Route corridor toward the nearest tower/pole/substation, match voltage class, confirm bay with STU/DISCOM.'
-    },
+    how: () => 'Steer the corridor toward the nearest tower or substation.',
   },
   voltage_suitability: {
     why: (f, s) =>
       !s.nearbyPower?.dataAvailable
-        ? 'Voltage unknown — power data unavailable.'
+        ? 'Voltage could not be read.'
         : f.score >= 8
-          ? `Voltage on nearby assets (${s.nearbyPower?.suggestedVoltageKv ?? '?'} kV) is a suitable planning tier.`
-          : s.nearbyPower?.availableVoltageKv?.length
-            ? `Available voltages: ${s.nearbyPower.availableVoltageKv.slice(0, 3).join('/')} kV.`
-            : 'No voltage tags found nearby — utility nameplate verification required.',
-    how: () =>
-      'Check OSM/TAMS voltage tags on nearby lines; verify with utility drawing or nameplate. Never invent kV.',
+          ? `Nearby voltage (~${s.nearbyPower?.suggestedVoltageKv ?? '?'} kV) fits.`
+          : 'Nearby voltage does not match this line class.',
+    how: () => 'Match kV to the nearby line, or change class in Controls.',
   },
   connection_distance: {
-    why: (f, s) =>
-      !s.nearbyPower?.dataAvailable
-        ? 'Connection distance unknown — power data unavailable.'
-        : f.score >= 8
-          ? 'Estimated connection run is short — low corridor cost.'
-          : `Connection distance score ${f.score.toFixed(1)}/10 (${f.rawLabel}) — longer routes increase ROW cost.`,
-    how: () =>
-      'Move the proposed tower closer to the existing grid corridor, or route toward a nearer tap point / angle tower.',
+    why: (f) => (f.score >= 8 ? 'Tap distance is short.' : `Long tap (${f.rawLabel}) raises cost.`),
+    how: () => 'Move closer to the existing corridor.',
   },
   corridor_feasibility: {
-    why: (f) =>
-      f.score >= 8
-        ? 'No major route obstruction detected on open data.'
-        : `Route feasibility score ${f.score.toFixed(1)}/10 (${f.rawLabel}) — detected obstacles may increase cost or risk.`,
-    how: () =>
-      'Avoid crossing water bodies and settlements; prefer open barren land. Survey imagery to verify gaps in OSM data.',
+    why: (f) => (f.score >= 8 ? 'Route looks clear.' : `Obstacles on route (${f.rawLabel}).`),
+    how: () => 'Avoid water and settlements; use open land.',
   },
   wind: {
-    why: (f) =>
-      f.score >= 8
-        ? 'Wind exposure is moderate on Open-Meteo screening.'
-        : `Wind score ${f.score.toFixed(1)}/10 (${f.rawLabel}) — higher exposure needs stronger structures / foundations.`,
-    how: () =>
-      'Use IS wind-zone design, higher foundation stiffness, and confirm with local wind data; micro-siting in sheltered terrain can help.',
+    why: (f) => (f.score >= 8 ? 'Wind is moderate.' : `Higher wind (${f.rawLabel}).`),
+    how: () => 'Use a stronger foundation for the local wind zone.',
   },
   landcover: {
-    why: (f) =>
-      f.score >= 8
-        ? 'Land cover hint favours open / buildable ground.'
-        : `Land cover is "${f.rawLabel}" (score ${f.score.toFixed(1)}) — vegetation/built/water reduces pad readiness.`,
-    how: () =>
-      'Clear/permit vegetation legally, avoid built-up parcels, or relocate to barren/open land with clear ownership.',
+    why: (f) => (f.score >= 8 ? 'Ground cover is workable.' : `Cover is ${f.rawLabel}.`),
+    how: () => 'Use open / barren land, not built-up or water.',
   },
 }
 
@@ -652,25 +598,29 @@ export function buildSuitabilitySuggestions(result: SuitabilityResult): Suitabil
         maxScore: 10,
         gapPoints,
         whyNotIdeal: copy ? copy.why(f, result.signals) : f.note,
-        howToImprove: copy ? copy.how(f, result.signals) : 'Improve this factor with engineering controls or relocate the pad.',
+        howToImprove: copy ? copy.how(f, result.signals) : 'Shift the pad or add engineering controls.',
       }
     })
     .filter((i) => i.gapPoints >= 0.05)
     .sort((a, b) => b.gapPoints - a.gapPoints)
 
+  const couldNotCheck = result.factors
+    .filter((f) => f.live === false || /n\/a|unavailable|unknown|no data/i.test(`${f.rawLabel} ${f.note}`))
+    .map((f) => f.label)
+
   let summary: string
   const ease = result.signals.nearbyPower?.interconnectEase
   const nearTw = result.signals.nearbyPower?.nearestTower
   if (nearTw && nearTw.distanceKm <= 2) {
-    summary = `Existing tower ~${nearTw.distanceKm.toFixed(2)} km away — power take-off is simpler. Use placement tips below to align new towers along that corridor${
-      remainingToPerfect >= 0.15 ? `; score still ${remainingToPerfect.toFixed(1)} pts below 10` : ''
-    }.`
+    summary = `Grid is close (~${nearTw.distanceKm.toFixed(1)} km). ${
+      remainingToPerfect >= 0.15 ? `Still ${remainingToPerfect.toFixed(1)} pts below 10.` : 'Score is strong.'
+    }`
   } else if (remainingToPerfect < 0.15) {
-    summary = 'Score is essentially at the screening ceiling (10/10). Focus next on field geotech (BH, SBC, resistivity).'
+    summary = 'Score is essentially 10/10 on this screening.'
   } else if (currentScore >= targetAccepted) {
-    summary = `Accepted on screening, but ${remainingToPerfect.toFixed(1)} points short of a perfect 10. Closing the gaps below improves robustness.`
+    summary = `Pass (≥7). ${remainingToPerfect.toFixed(1)} pts left to a perfect 10.`
   } else {
-    summary = `Need +${pointsToAccepted.toFixed(1)} points to reach Accepted (≥7). Biggest losses are listed first — fix those to make the tower pad more suitable.`
+    summary = `Need +${pointsToAccepted.toFixed(1)} to pass (≥7). Biggest gaps first.`
   }
 
   return {
@@ -681,6 +631,7 @@ export function buildSuitabilitySuggestions(result: SuitabilityResult): Suitabil
     pointsToAccepted,
     items,
     summary,
+    couldNotCheck,
     placementTips: result.signals.nearbyPower?.placementTips,
     interconnectEase: ease,
   }

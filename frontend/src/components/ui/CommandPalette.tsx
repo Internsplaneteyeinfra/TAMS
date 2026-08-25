@@ -149,7 +149,7 @@ export default function CommandPalette({
         onClick={onClose}
       />
 
-      <div className="relative w-full max-w-xl bg-[#0e172a]/95 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl tams-palette-in">
+      <div className="relative w-full max-w-xl tams-az-portal bg-[#0e172a]/95 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl tams-palette-in">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-800">
           <Command className="w-4 h-4 text-slate-500 shrink-0" />
           <input

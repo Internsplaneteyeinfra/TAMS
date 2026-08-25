@@ -4,24 +4,26 @@ export const MAP_EDGE = '0.75rem'
 
 export const MAP_CHROME_TOP = '0.75rem'
 
+/** Shared top for left + right map docks (below search, place, time row). */
+export const MAP_DOCK_TOP = '6.5rem'
+
 /** Below search / breadcrumb row — MAP TOOLS sits here (right side only) */
-export const MAP_TOOLS_TOP = '3.75rem'
+export const MAP_TOOLS_TOP = MAP_DOCK_TOP
 
 /** Keep MAP TOOLS above status bar + AI assistant */
-export const MAP_TOOLS_BOTTOM = '4.5rem'
+export const MAP_TOOLS_BOTTOM = '0.75rem'
 
 /** Below search row + breadcrumb row */
-
-export const MAP_INTEL_TOP = '5.25rem'
+export const MAP_INTEL_TOP = MAP_DOCK_TOP
 
 export const MAP_INTEL_WIDTH = '13.75rem'
 
 export const MAP_INTEL_COLLAPSED_WIDTH = '2.75rem'
 
-export const MAP_BOTTOM_INSET = '2.75rem'
+export const MAP_BOTTOM_INSET = '0.75rem'
 
 /** Bottom offset for overlays panel (above status bar) */
-export const MAP_OVERLAYS_BOTTOM = '3.25rem'
+export const MAP_OVERLAYS_BOTTOM = '0.75rem'
 
 /** Gap between left panels */
 export const MAP_PANEL_GAP = '0.5rem'

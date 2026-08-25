@@ -118,7 +118,7 @@ export default function BottomStatusBar({
 
   return (
     <footer
-      className="shrink-0 h-8 border-t border-white/10 bg-[#0a1020]/90 backdrop-blur-xl flex items-center px-3 gap-2 overflow-x-auto scrollbar-thin select-none"
+      className="tams-az-footer shrink-0 h-8 border-t border-white/10 bg-[#0a1020]/90 backdrop-blur-xl flex items-center px-3 gap-2 overflow-x-auto scrollbar-thin select-none"
       aria-label="System status bar"
     >
       <SystemIndicator icon={Crosshair} label="Coords" status="ok" value={coordinates} tickKey={coordinates} />
@@ -132,12 +132,15 @@ export default function BottomStatusBar({
         value={selectedAssetName ?? 'None'}
         tickKey={selectedAssetName ?? 'none'}
       />
+      <span className="hidden md:contents">
       <Divider />
       <SystemIndicator icon={Cpu} label="CPU" status="ok" value={`${cpuPct}%`} tickKey={`cpu-${cpuPct}`} />
       <Divider />
       <SystemIndicator icon={HardDrive} label="Memory" status="ok" value={`${memPct}%`} tickKey={`mem-${memPct}`} />
       <Divider />
       <SystemIndicator icon={Wifi} label="Network" status={wsIndicator} value={`${latency}ms`} tickKey={`lat-${latency}`} />
+      </span>
+      <span className="hidden lg:contents">
       <Divider />
       <SystemIndicator icon={Server} label="API" status="ok" />
       <Divider />
@@ -152,6 +155,7 @@ export default function BottomStatusBar({
       <SystemIndicator icon={BrainCircuit} label="AI" status="ok" />
       <Divider />
       <SystemIndicator icon={Radio} label="GPS" status="ok" />
+      </span>
       <Divider />
       <SystemIndicator icon={Activity} label="Grid" status={gridIndicator} value={gridStatus.toUpperCase()} />
       <Divider />

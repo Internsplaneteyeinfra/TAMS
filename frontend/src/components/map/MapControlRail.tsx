@@ -4,9 +4,6 @@ import { Minus, Plus } from 'lucide-react'
 import FloatingMapToolbar, { type MapToolbarLayers } from '@/components/map/FloatingMapToolbar'
 import MapViewModeBar, { type MapBasemap } from '@/components/map/MapViewModeBar'
 import {
-  MAP_EDGE,
-  MAP_TOOLS_BOTTOM,
-  MAP_TOOLS_TOP,
   MAP_RIGHT_RAIL_COLLAPSED_WIDTH,
   MAP_RIGHT_RAIL_WIDTH,
   mapRightInset,
@@ -81,13 +78,10 @@ export default function MapControlRail({
   if (collapsed) return null
 
   return (
-    <div
-      className="pointer-events-auto absolute z-[1100] flex flex-col items-end gap-1.5"
-      style={{ top: MAP_TOOLS_TOP, right: MAP_EDGE, bottom: MAP_TOOLS_BOTTOM }}
-    >
+    <div className="pointer-events-auto flex h-full min-h-0 flex-col items-end">
       <div
-        className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-700/80 bg-[#0e172a]/95 shadow-xl backdrop-blur-sm"
-        style={{ width: mapRightInset(false), maxHeight: '100%' }}
+        className="tams-az-float flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-700/80 bg-[#0e172a]/95 shadow-xl backdrop-blur-sm"
+        style={{ width: mapRightInset(false) }}
       >
         <div className="flex shrink-0 items-center justify-between gap-1 border-b border-slate-700/60 bg-slate-950/90 px-2 py-1.5">
           <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">Map Tools</span>

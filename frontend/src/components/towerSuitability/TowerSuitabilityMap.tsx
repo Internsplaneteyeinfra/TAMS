@@ -961,7 +961,24 @@ export default function TowerSuitabilityMap({
       }
     }
     hadStartRef.current = true
-  }, [lat, lon, result, kmlFeatures, plannedTowers.length, mapReady, searchRadiusKm, focusTick])
+  }, [lat, lon, result, kmlFeatures, plannedTowers.length, mapReady, searchRadiusKm])
+
+  useEffect(() => {
+    if (!focusTick || !mapReady) return
+    const map = mapRef.current
+    if (!isMapAlive(map)) return
+    const bounds = L.latLngBounds([])
+    plannedTowers.forEach((t) => bounds.extend([t.lat, t.lon]))
+    kmlFeatures.forEach((feat) => {
+      feat.latlngs.forEach(([la, lo]) => bounds.extend([la, lo]))
+    })
+    if (lat != null && lon != null) bounds.extend([lat, lon])
+    if (bounds.isValid()) {
+      map.fitBounds(bounds.pad(0.18), { padding: [36, 36], maxZoom: 15, animate: true })
+    } else if (lat != null && lon != null) {
+      map.setView([lat, lon], Math.max(map.getZoom(), 14), { animate: true })
+    }
+  }, [focusTick, mapReady, lat, lon, kmlFeatures, plannedTowers])
 
   const canFinish =
     (drawMode === 'line' && draftCount >= 2) || (drawMode === 'polygon' && draftCount >= 3)
@@ -1008,7 +1025,7 @@ export default function TowerSuitabilityMap({
                   onClick={() => onDrawModeChange(m.id)}
                   className={`h-9 px-3 rounded-xl text-xs font-black border transition-colors ${drawMode === m.id
                       ? 'bg-[#17879a] text-white border-[#126b79]'
-                      : 'bg-white/55 text-[#263238] border-[rgba(51,65,85,0.16)] hover:border-[#17879a]'
+                      : 'bg-white/80 text-[#0f172a] border-[rgba(51,65,85,0.22)] hover:border-[#17879a]'
                     }`}
                 >
                   {m.label}
@@ -1028,14 +1045,14 @@ export default function TowerSuitabilityMap({
                     type="button"
                     disabled={draftCount === 0}
                     onClick={() => clearDraftRef.current()}
-                    className="h-9 px-3 rounded-xl text-xs font-bold border border-[rgba(51,65,85,0.16)] text-[#66727a] disabled:opacity-40 hover:bg-white/50"
+                    className="h-9 px-3 rounded-xl text-xs font-bold border border-[rgba(51,65,85,0.22)] text-[#0f172a] disabled:opacity-40 hover:bg-white/50"
                   >
                     Clear draft
                   </button>
                 </>
               )}
             </div>
-            <p className="mt-1.5 text-center text-[11px] font-semibold text-[#263238]">{hint}</p>
+            <p className="mt-1.5 text-center text-[11px] font-bold text-[#0f172a]">{hint}</p>
             {plannedTowers.length > 0 && (
               <p className="mt-1 text-center text-sm font-black text-[#b97816] tabular-nums">
                 {plannedTowers.length} towers · {voltageLabel(voltageKv)}

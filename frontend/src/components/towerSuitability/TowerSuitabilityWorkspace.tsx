@@ -18,7 +18,6 @@ import {
 
 import LogoutButton from '@/components/auth/LogoutButton'
 import { fetchGisTowers } from '@/lib/api'
-import { createSiteScore } from '@/lib/siteScoresApi'
 import {
   collectSiteSignals,
   inferOsmLineVoltageKv,
@@ -54,10 +53,8 @@ import {
 import type { DrawMode } from './TowerSuitabilityMap'
 import type { IntelligencePanel, TowerWorkspaceMode } from './workspaceTypes'
 import SiteScoreCard from './analysis/SiteScoreCard'
-import SmartSuggestionsCard from './analysis/SmartSuggestionsCard'
 import SoilReportCard from './analysis/SoilReportCard'
 import DownloadReportCard from './analysis/DownloadReportCard'
-import SaveSiteScoreCard from './analysis/SaveSiteScoreCard'
 import IntelligenceRail from './analysis/IntelligenceRail'
 import IntelligenceDrawer from './analysis/IntelligenceDrawer'
 import OverviewPanel from './analysis/OverviewPanel'
@@ -179,6 +176,8 @@ export default function TowerSuitabilityWorkspace() {
   const earthIntroRef = useRef(false)
   earthIntroRef.current = earthIntro
   const [pendingFocus, setPendingFocus] = useState<{ lat: number; lon: number } | null>(null)
+  /** Keep the same KML; only kV / span (tower projections) may change. */
+  const [kmlLocked, setKmlLocked] = useState(false)
   const [latInput, setLatInput] = useState(String(SUGGESTED_START.lat))
   const [lonInput, setLonInput] = useState(String(SUGGESTED_START.lon))
   const [geoBusy, setGeoBusy] = useState(false)
@@ -233,6 +232,7 @@ export default function TowerSuitabilityWorkspace() {
     const seq = ++analyzeSeq.current
     setAnalyzing(true)
     setError(null)
+    setKmlLocked(false)
     setResult(null)
     setWorkspaceMode('planning')
     setActivePanel(null)
@@ -319,6 +319,7 @@ export default function TowerSuitabilityWorkspace() {
     (feature: KmlFeature, focus: { lat: number; lon: number }) => {
       pushPlanningUndo()
       setKmlFeatures([feature])
+      setKmlLocked(false)
       setKmlFileName(feature.name || (feature.type === 'LineString' ? 'Drawn line' : 'Drawn polygon'))
       setInferredVoltage(null)
       setPendingFocus(focus)
@@ -403,15 +404,18 @@ export default function TowerSuitabilityWorkspace() {
   }, [pushPlanningUndo])
 
   const analyzePendingGeometry = useCallback(() => {
-    if (!kmlFeatures.length || !pendingFocus) return
+    const focus =
+      pendingFocus ??
+      (lat != null && lon != null ? { lat, lon } : null)
+    if (!kmlFeatures.length || !focus) return
     const label =
       kmlFeatures[0]?.type === 'LineString'
         ? 'Drawn line corridor'
         : kmlFeatures[0]?.type === 'Polygon'
           ? 'Drawn polygon site'
           : 'Drawn site'
-    void runAnalyze(pendingFocus.lat, pendingFocus.lon, label)
-  }, [kmlFeatures, pendingFocus, runAnalyze])
+    void runAnalyze(focus.lat, focus.lon, label)
+  }, [kmlFeatures, pendingFocus, lat, lon, runAnalyze])
 
   const saveDrawnKml = useCallback(() => {
     if (!kmlFeatures.length) return
@@ -425,6 +429,7 @@ export default function TowerSuitabilityWorkspace() {
       setResult(null)
       setWorkspaceMode('planning')
       setActivePanel(null)
+      setKmlLocked(false)
       setKmlFeatures([])
       setPendingFocus(null)
       setLat(null)
@@ -488,6 +493,7 @@ export default function TowerSuitabilityWorkspace() {
         return
       }
       setKmlFeatures(parsed.features)
+      setKmlLocked(false)
       const label = file.name.replace(/\.kml$/i, '')
       setKmlFileName(label)
       setPendingFocus(null)
@@ -666,103 +672,6 @@ export default function TowerSuitabilityWorkspace() {
     })
   }, [result, suggestions, siteLabel, lat, lon, kmlFeatures.length, lineTowerPlan])
 
-  const onSaveSiteScore = useCallback(async () => {
-    if (!result || lat == null || lon == null) throw new Error('No analysis to save')
-    const label =
-      result.signals.placeLabel ||
-      siteLabel ||
-      `${lat.toFixed(5)}, ${lon.toFixed(5)}`
-    await createSiteScore({
-      site_label: label,
-      place_label: result.signals.placeLabel || null,
-      latitude: lat,
-      longitude: lon,
-      final_score: result.finalScore,
-      verdict: result.verdict,
-      confidence_pct: result.confidencePct,
-      voltage_kv: lineTowerPlan?.voltageKv ?? null,
-      search_radius_km: searchRadiusKm,
-      summary: suggestions?.summary || null,
-      factors: result.factors.map((f) => ({
-        id: f.id,
-        label: f.label,
-        score: f.score,
-        weight: f.weight,
-        rawLabel: f.rawLabel,
-        note: f.note,
-        source: f.source,
-      })),
-      result_payload: {
-        finalScore: result.finalScore,
-        verdict: result.verdict,
-        confidencePct: result.confidencePct,
-        disclaimer: result.disclaimer,
-        fetchedAt: result.fetchedAt || new Date().toISOString(),
-        signals: {
-          elevationM: result.signals.elevationM,
-          slopeDeg: result.signals.slopeDeg,
-          roadKm: result.signals.roadKm,
-          waterKm: result.signals.waterKm,
-          placeLabel: result.signals.placeLabel,
-          soilScreening: result.signals.soilScreening
-            ? {
-              textureClass: result.signals.soilScreening.textureClass,
-              confidencePct: result.signals.soilScreening.confidencePct,
-              indicativeSbcTm2: result.signals.soilScreening.indicativeSbcTm2,
-            }
-            : null,
-          geotech: result.signals.geotech || null,
-          nearbyPower: result.signals.nearbyPower
-            ? {
-              suggestedVoltageKv: result.signals.nearbyPower.suggestedVoltageKv,
-              powerNetworkVerdict: result.signals.nearbyPower.powerNetworkVerdict,
-              nearestTower: result.signals.nearbyPower.nearestTower
-                ? {
-                  name: result.signals.nearbyPower.nearestTower.name,
-                  distanceKm: result.signals.nearbyPower.nearestTower.distanceKm,
-                  voltageKv: result.signals.nearbyPower.nearestTower.voltageKv,
-                }
-                : null,
-              nearestSubstation: result.signals.nearbyPower.nearestSubstation
-                ? {
-                  name: result.signals.nearbyPower.nearestSubstation.name,
-                  distanceKm: result.signals.nearbyPower.nearestSubstation.distanceKm,
-                  voltageKv: result.signals.nearbyPower.nearestSubstation.voltageKv,
-                }
-                : null,
-            }
-            : null,
-        },
-        corridorAdvice: corridorAdvice
-          ? {
-            voltageLabel: corridorAdvice.voltageLabel,
-            canPlaceCount: corridorAdvice.canPlaceCount,
-            plannedCount: corridorAdvice.plannedCount,
-            lineSuitability: corridorAdvice.lineSuitability,
-            powerConnect: corridorAdvice.powerConnect
-              ? {
-                bestPadIndex: corridorAdvice.powerConnect.bestPadIndex,
-                stationToPadKm: corridorAdvice.powerConnect.stationToPadKm,
-                confidencePct: corridorAdvice.powerConnect.confidencePct,
-                stationName: corridorAdvice.powerConnect.station.name,
-              }
-              : null,
-          }
-          : null,
-      },
-      notes: 'Saved from Tower Suitability workspace',
-    })
-  }, [
-    result,
-    lat,
-    lon,
-    siteLabel,
-    lineTowerPlan?.voltageKv,
-    searchRadiusKm,
-    suggestions?.summary,
-    corridorAdvice,
-  ])
-
   const soilReportLabel = useMemo(() => {
     if (lat == null || lon == null) return siteLabel || 'Unknown'
     return (
@@ -824,19 +733,25 @@ export default function TowerSuitabilityWorkspace() {
 
   const analysisReady = workspaceMode === 'analysis' && !!result && !!suggestions
   const drawerTitle =
-    activePanel === 'overview'
-      ? 'Analysis overview'
-      : activePanel === 'live'
-        ? 'Live data signals'
-        : activePanel === 'factors'
-          ? 'Suitability factors'
-          : activePanel === 'controls'
-            ? 'Map & analysis controls'
-            : activePanel === 'breakdown'
-              ? 'Score breakdown'
-              : activePanel === 'suggestions'
-                ? 'Smart suggestions'
-                : ''
+    activePanel === 'score'
+      ? 'Site suitability'
+      : activePanel === 'soil'
+        ? 'Soil report'
+        : activePanel === 'report'
+          ? 'Download report'
+          : activePanel === 'suggestions'
+            ? 'Suggestions'
+            : activePanel === 'overview'
+              ? 'Analysis overview'
+              : activePanel === 'live'
+                ? 'Live data signals'
+                : activePanel === 'factors'
+                  ? 'Suitability factors'
+                  : activePanel === 'controls'
+                    ? 'Map & analysis controls'
+                    : activePanel === 'breakdown'
+                      ? 'Score breakdown'
+                      : ''
 
   return (
     <div
@@ -887,7 +802,7 @@ export default function TowerSuitabilityWorkspace() {
                   e.currentTarget.src = '/favicon.svg'
                 }}
               />
-              <h1 className="text-base font-semibold text-[#263238] tracking-tight truncate">
+              <h1 className="text-base font-bold text-[#0f172a] tracking-tight truncate">
                 Tower Site Suitability
               </h1>
             </div>
@@ -901,11 +816,15 @@ export default function TowerSuitabilityWorkspace() {
               {result && workspaceMode === 'analysis' && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setWorkspaceMode('planning')
-                    setActivePanel(null)
-                  }}
-                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-[rgba(51,65,85,0.16)] bg-white/70 text-xs font-bold text-[#263238] hover:border-[#17879a]"
+              onClick={() => {
+                setWorkspaceMode('planning')
+                setActivePanel(null)
+                setKmlLocked(true)
+                if (lat != null && lon != null) {
+                  setPendingFocus({ lat, lon })
+                }
+              }}
+                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-[rgba(51,65,85,0.16)] bg-white/70 text-xs font-bold text-[#0f172a] hover:border-[#17879a]"
                   aria-label="Edit plan"
                 >
                   <Pencil className="w-3.5 h-3.5" />
@@ -918,6 +837,7 @@ export default function TowerSuitabilityWorkspace() {
                   onClick={() => {
                     setWorkspaceMode('analysis')
                     setActivePanel('overview')
+                    setKmlLocked(false)
                   }}
                   className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-[#17879a] text-xs font-bold text-white hover:bg-[#126b79]"
                 >
@@ -927,8 +847,8 @@ export default function TowerSuitabilityWorkspace() {
               <button
                 type="button"
                 onClick={undoLast}
-                disabled={draftCount === 0 && undoStack.length === 0}
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-[rgba(51,65,85,0.16)] bg-white/70 text-xs font-bold text-[#263238] hover:border-[#17879a] disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={kmlLocked || (draftCount === 0 && undoStack.length === 0)}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-[rgba(51,65,85,0.16)] bg-white/70 text-xs font-bold text-[#0f172a] hover:border-[#17879a] disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Undo last start or last draw vertex"
                 aria-label="Undo last action"
               >
@@ -1026,7 +946,7 @@ export default function TowerSuitabilityWorkspace() {
               powerConnect={corridorAdvice?.powerConnect ?? null}
               analyzing={analyzing}
               drawMode={drawMode}
-              drawingEnabled={workspaceMode === 'planning' && !analyzing}
+              drawingEnabled={workspaceMode === 'planning' && !analyzing && !kmlLocked}
               focusTick={focusTick}
               undoDraftTick={undoDraftTick}
               onDraftCountChange={setDraftCount}
@@ -1041,7 +961,7 @@ export default function TowerSuitabilityWorkspace() {
                   <p className="text-[10px] font-black uppercase tracking-wider text-[#263238]">
                     Upload KML
                   </p>
-                  <p className="mt-1 text-xs text-[#66727a] leading-snug">
+                  <p className="mt-1 text-xs text-[#263238] leading-snug">
                     Pick a KML. The globe flies to that corridor, then analysis starts.
                   </p>
                   <button
@@ -1056,41 +976,41 @@ export default function TowerSuitabilityWorkspace() {
               </div>
             )}
 
-            {workspaceMode === 'planning' && !analyzing && entryMode !== 'upload' && (
+            {workspaceMode === 'planning' && !analyzing && !kmlLocked && entryMode !== 'upload' && (
               <div
                 className={`absolute bottom-3 left-3 pointer-events-none ${earthIntro ? 'z-[5000]' : 'z-[1150]'
                   }`}
               >
                 <div className="pointer-events-auto ts-glass ts-glass-see p-3 w-[min(360px,calc(100vw-1.5rem))]">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-[#263238] mb-2">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-[#0f172a] mb-2">
                     Start projection · lat / lon
                   </p>
                   <div className="mb-2">
                     <SearchRadiusPicker value={searchRadiusKm} onChange={setSearchRadiusKm} />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <label className="text-[10px] text-[#263238] font-bold">
+                    <label className="text-[10px] text-[#0f172a] font-bold">
                       Latitude
                       <input
                         value={latInput}
                         onChange={(e) => setLatInput(e.target.value)}
                         placeholder={String(SUGGESTED_START.lat)}
                         inputMode="decimal"
-                        className="mt-1 w-full h-9 rounded-lg border border-[rgba(51,65,85,0.16)] bg-white/70 px-2 text-xs font-mono text-[#263238]"
+                        className="mt-1 w-full h-9 rounded-lg border border-[rgba(51,65,85,0.16)] bg-white/70 px-2 text-xs font-mono text-[#0f172a]"
                       />
                     </label>
-                    <label className="text-[10px] text-[#263238] font-bold">
+                    <label className="text-[10px] text-[#0f172a] font-bold">
                       Longitude
                       <input
                         value={lonInput}
                         onChange={(e) => setLonInput(e.target.value)}
                         placeholder={String(SUGGESTED_START.lon)}
                         inputMode="decimal"
-                        className="mt-1 w-full h-9 rounded-lg border border-[rgba(51,65,85,0.16)] bg-white/70 px-2 text-xs font-mono text-[#263238]"
+                        className="mt-1 w-full h-9 rounded-lg border border-[rgba(51,65,85,0.16)] bg-white/70 px-2 text-xs font-mono text-[#0f172a]"
                       />
                     </label>
                   </div>
-                  <p className="mt-1.5 text-[10px] text-[#263238] leading-snug">
+                  <p className="mt-1.5 text-[10px] text-[#0f172a] leading-snug">
                     Suggested India centre is filled in. Click <strong>Go to lat/lon</strong> to fly there, or
                     type any coordinates first and then Go.
                   </p>
@@ -1107,7 +1027,7 @@ export default function TowerSuitabilityWorkspace() {
                       type="button"
                       disabled={geoBusy}
                       onClick={goLiveLocation}
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-[rgba(51,65,85,0.16)] text-xs font-bold text-[#263238] disabled:opacity-50"
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-[rgba(51,65,85,0.16)] text-xs font-bold text-[#0f172a] disabled:opacity-50"
                     >
                       <Navigation className="w-3.5 h-3.5" />
                       {geoBusy ? 'Locating…' : 'Live location'}
@@ -1117,13 +1037,20 @@ export default function TowerSuitabilityWorkspace() {
               </div>
             )}
 
-            {workspaceMode === 'planning' && pendingFocus && kmlFeatures.length > 0 && !analyzing && (
+            {workspaceMode === 'planning' &&
+              kmlFeatures.length > 0 &&
+              !analyzing &&
+              (pendingFocus || kmlLocked) && (
               <div className="absolute bottom-3 right-3 z-[1150] pointer-events-auto ts-glass p-3 w-[min(360px,calc(100vw-1.5rem))] max-h-[min(70vh,420px)] overflow-y-auto">
-                <p className="text-xs font-black text-[#b97816] uppercase tracking-wider">Drawn shape ready</p>
-                <p className="text-sm text-[#66727a] mt-1 leading-snug">
-                  Pick voltage class (CEA planning bands) — then Save KML or Analyze live suitability.
+                <p className="text-xs font-black text-[#b97816] uppercase tracking-wider">
+                  {kmlLocked ? 'Edit projections · same KML' : 'Drawn shape ready'}
                 </p>
-                <label className="mt-2 block text-[10px] font-bold uppercase text-[#66727a]">
+                <p className="text-sm text-[#0f172a] mt-1 leading-snug">
+                  {kmlLocked
+                    ? 'Corridor geometry stays as-is. Change kV class or Dense / Ruling / Long span to re-place towers, then Analyze.'
+                    : 'Pick voltage class (CEA planning bands) — then Save KML or Analyze live suitability.'}
+                </p>
+                <label className="mt-2 block text-[10px] font-bold uppercase text-[#0f172a]">
                   Line voltage
                   <select
                     value={manualVoltageKv ?? lineTowerPlan?.voltageKv ?? ''}
@@ -1202,7 +1129,12 @@ export default function TowerSuitabilityWorkspace() {
               </div>
             )}
 
-            {workspaceMode === 'planning' && !result && !analyzing && !pendingFocus && !earthIntro && (
+            {workspaceMode === 'planning' &&
+              !result &&
+              !analyzing &&
+              !pendingFocus &&
+              !kmlLocked &&
+              !earthIntro && (
               <div className="absolute bottom-[7.5rem] left-3 z-10 pointer-events-none ts-glass px-3 py-2 text-sm text-[#263238] max-w-sm">
                 {entryMode === 'live'
                   ? 'Live location set — draw a line or polygon, then Save KML or Analyze'
@@ -1212,33 +1144,7 @@ export default function TowerSuitabilityWorkspace() {
 
             {analysisReady && result && suggestions && (
               <>
-                <div className="absolute top-3 left-3 z-[1150] pointer-events-none flex flex-col gap-2 max-h-[calc(100%-1.5rem)] overflow-y-auto pb-16 md:pb-0">
-                  <div className="pointer-events-auto">
-                    <SiteScoreCard result={result} />
-                  </div>
-                  <div className="pointer-events-auto">
-                    <SmartSuggestionsCard
-                      suggestions={suggestions}
-                      onViewAll={() => setActivePanel('suggestions')}
-                    />
-                  </div>
-                  <div className="pointer-events-auto">
-                    <SoilReportCard
-                      soil={result.signals.soilScreening}
-                      siteLabel={soilReportLabel}
-                      reportOpts={soilReportOpts}
-                      onGenerate={onGenerateSoilReport}
-                    />
-                  </div>
-                  <div className="pointer-events-auto">
-                    <SaveSiteScoreCard onSave={onSaveSiteScore} />
-                  </div>
-                  <div className="pointer-events-auto">
-                    <DownloadReportCard onDownload={onDownloadReport} />
-                  </div>
-                </div>
-
-                <div className="hidden md:flex absolute top-1/2 right-3 z-[1160] -translate-y-1/2 pointer-events-none">
+                <div className="hidden md:flex absolute top-3 right-3 z-[1160] pointer-events-none">
                   <IntelligenceRail
                     active={activePanel}
                     onSelect={(id) => setActivePanel((cur) => (cur === id ? null : id))}
@@ -1248,6 +1154,23 @@ export default function TowerSuitabilityWorkspace() {
                 {activePanel && (
                   <div className="absolute z-[1170] pointer-events-none md:top-3 md:bottom-3 md:right-[5.6rem] max-md:left-2 max-md:right-2 max-md:bottom-[4.25rem]">
                     <IntelligenceDrawer title={drawerTitle} onClose={() => setActivePanel(null)}>
+                      {activePanel === 'score' && <SiteScoreCard result={result} expandable={false} />}
+                      {activePanel === 'soil' && (
+                        <SoilReportCard
+                          soil={result.signals.soilScreening}
+                          siteLabel={soilReportLabel}
+                          reportOpts={soilReportOpts}
+                          onGenerate={onGenerateSoilReport}
+                        />
+                      )}
+                      {activePanel === 'report' && <DownloadReportCard onDownload={onDownloadReport} />}
+                      {activePanel === 'suggestions' && (
+                        <SuggestionsDetailPanel
+                          suggestions={suggestions}
+                          corridorAdvice={corridorAdvice}
+                          onFocusMap={() => setFocusTick((n) => n + 1)}
+                        />
+                      )}
                       {activePanel === 'overview' && (
                         <OverviewPanel
                           result={result}
@@ -1283,14 +1206,6 @@ export default function TowerSuitabilityWorkspace() {
                         />
                       )}
                       {activePanel === 'breakdown' && <ScoreBreakdownPanel result={result} />}
-                      {activePanel === 'suggestions' && (
-                        <SuggestionsDetailPanel
-                          result={result}
-                          suggestions={suggestions}
-                          corridorAdvice={corridorAdvice}
-                          onFocusMap={() => setFocusTick((n) => n + 1)}
-                        />
-                      )}
                     </IntelligenceDrawer>
                   </div>
                 )}

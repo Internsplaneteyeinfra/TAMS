@@ -122,7 +122,7 @@ export default function PlacesMenu({
     variant === 'toolbar'
       ? `h-9 px-3 text-[11px] font-bold rounded-lg border transition flex items-center gap-1.5 shrink-0 ${open
         ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/20'
-        : 'bg-slate-950/60 border-slate-700 text-slate-200 hover:border-slate-500 hover:text-white'
+        : 'tams-az-float bg-slate-950/60 border-slate-700 text-slate-200 hover:border-slate-500 hover:text-white'
       }`
       : `px-2.5 py-1 text-xs rounded-md transition flex items-center gap-1 ${open ? 'bg-tams-primary text-white' : 'text-gray-300 hover:bg-gray-700'
       }`
@@ -131,13 +131,13 @@ export default function PlacesMenu({
     <div ref={ref} className="relative shrink-0">
       <button type="button" onClick={() => setOpen((v) => !v)} className={btnClass}>
         <MapPin className="w-3.5 h-3.5" />
-        <span className="max-w-[88px] truncate">{selectedLabel}</span>
+        <span className="max-w-[72px] sm:max-w-[88px] truncate">{selectedLabel}</span>
         <ChevronDown className={`w-3 h-3 transition ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
         <div
-          className="absolute top-full right-0 mt-2 z-[8000] flex flex-col rounded-xl border border-slate-600 bg-[#0a1020] shadow-2xl shadow-black/60 overflow-hidden"
+          className="tams-az-portal absolute top-full right-0 mt-2 z-[8000] flex flex-col rounded-xl border border-slate-600 bg-[#0a1020] shadow-2xl shadow-black/60 overflow-hidden"
           role="menu"
           aria-label="Select place"
         >

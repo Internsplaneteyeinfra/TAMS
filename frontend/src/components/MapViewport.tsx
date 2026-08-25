@@ -10,7 +10,7 @@ import MapTopChrome from '@/components/map/MapTopChrome'
 import { type HeatMapMode } from '@/components/map/HeatMapModeToggle'
 import MapOverlaysPanel from '@/components/map/MapOverlaysPanel'
 import MapControlRail, { type MapZoomHandlers } from '@/components/map/MapControlRail'
-import { mapOverlayRight } from '@/components/map/mapLayout'
+import { MAP_BOTTOM_INSET, MAP_DOCK_TOP, MAP_EDGE } from '@/components/map/mapLayout'
 import { type MapBasemap } from '@/components/map/MapViewModeBar'
 import TimeRangeSlider, { type TimeRange } from '@/components/map/TimeRangeSlider'
 import WeatherLayerBar, { type WeatherOverlay } from '@/components/map/WeatherLayerBar'
@@ -133,7 +133,7 @@ export default function MapViewport({
     DEFAULT_PLACE_ID === 'india' ? { ...EXPLORER_VOLTAGE_FILTERS } : { ...ALL_VOLTAGE_FILTERS }
   )
   const [labelsOn, setLabelsOn] = useState(true)
-  const [intelPanelCollapsed, setIntelPanelCollapsed] = useState(false)
+  const [intelPanelCollapsed, setIntelPanelCollapsed] = useState(true)
   const [controlRailCollapsed, setControlRailCollapsed] = useState(true)
   const placesHidRailRef = React.useRef(false)
   const handlePlacesOpenChange = React.useCallback((open: boolean) => {
@@ -176,6 +176,19 @@ export default function MapViewport({
       setVoltageFilters({ ...ALL_VOLTAGE_FILTERS })
       setSubstationVoltageFilters({ ...ALL_VOLTAGE_FILTERS })
     }
+  }, [selectedPlaceId])
+
+  useEffect(() => {
+    if (selectedPlaceId === 'india') return
+    setControlRailCollapsed(true)
+    setIntelPanelCollapsed(true)
+    setViewMode('3d')
+    setBasemapMode('3d')
+    const t = window.setTimeout(() => {
+      setViewMode('2d')
+      setBasemapMode('satellite')
+    }, 2600)
+    return () => window.clearTimeout(t)
   }, [selectedPlaceId])
 
   // Surface corridor location above search/chrome for 2s when a line is focused
@@ -374,7 +387,13 @@ export default function MapViewport({
       )}
 
       {earthIntroDone && (
-        <>
+      <div
+        className="pointer-events-none absolute z-[1100] flex flex-col items-start gap-2"
+        style={{ top: MAP_DOCK_TOP, left: MAP_EDGE, bottom: MAP_BOTTOM_INSET }}
+      >
+        <div
+          className={`pointer-events-auto flex min-h-0 flex-col ${intelPanelCollapsed ? 'shrink-0' : 'flex-1'}`}
+        >
           <MapIntelPanel
             stats={regionStats}
             typeFilters={typeFilters}
@@ -397,7 +416,8 @@ export default function MapViewport({
             onToggleCollapse={() => setIntelPanelCollapsed((v) => !v)}
             interactionMode={interactionMode}
           />
-
+        </div>
+        <div className="pointer-events-auto mt-auto shrink-0">
           <MapOverlaysPanel
             intelPanelCollapsed={intelPanelCollapsed}
             wildfireOn={showWildfireRisk}
@@ -405,35 +425,40 @@ export default function MapViewport({
             onToggleWildfire={() => setShowWildfireRisk((v) => !v)}
             onToggleFlood={() => setShowFloodRisk((v) => !v)}
           />
+        </div>
+      </div>
+      )}
 
-          <MapControlRail
-            mapZoom={viewMode === '2d' ? mapZoom : null}
-            layers={layers}
-            onToggle={toggleLayer}
-            onFullscreen={handleFullscreen}
-            basemapMode={basemapMode}
-            onBasemapMode={setBasemapMode}
-            collapsed={controlRailCollapsed}
-            onCollapsedChange={setControlRailCollapsed}
-            rightPanelOpen={rightPanelOpen}
-            onLocate={() => {
-              if (typeof navigator !== 'undefined' && navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(() => { })
-              }
-            }}
-          />
-
+      {earthIntroDone && (
+      <div
+        className="pointer-events-none absolute z-[1100] flex flex-col items-end gap-2"
+        style={{ top: MAP_DOCK_TOP, right: MAP_EDGE, bottom: MAP_BOTTOM_INSET }}
+      >
+        {!controlRailCollapsed && (
+          <div className="pointer-events-auto min-h-0 flex-1">
+            <MapControlRail
+              mapZoom={viewMode === '2d' ? mapZoom : null}
+              layers={layers}
+              onToggle={toggleLayer}
+              onFullscreen={handleFullscreen}
+              basemapMode={basemapMode}
+              onBasemapMode={setBasemapMode}
+              collapsed={controlRailCollapsed}
+              onCollapsedChange={setControlRailCollapsed}
+              rightPanelOpen={rightPanelOpen}
+              onLocate={() => {
+                if (typeof navigator !== 'undefined' && navigator.geolocation) {
+                  navigator.geolocation.getCurrentPosition(() => { })
+                }
+              }}
+            />
+          </div>
+        )}
+        <div className="pointer-events-auto mt-auto flex shrink-0 flex-col items-end gap-2">
           {layers.weather && (
-            <div
-              className="absolute bottom-20 z-[1150]"
-              style={{ right: mapOverlayRight(controlRailCollapsed) }}
-            >
-              <WeatherLayerBar active={weatherLayers} onToggle={toggleWeather} />
-            </div>
+            <WeatherLayerBar active={weatherLayers} onToggle={toggleWeather} />
           )}
-
           <AIAssistantFab
-            rightOffset={mapOverlayRight(controlRailCollapsed)}
             onPrompt={(text) => {
               if (text.toLowerCase().includes('maharashtra')) onSelectPlace('maharashtra')
               if (text.toLowerCase().includes('critical')) {
@@ -444,7 +469,8 @@ export default function MapViewport({
               }
             }}
           />
-        </>
+        </div>
+      </div>
       )}
 
       <div

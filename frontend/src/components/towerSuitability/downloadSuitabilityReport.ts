@@ -140,7 +140,6 @@ export function buildSuitabilityReportHtml(input: ReportDownloadInput): string {
         <tr>
           <td>
             <div class="factor-name">${emoji} ${esc(f.label)}</div>
-            <div class="factor-src">${esc(f.source)}</div>
           </td>
           <td class="mono right">${esc(f.rawLabel)}</td>
           <td class="right score-${scoreClass(f.score)}"><strong>${f.score.toFixed(1)}</strong></td>
@@ -466,11 +465,9 @@ export function buildSuitabilityReportHtml(input: ReportDownloadInput): string {
         <div class="card">
           <p class="label">🎯 Confidence</p>
           <p class="value">~${result.confidencePct}%</p>
-          <p class="hint">Open-data screening</p>
+          <p class="hint">Screening score</p>
         </div>
       </div>
-
-      <div class="disclaimer">⚠️ <strong>Disclaimer:</strong> ${esc(result.disclaimer)}</div>
 
       <h2 class="section-title">🧮 Score calculation</h2>
       <table>

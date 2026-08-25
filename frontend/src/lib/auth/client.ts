@@ -6,12 +6,17 @@ export async function loginRequest(username: string, password: string): Promise<
     body: JSON.stringify({ username, password }),
   })
   if (res.ok) return { ok: true }
-  let message = 'Invalid username or password'
+  let message =
+    res.status === 401
+      ? 'Invalid username or password'
+      : res.status >= 500
+        ? 'Sign-in service unavailable. Please try again.'
+        : 'Unable to sign in. Please try again.'
   try {
     const data = (await res.json()) as { error?: string }
     if (data?.error) message = data.error
   } catch {
-    /* ignore */
+    /* ignore non-JSON error bodies */
   }
   return { ok: false, error: message }
 }

@@ -13,6 +13,8 @@ import AssignmentIcon from '@mui/icons-material/Assignment'
 import AnalyticsIcon from '@mui/icons-material/Analytics'
 import SatelliteAltIcon from '@mui/icons-material/SatelliteAlt'
 import TerrainIcon from '@mui/icons-material/Terrain'
+import DarkModeIcon from '@mui/icons-material/DarkMode'
+import LightModeIcon from '@mui/icons-material/LightMode'
 import {
   AppBar,
   Badge,
@@ -29,6 +31,7 @@ import {
 } from '@/components/mui'
 import MuiProvider from '@/components/layout/MuiProvider'
 import { MODULE_NAV_ITEMS } from '@/config/moduleNav'
+import { useTamsAppearance } from '@/theme/useTamsAppearance'
 
 const DRAWER_WIDTH = 260
 
@@ -53,10 +56,15 @@ const NAV_ITEMS = MODULE_NAV_ITEMS.map((item) => ({
 // Annotated up front: react-three-fiber's global JSX augmentation makes MUI's
 // inferred `sx` union too large for the compiler to represent.
 const rootSx: SxProps<Theme> = { display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }
-const appBarSx: SxProps<Theme> = { zIndex: (t: Theme) => t.zIndex.drawer + 1, bgcolor: 'primary.dark' }
+const appBarSx: SxProps<Theme> = { zIndex: (t: Theme) => t.zIndex.drawer + 1 }
 const menuButtonSx: SxProps<Theme> = { mr: 2 }
-const titleSx: SxProps<Theme> = { flexGrow: 1, fontWeight: 700 }
-const chipSx: SxProps<Theme> = { mr: 2, bgcolor: 'rgba(255,255,255,0.15)', color: '#fff' }
+const titleSx: SxProps<Theme> = { flexGrow: 1, fontWeight: 800, fontSize: 16, letterSpacing: 0.2 }
+const chipSx: SxProps<Theme> = {
+  mr: 2,
+  bgcolor: 'action.selected',
+  color: 'text.primary',
+  fontWeight: 700,
+}
 const listSx: SxProps<Theme> = { pt: 1 }
 const listIconSx: SxProps<Theme> = { minWidth: 40 }
 
@@ -69,6 +77,7 @@ interface AppLayoutProps {
 export default function AppLayout({ children, title, alarmCount = 0 }: AppLayoutProps) {
   const [open, setOpen] = useState(true)
   const router = useRouter()
+  const { appearance, setTheme } = useTamsAppearance()
 
   const drawerSx: SxProps<Theme> = {
     width: open ? DRAWER_WIDTH : 0,
@@ -100,6 +109,14 @@ export default function AppLayout({ children, title, alarmCount = 0 }: AppLayout
             TAMS — Transmission Asset Monitoring
           </Typography>
           {title && <Chip label={title} size="small" sx={chipSx} />}
+          <IconButton
+            color="inherit"
+            onClick={() => setTheme(appearance === 'light' ? 'dark' : 'light')}
+            aria-label={appearance === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+            sx={{ mr: 0.5 }}
+          >
+            {appearance === 'light' ? <DarkModeIcon /> : <LightModeIcon />}
+          </IconButton>
           <Link href="/alarms" style={{ color: 'inherit', display: 'flex' }}>
             <Badge badgeContent={alarmCount} color="error">
               <NotificationsActiveIcon />

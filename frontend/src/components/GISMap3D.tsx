@@ -207,6 +207,19 @@ export default function GISMap3D({
   const [colorMode, setColorMode] = useState<'health' | 'load'>('load')
   const initialFocusRef = useRef(false)
 
+  useEffect(() => {
+    const viewer = viewerRef.current
+    const Cesium = cesiumRef.current
+    if (!viewer || !Cesium || mapStatus !== 'ready' || !selectedPlaceId) return
+    const place = getPlaceById(selectedPlaceId)
+    const bounds = place?.bounds ?? INDIA_MAP_BOUNDS
+    const [[south, west], [north, east]] = bounds
+    viewer.camera.flyTo({
+      destination: Cesium.Rectangle.fromDegrees(west, south, east, north),
+      duration: selectedPlaceId === 'india' ? 1.4 : 2.2,
+    })
+  }, [selectedPlaceId, mapStatus])
+
   const passedTowerIds = useMemo(
     () => new Set(assets.filter((a) => a.asset_type === 'tower').map((a) => a.id)),
     [assets]
@@ -438,6 +451,7 @@ export default function GISMap3D({
     const viewer = viewerRef.current
     const Cesium = cesiumRef.current
     if (!viewer || !Cesium || mapStatus !== 'ready') return
+    if (selectedPlaceId && selectedPlaceId !== 'india') return
     if (initialFocusRef.current) return
 
     const all = displayAssets.filter((a) => a.asset_type === 'tower')
@@ -465,7 +479,7 @@ export default function GISMap3D({
       // Oblique pitch so tower height is obvious (not top-down flat bases)
       offset: new Cesium.HeadingPitchRange(0.7, Cesium.Math.toRadians(-42), range),
     })
-  }, [displayAssets, mapStatus])
+  }, [displayAssets, mapStatus, selectedPlaceId])
 
 
   useEffect(() => {

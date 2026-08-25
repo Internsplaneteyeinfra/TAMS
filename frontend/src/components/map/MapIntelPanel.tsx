@@ -1,13 +1,7 @@
 import React, { useState } from 'react'
 import { AlertTriangle, Check, ChevronRight, Radio } from 'lucide-react'
 
-import {
-  MAP_BOTTOM_INSET,
-  MAP_EDGE,
-  MAP_INTEL_COLLAPSED_WIDTH,
-  MAP_INTEL_TOP,
-  MAP_INTEL_WIDTH,
-} from '@/components/map/mapLayout'
+import { MAP_INTEL_COLLAPSED_WIDTH, MAP_INTEL_WIDTH } from '@/components/map/mapLayout'
 import PanelMinimizeButton from '@/components/ui/PanelMinimizeButton'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
 import type { HeatMapMode } from '@/components/map/HeatMapModeToggle'
@@ -113,16 +107,16 @@ export default function MapIntelPanel({
   if (collapsed) {
     return (
       <aside
-        className="absolute z-[1100] flex flex-col items-center gap-1.5 rounded-xl border border-slate-700/90 bg-[#0a1020]/95 shadow-lg overflow-hidden select-none py-2 px-1 backdrop-blur-sm"
-        style={{ top: MAP_INTEL_TOP, left: MAP_EDGE, width: MAP_INTEL_COLLAPSED_WIDTH }}
-        aria-label="Region summary (collapsed)"
+        className="tams-az-float flex flex-col items-center gap-1.5 rounded-xl border border-slate-700/90 bg-[#0a1020]/95 shadow-lg overflow-hidden select-none py-2 px-1 backdrop-blur-sm"
+        style={{ width: MAP_INTEL_COLLAPSED_WIDTH }}
+        aria-label="Open region panel"
       >
-        <PanelMinimizeButton minimized onClick={() => onToggleCollapse?.()} title="Expand region summary" />
+        <PanelMinimizeButton minimized onClick={() => onToggleCollapse?.()} title="Open region panel" />
         <button
           type="button"
           onClick={() => onToggleCollapse?.()}
-          className="text-[7px] font-bold text-slate-500 uppercase tracking-widest [writing-mode:vertical-rl] rotate-180 hover:text-white transition px-0.5"
-          title="Expand region summary"
+          className="text-[7px] font-bold text-slate-300 uppercase tracking-widest [writing-mode:vertical-rl] rotate-180 hover:text-white transition px-0.5"
+          title="Open region panel"
         >
           Region
         </button>
@@ -131,15 +125,12 @@ export default function MapIntelPanel({
   }
 
   const panelStyle = {
-    top: MAP_INTEL_TOP,
-    left: MAP_EDGE,
-    bottom: MAP_BOTTOM_INSET,
     width: MAP_INTEL_WIDTH,
   }
 
   return (
     <aside
-      className="absolute z-[1100] flex flex-col rounded-xl border border-slate-700/90 bg-[#0a1020]/95 shadow-xl overflow-hidden select-none backdrop-blur-sm"
+      className="tams-az-float flex min-h-0 flex-1 flex-col rounded-xl border border-slate-700/90 bg-[#0a1020]/95 shadow-xl overflow-hidden select-none backdrop-blur-sm"
       style={panelStyle}
       aria-label="Region summary"
     >

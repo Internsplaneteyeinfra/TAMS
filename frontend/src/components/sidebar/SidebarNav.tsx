@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
-import { SIDEBAR_NAV_ITEMS } from '@/config/sidebarNav'
+import { ANALYZER_SIDEBAR_NAV_ITEMS, SIDEBAR_NAV_ITEMS } from '@/config/sidebarNav'
 
 interface SidebarNavProps {
   collapsed?: boolean
@@ -12,9 +12,10 @@ interface SidebarNavProps {
 
 export default function SidebarNav({ collapsed = false, onAssetTypeFilter }: SidebarNavProps) {
   const router = useRouter()
+  const navItems = router.pathname === '/analyzer' ? ANALYZER_SIDEBAR_NAV_ITEMS : SIDEBAR_NAV_ITEMS
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     operations: true,
-    assets: false,
+    assets: true,
   })
 
   const toggleGroup = (id: string) => {
@@ -34,7 +35,7 @@ export default function SidebarNav({ collapsed = false, onAssetTypeFilter }: Sid
   if (collapsed) {
     return (
       <nav className="flex flex-col items-center gap-1 py-2 border-b border-slate-800" aria-label="Sidebar navigation">
-        {SIDEBAR_NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const Icon = item.icon
           const href = item.href ?? item.children?.[0]?.href ?? '/'
           const isActive = router.pathname === href
@@ -60,7 +61,7 @@ export default function SidebarNav({ collapsed = false, onAssetTypeFilter }: Sid
     <nav className="border-b border-slate-800/80 bg-[#070b14]" aria-label="Sidebar navigation">
       <p className="px-3 pt-2 pb-1 text-[8px] font-semibold text-slate-600 uppercase tracking-[0.12em]">Navigation</p>
       <ul className="px-1.5 pb-2 space-y-px">
-        {SIDEBAR_NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const Icon = item.icon
           const hasChildren = Boolean(item.children?.length)
           const isExpanded = expandedGroups[item.id]

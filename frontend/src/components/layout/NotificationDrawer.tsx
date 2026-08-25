@@ -47,7 +47,7 @@ export default function NotificationDrawer({
       />
 
       <aside
-        className={`fixed top-0 right-0 h-full w-full max-w-md z-[4001] bg-[#0a1020]/95 backdrop-blur-xl border-l border-slate-700 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'
+        className={`fixed top-0 right-0 h-full w-full max-w-md z-[4001] tams-az-portal bg-[#0a1020]/95 backdrop-blur-xl border-l border-slate-700 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'
           }`}
         aria-hidden={!isOpen}
         aria-label="Notification drawer"
