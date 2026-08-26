@@ -21,7 +21,6 @@ import { fetchGisTowers } from '@/lib/api'
 import {
   collectSiteSignals,
   inferOsmLineVoltageKv,
-  parseKmlDocument,
   resolveCityStateLabel,
   type KmlFeature,
 } from './fetchSiteSignals'
@@ -29,6 +28,7 @@ import { downloadSuitabilityReport } from './downloadSuitabilityReport'
 import type { SoilReportOpts } from './downloadSoilScreeningReport'
 import { fetchSoilScreening } from './soilScreening'
 import { downloadKmlFile } from './kmlExport'
+import { assetMatchesNeighborKv, parseKmlOrKmzFile } from './readKmlOrKmz'
 import {
   estimateTowerBand,
   planTowersFromKml,
@@ -461,7 +461,7 @@ export default function TowerSuitabilityWorkspace() {
       }
       setPhase('work')
       setDrawMode('pin')
-      setSiteLabel('Upload a KML to analyze')
+      setSiteLabel('Upload a KML or KMZ to analyze')
       earthIntroRef.current = true
       setEarthIntro(true)
       setEarthFlyTo(null)
@@ -473,28 +473,34 @@ export default function TowerSuitabilityWorkspace() {
   )
 
   const onKml = async (file: File) => {
+    const lower = file.name.toLowerCase()
+    if (!lower.endsWith('.kml') && !lower.endsWith('.kmz')) {
+      setError('Upload a .kml or .kmz file.')
+      return
+    }
     if (file.size > KML_HARD_MAX_BYTES) {
-      setError(`KML is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Max size is ${KML_MAX_SIZE_LABEL_MB} MB.`)
+      setError(
+        `File is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Max size is ${KML_MAX_SIZE_LABEL_MB} MB.`
+      )
       return
     }
     setError(null)
     const flyThenAnalyze = earthIntroRef.current
     if (!flyThenAnalyze) {
       setAnalyzing(true)
-      setProgress({ message: 'Reading KML…', percent: 4 })
+      setProgress({ message: lower.endsWith('.kmz') ? 'Reading KMZ…' : 'Reading KML…', percent: 4 })
     }
     try {
-      const text = await file.text()
-      if (!flyThenAnalyze) setProgress({ message: 'Parsing KML outlines…', percent: 7 })
-      const parsed = parseKmlDocument(text)
+      if (!flyThenAnalyze) setProgress({ message: 'Parsing corridor outlines…', percent: 7 })
+      const parsed = await parseKmlOrKmzFile(file)
       if (!parsed) {
         if (!flyThenAnalyze) setAnalyzing(false)
-        setError('Could not read KML geometry. Use Point, LineString, or Polygon placemarks.')
+        setError('Could not read KML/KMZ geometry. Use Point, LineString, or Polygon placemarks.')
         return
       }
       setKmlFeatures(parsed.features)
       setKmlLocked(false)
-      const label = file.name.replace(/\.kml$/i, '')
+      const label = file.name.replace(/\.(kml|kmz)$/i, '')
       setKmlFileName(label)
       setPendingFocus(null)
       setLat(parsed.focus.lat)
@@ -513,7 +519,7 @@ export default function TowerSuitabilityWorkspace() {
       await runAnalyze(parsed.focus.lat, parsed.focus.lon, label)
     } catch (e) {
       setAnalyzing(false)
-      setError(e instanceof Error ? e.message : 'Could not read this KML file.')
+      setError(e instanceof Error ? e.message : 'Could not read this KML/KMZ file.')
     }
   }
 
@@ -549,7 +555,10 @@ export default function TowerSuitabilityWorkspace() {
       kmlFeatures.find((f) => f.type === 'LineString' && f.latlngs.length >= 2) ||
       kmlFeatures.find((f) => f.type === 'Polygon' && f.latlngs.length >= 3)
     const corridorPath = pathFeat?.latlngs ?? lineTowerPlan.towers.map((t) => [t.lat, t.lon] as [number, number])
-    const existing = result?.signals.nearbyPower?.assets ?? []
+    const filterKv = manualVoltageKv ?? lineTowerPlan.voltageKv
+    const existing = (result?.signals.nearbyPower?.assets ?? []).filter((a) =>
+      assetMatchesNeighborKv(a, filterKv)
+    )
     return analyzeCorridorPlacement({
       plannedTowers: lineTowerPlan.towers,
       corridorPath,
@@ -559,10 +568,20 @@ export default function TowerSuitabilityWorkspace() {
       voltageKv: lineTowerPlan.voltageKv,
       searchRadiusKm,
     })
-  }, [lineTowerPlan, kmlFeatures, result?.signals.nearbyPower?.assets, voltageStandard, searchRadiusKm])
+  }, [
+    lineTowerPlan,
+    kmlFeatures,
+    result?.signals.nearbyPower?.assets,
+    voltageStandard,
+    searchRadiusKm,
+    manualVoltageKv,
+  ])
 
   const mapNearbyAssets = useMemo(() => {
-    const base = result?.signals.nearbyPower?.assets ?? []
+    const filterKv = manualVoltageKv ?? lineTowerPlan?.voltageKv ?? null
+    const base = (result?.signals.nearbyPower?.assets ?? []).filter((a) =>
+      assetMatchesNeighborKv(a, filterKv)
+    )
     const byId = new Map(base.map((a) => [a.id, a]))
     const hints = [
       corridorAdvice?.nearestTower,
@@ -573,6 +592,7 @@ export default function TowerSuitabilityWorkspace() {
     ]
     for (const hint of hints) {
       if (!hint) continue
+      if (!assetMatchesNeighborKv(hint, filterKv)) continue
       if (byId.has(hint.id)) continue
       byId.set(hint.id, {
         id: hint.id,
@@ -592,6 +612,8 @@ export default function TowerSuitabilityWorkspace() {
     corridorAdvice?.nearestTower,
     corridorAdvice?.nearestStation,
     corridorAdvice?.powerConnect,
+    manualVoltageKv,
+    lineTowerPlan?.voltageKv,
   ])
 
   useEffect(() => {
@@ -774,7 +796,7 @@ export default function TowerSuitabilityWorkspace() {
             entryMode === 'live'
               ? 'Keeps rotating until GPS lock — or press Go to lat/lon'
               : entryMode === 'upload'
-                ? 'Keeps rotating until your KML is read, then flies to the corridor'
+                ? 'Keeps rotating until your KML/KMZ is read, then flies to the corridor'
                 : 'Keeps rotating until you press Go to lat/lon'
           }
           onComplete={() => {
@@ -859,7 +881,7 @@ export default function TowerSuitabilityWorkspace() {
               <input
                 ref={fileRef}
                 type="file"
-                accept=".kml,application/vnd.google-earth.kml+xml,text/xml"
+                accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,application/zip,text/xml"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0]
@@ -959,18 +981,46 @@ export default function TowerSuitabilityWorkspace() {
               <div className="absolute bottom-6 left-1/2 z-[5000] w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 pointer-events-auto">
                 <div className="ts-glass ts-glass-see p-3 text-center">
                   <p className="text-[10px] font-black uppercase tracking-wider text-[#263238]">
-                    Upload KML
+                    Upload KML / KMZ
                   </p>
                   <p className="mt-1 text-xs text-[#263238] leading-snug">
-                    Pick a KML. The globe flies to that corridor, then analysis starts.
+                    Pick neighbor voltage, then upload. Only matching nearby towers stay on the map with suitability.
                   </p>
+                  <label className="mt-2 block text-left text-[10px] font-bold uppercase tracking-wider text-[#0f172a]">
+                    Neighbor towers kV
+                    <select
+                      value={manualVoltageKv ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value ? Number(e.target.value) : null
+                        setManualVoltageKv(v)
+                      }}
+                      className="mt-1 w-full h-9 rounded-lg border border-[rgba(51,65,85,0.16)] bg-white/80 px-2 text-xs font-bold text-[#263238]"
+                    >
+                      <option value="">Select kV class…</option>
+                      {VOLTAGE_OPTIONS_KV.map((kv) => {
+                        const std = standardForVoltageKv(kv)
+                        return (
+                          <option key={kv} value={kv}>
+                            {kv} kV · ruling {std?.rulingSpanM ?? spanForVoltageKv(kv)} m
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </label>
                   <button
                     type="button"
-                    onClick={() => fileRef.current?.click()}
+                    onClick={() => {
+                      if (manualVoltageKv == null) {
+                        setError('Select neighbor towers kV before uploading.')
+                        return
+                      }
+                      setError(null)
+                      fileRef.current?.click()
+                    }}
                     className="mt-2 inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-lg bg-[#17879a] text-xs font-bold text-white hover:bg-[#126b79]"
                   >
                     <Upload className="w-3.5 h-3.5" />
-                    Choose KML file
+                    Choose KML / KMZ file
                   </button>
                 </div>
               </div>

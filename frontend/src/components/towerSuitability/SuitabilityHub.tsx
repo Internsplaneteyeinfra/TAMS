@@ -343,13 +343,13 @@ export default function SuitabilityHub({
               Upload and get analysis
             </h2>
             <p className={`mt-2 text-sm leading-relaxed ${dark ? 'text-slate-400' : 'text-[#526579]'}`}>
-              Upload an existing KML and get the full suitability score, towers, voltage, and report.
+              Upload an existing KML or KMZ and get the full suitability score, towers, voltage, and report.
             </p>
             <p
               className={`mt-4 text-[11px] font-bold uppercase tracking-wider ${dark ? 'text-amber-300' : 'text-[#D97706]'
                 }`}
             >
-              KML · instant screening
+              KML / KMZ · instant screening
             </p>
           </button>
         </div>

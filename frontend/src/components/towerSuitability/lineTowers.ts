@@ -118,6 +118,7 @@ export function spanForVoltageKv(voltageKv: number | null, policy: SpanPolicy = 
 }
 
 export function parseVoltageFromText(...parts: Array<string | undefined | null>): number | null {
+  // Join in chunks — never spread huge KML feature lists as call args (stack overflow).
   const blob = parts.filter(Boolean).join(' ')
   if (!blob.trim()) return null
   const kvWord = blob.match(/(\d+(?:\.\d+)?)\s*k\s*v\b/i)
@@ -377,15 +378,16 @@ export function planTowersFromKml(
   const selected = ranked[0] ? [ranked[0]] : []
   if (!selected.length) return null
 
-  const kmlVoltage = parseVoltageFromText(
-    options?.extraText,
-    ...selected.map((row) => row.feature.name),
-    ...selected.map((row) => row.feature.description),
-    ...selected.map((row) => row.feature.extendedText),
-    ...features.map((f) => f.name),
-    ...features.map((f) => f.description),
-    ...features.map((f) => f.extendedText)
-  )
+  const voltageParts: Array<string | undefined | null> = [options?.extraText]
+  for (const row of selected) {
+    voltageParts.push(row.feature.name, row.feature.description, row.feature.extendedText)
+  }
+  // Cap feature scan — large KMZ/KML can have thousands of placemarks.
+  const sample = features.length > 40 ? features.slice(0, 40) : features
+  for (const f of sample) {
+    voltageParts.push(f.name, f.description, f.extendedText)
+  }
+  const kmlVoltage = parseVoltageFromText(...voltageParts)
   const manual = options?.voltageSource === 'manual' && options.voltageKv != null
   const voltageKv = manual ? options!.voltageKv! : kmlVoltage ?? options?.voltageKv ?? null
   const spanM = options?.spanM ?? spanForVoltageKv(voltageKv, options?.spanPolicy ?? 'ruling')
