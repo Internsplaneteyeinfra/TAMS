@@ -38,6 +38,16 @@ env/
 .env
 .env.local
 .env.*.local
+backend/.env
+frontend/.env
+
+# Cursor / IDE local
+.cursor/
+*.code-workspace
+
+# OS
+Thumbs.db
+Desktop.ini
 
 # Node
 node_modules/

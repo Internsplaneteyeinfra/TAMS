@@ -12,7 +12,8 @@ async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
   if (typeof DecompressionStream === 'undefined') {
     throw new Error('This browser cannot unpack KMZ. Use a .kml file instead.')
   }
-  const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+  const copy = data.slice()
+  const stream = new Blob([copy]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
   const buf = await new Response(stream).arrayBuffer()
   return new Uint8Array(buf)
 }
