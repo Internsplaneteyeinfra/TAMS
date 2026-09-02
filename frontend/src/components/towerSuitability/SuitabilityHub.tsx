@@ -125,7 +125,7 @@ export default function SuitabilityHub({
 
   return (
     <div
-      className={`ts-suit-hub fixed inset-0 z-[210] flex flex-col overflow-hidden ${dark ? 'bg-[#060B17] text-slate-100' : 'bg-[#F3F7FA] text-[#0B1726]'
+      className={`ts-suit-hub fixed inset-0 z-[210] flex flex-col overflow-hidden ${dark ? 'bg-[#060B17] text-slate-100' : 'bg-transparent text-[#0B1726]'
         }`}
       data-ts-theme={appearance}
     >
@@ -145,7 +145,7 @@ export default function SuitabilityHub({
       )}
 
       <div
-        className={`pointer-events-none absolute inset-0 transition-opacity duration-1000 ${revealed ? (dark ? 'bg-[#060B17] opacity-35' : 'bg-[#F3F7FA] opacity-25') : 'opacity-0'
+        className={`pointer-events-none absolute inset-0 transition-opacity duration-1000 ${revealed ? (dark ? 'bg-[#060B17] opacity-20' : 'bg-[#F3F7FA] opacity-10') : 'opacity-0'
           }`}
       />
       <div
@@ -267,13 +267,13 @@ export default function SuitabilityHub({
             type="button"
             onClick={() => onChoose('draw')}
             style={cardDelay(0)}
-            className={`ts-hub-card group rounded-2xl border px-5 py-6 text-left backdrop-blur-md hover:-translate-y-0.5 md:py-8 ${cardClass()} ${dark
-                ? 'border-cyan-500/30 bg-slate-950/75 hover:border-cyan-400/55'
-                : 'border-[#8BC9D7] bg-white/90 hover:border-[#0891B2]'
+            className={`ts-hub-card group relative overflow-hidden rounded-2xl border px-5 py-6 text-left backdrop-blur-xl backdrop-saturate-150 hover:-translate-y-0.5 md:py-8 ${cardClass()} ${dark
+                ? 'border-cyan-500/40 bg-slate-950/25 hover:border-cyan-400/55 hover:bg-slate-950/35'
+                : 'border-[#8BC9D7]/70 bg-white/20 hover:border-[#0891B2] hover:bg-white/28'
               }`}
           >
             <span
-              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border ${dark ? 'border-cyan-500/35 bg-cyan-500/10' : 'border-[#8BC9D7] bg-[#E2F5F8]'
+              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border backdrop-blur-sm ${dark ? 'border-cyan-500/40 bg-cyan-500/15' : 'border-[#8BC9D7]/60 bg-white/30'
                 }`}
             >
               <Map className={`h-6 w-6 ${dark ? 'text-cyan-300' : 'text-[#0891B2]'}`} />
@@ -298,13 +298,13 @@ export default function SuitabilityHub({
             type="button"
             onClick={() => onChoose('live')}
             style={cardDelay(1)}
-            className={`ts-hub-card group rounded-2xl border px-5 py-6 text-left backdrop-blur-md hover:-translate-y-0.5 md:py-8 ${cardClass()} ${dark
-                ? 'border-emerald-500/30 bg-slate-950/75 hover:border-emerald-400/55'
-                : 'border-[#91D4C1] bg-white/90 hover:border-[#059669]'
+            className={`ts-hub-card group relative overflow-hidden rounded-2xl border px-5 py-6 text-left backdrop-blur-xl backdrop-saturate-150 hover:-translate-y-0.5 md:py-8 ${cardClass()} ${dark
+                ? 'border-emerald-500/40 bg-slate-950/25 hover:border-emerald-400/55 hover:bg-slate-950/35'
+                : 'border-[#91D4C1]/70 bg-white/20 hover:border-[#059669] hover:bg-white/28'
               }`}
           >
             <span
-              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border ${dark ? 'border-emerald-500/35 bg-emerald-500/10' : 'border-[#91D4C1] bg-[#E3F7F0]'
+              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border backdrop-blur-sm ${dark ? 'border-emerald-500/40 bg-emerald-500/15' : 'border-[#91D4C1]/60 bg-white/30'
                 }`}
             >
               <Navigation className={`h-6 w-6 ${dark ? 'text-emerald-300' : 'text-[#059669]'}`} />
@@ -328,13 +328,13 @@ export default function SuitabilityHub({
             type="button"
             onClick={() => onChoose('upload')}
             style={cardDelay(2)}
-            className={`ts-hub-card group rounded-2xl border px-5 py-6 text-left backdrop-blur-md hover:-translate-y-0.5 md:py-8 ${cardClass()} ${dark
-                ? 'border-amber-500/30 bg-slate-950/75 hover:border-amber-400/55'
-                : 'border-[#E7C77B] bg-[#FFFAF1]/95 hover:border-[#D97706]'
+            className={`ts-hub-card group relative overflow-hidden rounded-2xl border px-5 py-6 text-left backdrop-blur-xl backdrop-saturate-150 hover:-translate-y-0.5 md:py-8 ${cardClass()} ${dark
+                ? 'border-amber-500/40 bg-slate-950/25 hover:border-amber-400/55 hover:bg-slate-950/35'
+                : 'border-[#E7C77B]/70 bg-[#FFFAF1]/20 hover:border-[#D97706] hover:bg-[#FFFAF1]/28'
               }`}
           >
             <span
-              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border ${dark ? 'border-amber-500/35 bg-amber-500/10' : 'border-[#E7C77B] bg-[#FFF3D9]'
+              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border backdrop-blur-sm ${dark ? 'border-amber-500/40 bg-amber-500/15' : 'border-[#E7C77B]/60 bg-white/30'
                 }`}
             >
               <Upload className={`h-6 w-6 ${dark ? 'text-amber-300' : 'text-[#D97706]'}`} />
@@ -402,17 +402,17 @@ export default function SuitabilityHub({
           100% {
             background-image: linear-gradient(
               135deg,
-              rgba(255, 255, 255, 0.55) 0%,
-              rgba(232, 242, 248, 0.2) 42%,
-              rgba(255, 236, 210, 0.12) 100%
+              rgba(255, 255, 255, 0.22) 0%,
+              rgba(232, 242, 248, 0.08) 42%,
+              rgba(255, 236, 210, 0.05) 100%
             );
           }
           50% {
             background-image: linear-gradient(
               135deg,
-              rgba(255, 255, 255, 0.35) 0%,
-              rgba(255, 228, 196, 0.22) 48%,
-              rgba(255, 200, 150, 0.16) 100%
+              rgba(255, 255, 255, 0.14) 0%,
+              rgba(255, 228, 196, 0.1) 48%,
+              rgba(255, 200, 150, 0.08) 100%
             );
           }
         }
@@ -420,6 +420,8 @@ export default function SuitabilityHub({
           animation: ts-hub-card-drift 7.5s ease-in-out infinite;
           position: relative;
           overflow: hidden;
+          -webkit-backdrop-filter: blur(20px) saturate(1.4);
+          backdrop-filter: blur(20px) saturate(1.4);
         }
         .ts-suit-hub[data-ts-theme='light'] .ts-hub-card::before {
           content: '';
@@ -427,12 +429,14 @@ export default function SuitabilityHub({
           position: absolute;
           inset: 0;
           border-radius: inherit;
-          opacity: 0.55;
+          opacity: 0.35;
           animation: ts-hub-card-sky 9s ease-in-out infinite;
           mix-blend-mode: soft-light;
         }
         .ts-suit-hub[data-ts-theme='dark'] .ts-hub-card {
-          box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+          box-shadow: 0 16px 36px rgba(0, 0, 0, 0.25);
+          -webkit-backdrop-filter: blur(20px) saturate(1.3);
+          backdrop-filter: blur(20px) saturate(1.3);
         }
       `}</style>
     </div>

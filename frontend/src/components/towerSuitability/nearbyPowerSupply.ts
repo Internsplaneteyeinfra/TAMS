@@ -4,7 +4,8 @@
  */
 
 import { fetchGisProximity, fetchGisTowers, type Asset } from '@/lib/api'
-import { spanForVoltageKv } from './lineTowers'
+import { parseVoltageFromText, spanForVoltageKv } from './lineTowers'
+import { closestPointOnCorridor } from './towerGridLinks'
 
 const haversineKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const R = 6371
@@ -126,7 +127,40 @@ function assetVoltageKv(asset: Asset & { distance_km?: number; metadata?: Record
   )
   if (fromMeta != null) return fromMeta
   const cls = String(meta.substation_class ?? '')
-  return normalizeVoltageToKv(cls)
+  const fromClass = normalizeVoltageToKv(cls)
+  if (fromClass != null) return fromClass
+  return parseVoltageFromText(asset.name, asset.description, String(meta.name ?? ''))
+}
+
+/** Fill missing kV from asset names and nearest tagged power line (OSM/TAMS). */
+export function enrichPowerAssetVoltages(assets: NearbyPowerAsset[]): void {
+  for (const a of assets) {
+    if (a.voltageKv != null) continue
+    const fromName = parseVoltageFromText(a.name, a.role, a.operator)
+    if (fromName != null) {
+      a.voltageKv = fromName
+      a.voltagesKv = [fromName]
+    }
+  }
+
+  const lines = assets.filter((a) => a.kind === 'line' && a.voltageKv != null)
+  for (const a of assets) {
+    if (a.voltageKv != null || (a.kind !== 'tower' && a.kind !== 'pole')) continue
+    let bestD = Number.POSITIVE_INFINITY
+    let bestKv: number | null = null
+    for (const line of lines) {
+      const d = haversineKm(a.lat, a.lon, line.lat, line.lon)
+      if (d < bestD && d <= 0.85) {
+        bestD = d
+        bestKv = line.voltageKv
+      }
+    }
+    if (bestKv != null) {
+      a.voltageKv = bestKv
+      a.voltagesKv = [bestKv]
+      a.voltageInferred = true
+    }
+  }
 }
 
 export type NearbyPowerKind = 'substation' | 'plant' | 'tower' | 'line' | 'pole'
@@ -274,6 +308,58 @@ function sampleCorridorPoints(
   return out
 }
 
+/** Bounding box of corridor expanded by buffer km (for TAMS/OSM wide search). */
+function corridorBBox(
+  corridor: Array<{ lat: number; lon: number }>,
+  bufferKm: number
+): { south: number; west: number; north: number; east: number } {
+  let south = Infinity
+  let north = -Infinity
+  let west = Infinity
+  let east = -Infinity
+  for (const p of corridor) {
+    south = Math.min(south, p.lat)
+    north = Math.max(north, p.lat)
+    west = Math.min(west, p.lon)
+    east = Math.max(east, p.lon)
+  }
+  const pad = bufferKm / 111
+  const midLat = (south + north) / 2
+  const padLon = pad / Math.max(0.2, Math.cos((midLat * Math.PI) / 180))
+  return {
+    south: south - pad,
+    north: north + pad,
+    west: west - padLon,
+    east: east + padLon,
+  }
+}
+
+/** Min distance (km) from a point to corridor polyline (true perpendicular). */
+export function distanceToCorridorKm(
+  lat: number,
+  lon: number,
+  corridor: Array<{ lat: number; lon: number }>
+): number {
+  if (!corridor.length) return Number.POSITIVE_INFINITY
+  if (corridor.length === 1) {
+    return haversineKm(lat, lon, corridor[0].lat, corridor[0].lon)
+  }
+  return closestPointOnCorridor(lat, lon, corridor).distM / 1000
+}
+
+function recalcAssetDistancesToCorridor(
+  assets: NearbyPowerAsset[],
+  focus: { lat: number; lon: number },
+  corridor?: Array<{ lat: number; lon: number }>
+): NearbyPowerAsset[] {
+  const useCorridor = corridor != null && corridor.length >= 2
+  return assets.map((a) => {
+    const fromFocus = haversineKm(focus.lat, focus.lon, a.lat, a.lon)
+    const fromCorridor = useCorridor ? distanceToCorridorKm(a.lat, a.lon, corridor!) : fromFocus
+    return { ...a, distanceKm: useCorridor ? fromCorridor : fromFocus }
+  })
+}
+
 function classifyOsmPower(tags: Record<string, string>): NearbyPowerKind | null {
   const power = tags.power || ''
   if (power === 'plant') return 'plant'
@@ -403,27 +489,52 @@ async function osmNearbyPowerAssets(
     way["power"="plant"](around:${ssRadiusM},${lat},${lon});
   );out tags center 40;`
 
+  const useCorridorBbox = corridor != null && corridor.length >= 2
+  let bboxRes: { elements?: OverpassEl[] } | null = null
+  if (useCorridorBbox) {
+    const bb = corridorBBox(corridor!, radiusKm)
+    const bboxQuery = `[out:json][timeout:${timeoutSec}];(
+      node["power"="tower"](${bb.south},${bb.west},${bb.north},${bb.east});
+      node["power"="portal"](${bb.south},${bb.west},${bb.north},${bb.east});
+      way["power"="line"](${bb.south},${bb.west},${bb.north},${bb.east});
+      way["power"="minor_line"](${bb.south},${bb.west},${bb.north},${bb.east});
+      way["power"="cable"](${bb.south},${bb.west},${bb.north},${bb.east});
+      node["power"="substation"](${bb.south},${bb.west},${bb.north},${bb.east});
+      way["power"="substation"](${bb.south},${bb.west},${bb.north},${bb.east});
+      node["power"="plant"](${bb.south},${bb.west},${bb.north},${bb.east});
+      way["power"="plant"](${bb.south},${bb.west},${bb.north},${bb.east});
+    );out tags center ${outLimit};`
+    bboxRes = await overpassJson(bboxQuery)
+  }
+
   const [focusRes, ss] = await Promise.all([overpassJson(aroundFocus), overpassJson(ssQuery)])
 
-  const queryOk = focusRes != null || ss != null
+  const queryOk = focusRes != null || ss != null || bboxRes != null
   if (!queryOk) {
     console.warn('[nearbyPower] OSM Overpass unavailable for', { lat, lon, radiusM })
     return { assets: [], queryOk: false, error: 'OSM Overpass did not respond' }
   }
 
-  const merged = [
+  const mergedRaw = [
+    ...elementsToAssets(bboxRes?.elements ?? [], focus),
     ...elementsToAssets(focusRes?.elements ?? [], focus),
     ...elementsToAssets(ss?.elements ?? [], focus),
   ]
 
-  for (const a of merged) {
-    let best = a.distanceKm
-    for (const s of samples) {
-      const d = haversineKm(s.lat, s.lon, a.lat, a.lon)
-      if (d < best) best = d
+  for (const a of mergedRaw) {
+    if (useCorridorBbox) {
+      a.distanceKm = distanceToCorridorKm(a.lat, a.lon, corridor!)
+    } else {
+      let best = a.distanceKm
+      for (const s of samples) {
+        const d = haversineKm(s.lat, s.lon, a.lat, a.lon)
+        if (d < best) best = d
+      }
+      a.distanceKm = best
     }
-    a.distanceKm = best
   }
+
+  const merged = dedupeNearby(mergedRaw).filter((a) => a.distanceKm <= radiusKm)
 
   console.info('[nearbyPower] OSM assets', {
     count: merged.length,
@@ -436,42 +547,119 @@ async function osmNearbyPowerAssets(
   return { assets: merged, queryOk: true }
 }
 
+async function tamsNearbyLines(
+  lat: number,
+  lon: number,
+  radiusKm: number,
+  corridor?: Array<{ lat: number; lon: number }>
+): Promise<{ assets: NearbyPowerAsset[]; ok: boolean; error?: string }> {
+  const points =
+    corridor && corridor.length >= 2
+      ? sampleCorridorPoints(corridor, radiusKm >= 25 ? 5 : 3)
+      : [{ lat, lon }]
+  try {
+    const results = await Promise.all(
+      points.map((p) =>
+        withTimeout(
+          fetchGisProximity(p.lat, p.lon, radiusKm, ['line']),
+          12000,
+          null as unknown as Awaited<ReturnType<typeof fetchGisProximity>>
+        )
+      )
+    )
+    const ok = results.some((r) => r != null)
+    if (!ok) {
+      return { assets: [], ok: false, error: 'TAMS lines timeout' }
+    }
+    const raw: NearbyPowerAsset[] = []
+    for (const res of results) {
+      if (!res) continue
+      for (const a of res.assets ?? []) {
+        const asset = a as Asset & { distance_km?: number }
+        const kv = assetVoltageKv(asset)
+        const meta = asset.metadata ?? {}
+        raw.push({
+          id: `tams-line-${asset.id}`,
+          name: asset.name || 'Transmission line (TAMS)',
+          kind: 'line' as const,
+          distanceKm:
+            typeof asset.distance_km === 'number'
+              ? asset.distance_km
+              : haversineKm(lat, lon, asset.latitude, asset.longitude),
+          voltageKv: kv,
+          voltagesKv: kv != null ? [kv] : [],
+          role: String(meta.line_class ?? 'transmission line'),
+          operator: meta.operator ? String(meta.operator) : undefined,
+          source: 'tams' as const,
+          lat: asset.latitude,
+          lon: asset.longitude,
+        })
+      }
+    }
+    const assets = recalcAssetDistancesToCorridor(dedupeNearby(raw), { lat, lon }, corridor).filter(
+      (a) => a.distanceKm <= radiusKm
+    )
+    return { assets, ok: true }
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e)
+    return { assets: [], ok: false, error }
+  }
+}
+
 async function tamsNearbySubstations(
   lat: number,
   lon: number,
-  radiusKm: number
+  radiusKm: number,
+  corridor?: Array<{ lat: number; lon: number }>
 ): Promise<{ assets: NearbyPowerAsset[]; ok: boolean; error?: string }> {
+  const ssRadius = Math.max(radiusKm, 10)
+  const points =
+    corridor && corridor.length >= 2
+      ? sampleCorridorPoints(corridor, radiusKm >= 25 ? 5 : 3)
+      : [{ lat, lon }]
   try {
-    const res = await withTimeout(
-      fetchGisProximity(lat, lon, radiusKm, ['substation']),
-      12000,
-      null as unknown as Awaited<ReturnType<typeof fetchGisProximity>>
+    const results = await Promise.all(
+      points.map((p) =>
+        withTimeout(
+          fetchGisProximity(p.lat, p.lon, ssRadius, ['substation']),
+          12000,
+          null as unknown as Awaited<ReturnType<typeof fetchGisProximity>>
+        )
+      )
     )
-    if (!res) {
+    const ok = results.some((r) => r != null)
+    if (!ok) {
       console.warn('[nearbyPower] TAMS proximity timeout/empty', { lat, lon, radiusKm })
       return { assets: [], ok: false, error: 'TAMS proximity timeout' }
     }
-    const assets = (res.assets ?? []).map((a) => {
-      const asset = a as Asset & { distance_km?: number }
-      const kv = assetVoltageKv(asset)
-      const meta = asset.metadata ?? {}
-      return {
-        id: `tams-ss-${asset.id}`,
-        name: asset.name || 'Substation (TAMS)',
-        kind: 'substation' as const,
-        distanceKm:
-          typeof asset.distance_km === 'number'
-            ? asset.distance_km
-            : haversineKm(lat, lon, asset.latitude, asset.longitude),
-        voltageKv: kv,
-        voltagesKv: kv != null ? [kv] : [],
-        role: String(meta.substation_class ?? meta.power ?? 'transmission'),
-        operator: meta.operator ? String(meta.operator) : undefined,
-        source: 'tams' as const,
-        lat: asset.latitude,
-        lon: asset.longitude,
+    const raw: NearbyPowerAsset[] = []
+    for (const res of results) {
+      if (!res) continue
+      for (const a of res.assets ?? []) {
+        const asset = a as Asset & { distance_km?: number }
+        const kv = assetVoltageKv(asset)
+        const meta = asset.metadata ?? {}
+        raw.push({
+          id: `tams-ss-${asset.id}`,
+          name: asset.name || 'Substation (TAMS)',
+          kind: 'substation' as const,
+          distanceKm:
+            typeof asset.distance_km === 'number'
+              ? asset.distance_km
+              : haversineKm(lat, lon, asset.latitude, asset.longitude),
+          voltageKv: kv,
+          voltagesKv: kv != null ? [kv] : [],
+          role: String(meta.substation_class ?? meta.power ?? 'transmission'),
+          operator: meta.operator ? String(meta.operator) : undefined,
+          source: 'tams' as const,
+          lat: asset.latitude,
+          lon: asset.longitude,
+        })
       }
-    })
+    }
+    const assets = recalcAssetDistancesToCorridor(dedupeNearby(raw), { lat, lon }, corridor).filter(
+      (a) => a.distanceKm <= radiusKm
+    )
     console.info('[nearbyPower] TAMS substations', { count: assets.length, radiusKm })
     return { assets, ok: true }
   } catch (e) {
@@ -484,27 +672,33 @@ async function tamsNearbySubstations(
 async function tamsNearbyTowers(
   lat: number,
   lon: number,
-  radiusKm: number
+  radiusKm: number,
+  corridor?: Array<{ lat: number; lon: number }>
 ): Promise<{ assets: NearbyPowerAsset[]; ok: boolean; error?: string }> {
-  // One bbox only — parallel wide scans previously hung the backend (120s → 502)
   const padKm = clampSearchRadiusKm(radiusKm)
-  const deg = padKm / 111
-  const bbox = `${lon - deg},${lat - deg},${lon + deg},${lat + deg}`
   const towerLimit = padKm >= 25 ? 800 : 300
+  let bbox: string
+  if (corridor && corridor.length >= 2) {
+    const bb = corridorBBox(corridor, padKm)
+    bbox = `${bb.west},${bb.south},${bb.east},${bb.north}`
+  } else {
+    const deg = padKm / 111
+    bbox = `${lon - deg},${lat - deg},${lon + deg},${lat + deg}`
+  }
   try {
     const res = await withTimeout(
       fetchGisTowers(bbox, undefined, towerLimit),
       55000,
       null as unknown as Awaited<ReturnType<typeof fetchGisTowers>>
     )
-    if (!res) {
-      console.warn('[nearbyPower] TAMS towers timeout', { lat, lon, padKm })
-      return { assets: [], ok: false, error: 'TAMS GIS towers timeout' }
-    }
-    const assets = (res.assets ?? [])
-      .map((t) => {
+    let raw: NearbyPowerAsset[] = []
+    if (res) {
+      raw = (res.assets ?? []).map((t) => {
         const kv = assetVoltageKv(t)
-        const d = haversineKm(lat, lon, t.latitude, t.longitude)
+        const d =
+          corridor && corridor.length >= 2
+            ? distanceToCorridorKm(t.latitude, t.longitude, corridor)
+            : haversineKm(lat, lon, t.latitude, t.longitude)
         return {
           id: `tams-twr-${t.id}`,
           name: t.name || 'Tower (TAMS)',
@@ -518,11 +712,51 @@ async function tamsNearbyTowers(
           lon: t.longitude,
         }
       })
+    }
+
+    // Bbox empty — try proximity at corridor sample points
+    if (raw.length === 0 && corridor && corridor.length >= 2) {
+      const points = sampleCorridorPoints(corridor, padKm >= 25 ? 5 : 3)
+      const prox = await Promise.all(
+        points.map((p) =>
+          withTimeout(
+            fetchGisProximity(p.lat, p.lon, padKm, ['tower']),
+            15000,
+            null as unknown as Awaited<ReturnType<typeof fetchGisProximity>>
+          )
+        )
+      )
+      for (const pr of prox) {
+        if (!pr) continue
+        for (const t of pr.assets ?? []) {
+          const asset = t as Asset & { distance_km?: number }
+          const kv = assetVoltageKv(asset)
+          raw.push({
+            id: `tams-twr-${asset.id}`,
+            name: asset.name || 'Tower (TAMS)',
+            kind: 'tower' as const,
+            distanceKm: distanceToCorridorKm(asset.latitude, asset.longitude, corridor),
+            voltageKv: kv,
+            voltagesKv: kv != null ? [kv] : [],
+            role: 'transmission tower',
+            source: 'tams' as const,
+            lat: asset.latitude,
+            lon: asset.longitude,
+          })
+        }
+      }
+    }
+
+    if (!res && raw.length === 0) {
+      console.warn('[nearbyPower] TAMS towers timeout', { lat, lon, padKm })
+      return { assets: [], ok: false, error: 'TAMS GIS towers timeout' }
+    }
+
+    const assets = dedupeNearby(raw)
       .filter((a) => a.distanceKm <= padKm)
       .sort((a, b) => a.distanceKm - b.distanceKm)
-      .slice(0, padKm >= 25 ? 80 : 40)
 
-    console.info('[nearbyPower] TAMS towers', { count: assets.length, padKm })
+    console.info('[nearbyPower] TAMS towers', { count: assets.length, padKm, corridor: !!corridor })
     return { assets, ok: true }
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e)
@@ -717,16 +951,23 @@ export async function findNearbyPowerSupply(
 
   // Prefer OSM first (usually answers in 20–40s). TAMS KML can take longer on cold start.
   const osmPromise = osmNearbyPowerAssets(lat, lon, radiusKm, context?.corridor)
-  const tamsTowersPromise = tamsNearbyTowers(lat, lon, radiusKm)
-  const tamsSsPromise = tamsNearbySubstations(lat, lon, Math.max(radiusKm, 10))
+  const tamsTowersPromise = tamsNearbyTowers(lat, lon, radiusKm, context?.corridor)
+  const tamsSsPromise = tamsNearbySubstations(lat, lon, Math.max(radiusKm, 10), context?.corridor)
+  const tamsLinesPromise = tamsNearbyLines(lat, lon, radiusKm, context?.corridor)
 
   const osm = await osmPromise
-  const [tamsTowers, tamsSs] = await Promise.all([tamsTowersPromise, tamsSsPromise])
+  const [tamsTowers, tamsSs, tamsLines] = await Promise.all([
+    tamsTowersPromise,
+    tamsSsPromise,
+    tamsLinesPromise,
+  ])
   if (!tamsTowers.ok && tamsTowers.error) errors.push(tamsTowers.error)
   if (!tamsSs.ok && tamsSs.error) errors.push(tamsSs.error)
+  if (!tamsLines.ok && tamsLines.error) errors.push(tamsLines.error)
   if (!osm.queryOk && osm.error) errors.push(osm.error)
 
-  const tamsHasAssets = tamsTowers.assets.length > 0 || tamsSs.assets.length > 0
+  const tamsHasAssets =
+    tamsTowers.assets.length > 0 || tamsSs.assets.length > 0 || tamsLines.assets.length > 0
 
   console.info('[nearbyPower] source summary', {
     lat,
@@ -734,25 +975,36 @@ export async function findNearbyPowerSupply(
     radiusKm,
     tamsTowers: tamsTowers.assets.length,
     tamsSs: tamsSs.assets.length,
-    tamsOk: tamsTowers.ok || tamsSs.ok,
+    tamsLines: tamsLines.assets.length,
+    tamsOk: tamsTowers.ok || tamsSs.ok || tamsLines.ok,
     osmAssets: osm.assets.length,
     osmOk: osm.queryOk,
     errors,
   })
 
-  const assets = dedupeNearby([
-    ...tamsTowers.assets,
-    ...tamsSs.assets,
-    ...osm.assets,
-  ]).slice(0, 50)
+  const assets = recalcAssetDistancesToCorridor(
+    dedupeNearby([
+      ...tamsTowers.assets,
+      ...tamsSs.assets,
+      ...tamsLines.assets,
+      ...osm.assets,
+    ]),
+    { lat, lon },
+    context?.corridor
+  )
+    .filter((a) => a.distanceKm <= radiusKm)
+    .sort((a, b) => a.distanceKm - b.distanceKm)
+  enrichPowerAssetVoltages(assets)
 
   const existingPowerTowers = assets.filter((a) => a.kind === 'tower')
   const existingPowerLines = assets.filter((a) => a.kind === 'line')
   const existingSubstations = assets.filter((a) => a.kind === 'substation')
+  const existingPlants = assets.filter((a) => a.kind === 'plant')
 
   const nearestPole = assets.find((a) => a.kind === 'pole') ?? null
   const nearestTower = existingPowerTowers[0] ?? null
-  const nearestSubstation = existingSubstations[0] ?? null
+  const nearestSubstation =
+    [...existingSubstations, ...existingPlants].sort((a, b) => a.distanceKm - b.distanceKm)[0] ?? null
   const nearestLineFeat = existingPowerLines[0] ?? null
   const suggested = pickSuggested(assets)
   const nearest =
@@ -818,7 +1070,7 @@ export async function findNearbyPowerSupply(
       suggestedSource === 'tams' ? 'TAMS GIS mapped data' : 'OSM mapped data'
   }
 
-  const tamsOk = tamsTowers.ok || tamsSs.ok || tamsHasAssets
+  const tamsOk = tamsTowers.ok || tamsSs.ok || tamsLines.ok || tamsHasAssets
   const osmOk = osm.queryOk
   const anySourceOk = tamsOk || osmOk
   const dataAvailable = assets.length > 0 && anySourceOk

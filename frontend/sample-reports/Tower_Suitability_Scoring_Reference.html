@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>TAMS Tower Suitability — Scoring Reference</title>
+  <style>
+    @page { size: A4; margin: 12mm 10mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      font-size: 9.5pt;
+      line-height: 1.45;
+      color: #1e293b;
+      max-width: 210mm;
+      margin: 0 auto;
+      padding: 8mm;
+    }
+    h1 { font-size: 18pt; color: #0f766e; margin: 0 0 4px; border-bottom: 3px solid #0f766e; padding-bottom: 6px; }
+    h2 { font-size: 12pt; color: #0f766e; margin: 18px 0 8px; page-break-after: avoid; }
+    h3 { font-size: 10.5pt; color: #334155; margin: 12px 0 6px; page-break-after: avoid; }
+    h4 { font-size: 9.5pt; color: #475569; margin: 8px 0 4px; }
+    p.meta { font-size: 8.5pt; color: #64748b; margin: 0 0 14px; }
+    table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 8.5pt; }
+    th, td { border: 1px solid #cbd5e1; padding: 4px 6px; text-align: left; vertical-align: top; }
+    th { background: #ecfdf5; color: #0f766e; font-weight: 700; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    .weight { font-weight: 800; color: #b45309; }
+    .note { font-size: 8pt; color: #64748b; font-style: italic; margin-top: 12px; padding: 8px; background: #fffbeb; border-left: 3px solid #f59e0b; }
+    ul { margin: 4px 0 8px; padding-left: 18px; }
+    li { margin: 2px 0; }
+    .page-break { page-break-before: always; }
+    .badge { display: inline-block; background: #0f766e; color: #fff; font-size: 7pt; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+<h1>TAMS Tower Suitability — Complete Scoring Reference</h1>
+<p class="meta">Transmission Asset Intelligence Platform · Open-data screening only · Generated for TAMS Tower Suitability module · Not a design certificate</p>
+
+<h2>A. Final Output</h2>
+<table>
+  <tr><th>Output</th><th>How it is calculated</th></tr>
+  <tr><td><strong>Site score (0–10)</strong></td><td>Weighted average of 12 factors (each scored 0–10 first). Formula: Σ(factor_score × weight) ÷ Σ weights</td></tr>
+  <tr><td><strong>Verdict</strong></td><td>≥ 7.0 Preferred · 4.5–7.0 Conditional · &lt; 4.5 Unsuitable (screening)</td></tr>
+  <tr><td><strong>Confidence %</strong></td><td>Base 55% + up to 25% for resolved live signals − 5% per Photon fallback used</td></tr>
+</table>
+
+<h3>Confidence sub-points (7 signals)</h3>
+<ul>
+  <li>Elevation resolved · Slope resolved · Road distance · Water distance · Settlement distance · Grid (tower/SS) · Wind</li>
+</ul>
+<h3>Fallback penalties (−5% each)</h3>
+<ul>
+  <li>Water Photon fallback · Settlement Photon fallback · Grid data unavailable fallback</li>
+</ul>
+
+<h2>B. Scoring Factors (12 total)</h2>
+
+<h3>1. Terrain slope <span class="badge">Weight 22%</span></h3>
+<table>
+  <tr><th>Sub-point</th><th>Detail</th></tr>
+  <tr><td>DEM source</td><td>Open-Meteo Elevation API → Copernicus DEM ~30 m</td></tr>
+  <tr><td>Sample pattern</td><td>5 points: centre pad + N/S/E/W at ~133 m offset (0.0012°)</td></tr>
+  <tr><td>Slope calculation</td><td>Max angle (°) from centre to each offset: atan(Δelev / run) × 180/π</td></tr>
+  <tr><td>Output</td><td>Maximum slope among 4 directions</td></tr>
+</table>
+<table>
+  <tr><th>Slope</th><th>Score</th></tr>
+  <tr><td>≤ 5°</td><td>10 (best)</td></tr>
+  <tr><td>≥ 18°</td><td>0 (worst)</td></tr>
+  <tr><td>Between</td><td>Linear interpolation</td></tr>
+</table>
+
+<h3>2. Road access <span class="badge">Weight 14%</span></h3>
+<table>
+  <tr><th>Sub-point</th><th>Detail</th></tr>
+  <tr><td>API</td><td>OSRM Nearest (router.project-osrm.org/nearest/v1/driving)</td></tr>
+  <tr><td>Road network</td><td>OpenStreetMap drivable roads</td></tr>
+  <tr><td>Distance</td><td>OSRM snap distance (m) → km; Haversine fallback</td></tr>
+  <tr><td>Map output</td><td>Nearest road snap lat/lon (orange marker)</td></tr>
+</table>
+<table>
+  <tr><th>Road distance</th><th>Score</th></tr>
+  <tr><td>≤ 0.5 km</td><td>10</td></tr>
+  <tr><td>≥ 8 km</td><td>0</td></tr>
+  <tr><td>Lookup failed</td><td>3 (uncertain)</td></tr>
+</table>
+
+<h3>3. Water / flood buffer <span class="badge">Weight 14%</span></h3>
+<h4>OSM Overpass (primary) — 8 km radius</h4>
+<table>
+  <tr><th>Feature</th><th>OSM tag</th></tr>
+  <tr><td>Natural water</td><td>way/relation natural=water</td></tr>
+  <tr><td>Waterways</td><td>way waterway</td></tr>
+  <tr><td>Reservoirs / basins</td><td>landuse=reservoir, landuse=basin</td></tr>
+  <tr><td>Generic water</td><td>way water</td></tr>
+</table>
+<h4>Photon fallback (if Overpass fails)</h4>
+<p>Query: "lake river reservoir" · osm_tag=natural:water · −5% confidence</p>
+<table>
+  <tr><th>Water distance</th><th>Score logic</th></tr>
+  <tr><td>≥ 0.8 km from water</td><td>10 (far = good)</td></tr>
+  <tr><td>≤ 0.05 km (~50 m)</td><td>0 (very close)</td></tr>
+  <tr><td>&lt; 0.15 km</td><td>Flood/scour screening flag</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h3>4. Settlement clearance <span class="badge">Weight 10%</span></h3>
+<h4>OSM Overpass — 4 km radius</h4>
+<table>
+  <tr><th>Feature</th><th>OSM tag</th></tr>
+  <tr><td>Buildings</td><td>way building</td></tr>
+  <tr><td>Places</td><td>node place=city|town|village|hamlet|suburb</td></tr>
+  <tr><td>Residential</td><td>way landuse=residential</td></tr>
+</table>
+<table>
+  <tr><th>Settlement distance</th><th>Score</th></tr>
+  <tr><td>≥ 0.25 km</td><td>10</td></tr>
+  <tr><td>≤ 0.02 km</td><td>0</td></tr>
+  <tr><td>&lt; 0.08 km</td><td>ROW/social risk flag</td></tr>
+</table>
+
+<h3>5. Power connectivity <span class="badge">Weight 10%</span></h3>
+<h4>Sources (radius 8 / 15 / 25 / 50 km)</h4>
+<table>
+  <tr><th>Source</th><th>Assets</th></tr>
+  <tr><td>TAMS GIS</td><td>Towers, substations, transmission lines</td></tr>
+  <tr><td>OSM Overpass</td><td>tower, portal, pole (≤15 km), line, minor_line, cable, substation, plant</td></tr>
+</table>
+<h4>Per-asset sub-points</h4>
+<ul>
+  <li>Distance (Haversine) · Asset kind · Voltage kV · Nearest overall/tower/pole/SS/line</li>
+  <li>Interconnect ease: ≤0.25 km Easy · ≤2 km Easy · ≤12 km Moderate · &gt;12 km Hard</li>
+</ul>
+<h4>Score bonuses (base: 0.2 km→10, 20 km→0 linear)</h4>
+<ul>
+  <li>Pole ≤ 350 m: +2 · Tower ≤ 2 km: +1.2 · Substation: +0.8 · Easy interconnect: +0.5 · Cap: 10</li>
+  <li>No data: neutral score 5</li>
+</ul>
+
+<h3>6. Voltage suitability <span class="badge">Weight 8%</span></h3>
+<table>
+  <tr><th>Sub-point</th><th>Detail</th></tr>
+  <tr><td>Planning tiers</td><td>11, 33, 66, 110, 132, 220, 400, 765 kV</td></tr>
+  <tr><td>Suggested kV</td><td>Corridor → nearest tower → nearest line → nearest SS</td></tr>
+  <tr><td>Tagged + HV ≥33 kV nearby</td><td>Score ~9</td></tr>
+  <tr><td>Tagged only</td><td>Score ~7</td></tr>
+  <tr><td>No tags</td><td>Score 5 (neutral)</td></tr>
+</table>
+
+<h3>7. Connection distance <span class="badge">Weight 8%</span></h3>
+<table>
+  <tr><th>Sub-point</th><th>Formula / rule</th></tr>
+  <tr><td>Direct distance</td><td>Haversine to nearest grid asset (km)</td></tr>
+  <tr><td>Practical spur</td><td>Direct × 1.2 (screening factor)</td></tr>
+  <tr><td>≤ 0.3 km</td><td>Score 10</td></tr>
+  <tr><td>≥ 15 km</td><td>Score 0</td></tr>
+</table>
+
+<h3>8. Elevation <span class="badge">Weight 8%</span></h3>
+<table>
+  <tr><th>Elevation (m AMSL)</th><th>Score</th></tr>
+  <tr><td>20 – 800 m</td><td>9 (favourable)</td></tr>
+  <tr><td>&lt; 5 m</td><td>3 (flood/coastal)</td></tr>
+  <tr><td>&gt; 1800 m</td><td>4 (logistics)</td></tr>
+  <tr><td>Other / missing</td><td>7 neutral</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h3>9. Land cover hint <span class="badge">Weight 8%</span></h3>
+<p>OSM Overpass 180 m: landuse, natural, water tags. Nominatim fallback.</p>
+<table>
+  <tr><th>Class</th><th>Score</th></tr>
+  <tr><td>Barren / open</td><td>9</td></tr>
+  <tr><td>Vegetated</td><td>5</td></tr>
+  <tr><td>Built-up</td><td>2</td></tr>
+  <tr><td>Water</td><td>0</td></tr>
+  <tr><td>Unknown</td><td>6</td></tr>
+</table>
+
+<h3>10. Soil / SBC <span class="badge">Weight 8%</span></h3>
+<h4>Path A — TAMS field geotech (within ~5 km)</h4>
+<table>
+  <tr><th>Field</th><th>Use</th></tr>
+  <tr><td>Adopted SBC (T/m²)</td><td>≥20 → score 9 · ≥12 → score 7 · else 6</td></tr>
+  <tr><td>Design depth, CBR %, site code</td><td>Displayed in report</td></tr>
+</table>
+<h4>Path B — ISRIC SoilGrids 2.0 (~250 m pixel)</h4>
+<table>
+  <tr><th>Depth bands</th><th>Properties</th></tr>
+  <tr><td>0–5, 5–15, 15–30, 30–60, 60–100, 100–200 cm</td><td>Clay%, sand%, silt%, bulk density, pH, coarse fragments, organic carbon</td></tr>
+  <tr><td>Texture</td><td>USDA class from avg 0–30 cm</td></tr>
+  <tr><td>Indicative SBC &amp; CBR</td><td>From texture lookup (40–48% confidence)</td></tr>
+  <tr><td>Score</td><td>max(5, round(confidence% ÷ 10))</td></tr>
+</table>
+<p><strong>Not from GIS (FIELD TEST REQUIRED):</strong> SPT N · Atterberg · Soaked CBR · Cohesion · Resistivity · GWT</p>
+
+<h3>11. Wind exposure <span class="badge">Weight 6%</span></h3>
+<table>
+  <tr><th>Sub-point</th><th>Detail</th></tr>
+  <tr><td>Source</td><td>Open-Meteo Archive — last 90 days daily max wind @ 10 m</td></tr>
+  <tr><td>≤ 4 m/s</td><td>Score 10</td></tr>
+  <tr><td>≥ 12 m/s</td><td>Score 0</td></tr>
+</table>
+
+<h3>12. Corridor feasibility <span class="badge">Weight 6%</span></h3>
+<p>Starts at score 8; deductions applied:</p>
+<table>
+  <tr><th>Check</th><th>Threshold</th><th>Penalty</th></tr>
+  <tr><td>Water proximity</td><td>&lt; 150 m</td><td>−2</td></tr>
+  <tr><td>Settlement</td><td>&lt; 100 m</td><td>−2</td></tr>
+  <tr><td>Steep slope</td><td>&gt; 12°</td><td>−1.5</td></tr>
+  <tr><td>Very steep</td><td>&gt; 18°</td><td>−1</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2>C. Raw Signals at Analyze</h2>
+<table>
+  <tr><th>Category</th><th>Sub-points stored</th></tr>
+  <tr><td>Location</td><td>Lat, lon, city/state (Nominatim)</td></tr>
+  <tr><td>Terrain</td><td>Elevation (m), slope (°), 5 DEM samples</td></tr>
+  <tr><td>Road</td><td>Distance (km), snap lat/lon</td></tr>
+  <tr><td>Water / Settlement</td><td>Distances (km), fallback flags</td></tr>
+  <tr><td>Climate</td><td>Mean wind (m/s)</td></tr>
+  <tr><td>Land cover</td><td>barren / vegetation / built / water / unknown</td></tr>
+  <tr><td>Grid</td><td>All assets; nearest tower/line/pole/SS; kV; interconnect ease; spur km</td></tr>
+  <tr><td>Soil</td><td>SoilGrids layers OR TAMS geotech record</td></tr>
+</table>
+
+<h2>D. Extra Screening (NOT in /10 score) — KML / Line Plan</h2>
+<table>
+  <tr><th>Check</th><th>Sub-points</th></tr>
+  <tr><td>Voltage class</td><td>11–765 kV CEA-style bands</td></tr>
+  <tr><td>Span bands</td><td>Min · Ruling · Max span · ROW width (m)</td></tr>
+  <tr><td>Per pad T1…Tn</td><td>Chainage, lat/lon, verdict</td></tr>
+  <tr><td>Skip</td><td>Existing tower within ~35% of min span (40–120 m zone)</td></tr>
+  <tr><td>Shift</td><td>Closer than min span — suggested offset position</td></tr>
+  <tr><td>Review</td><td>Within 115% of ruling span</td></tr>
+  <tr><td>Suggest place</td><td>Spacing ≥ min span</td></tr>
+  <tr><td>Power take-off</td><td>Best pad → nearest SS; confidence %; interconnect links</td></tr>
+</table>
+
+<h2>E. Weight Summary</h2>
+<table>
+  <tr><th>#</th><th>Factor</th><th>Weight</th></tr>
+  <tr><td>1</td><td>Terrain slope</td><td class="weight">22%</td></tr>
+  <tr><td>2</td><td>Road access</td><td class="weight">14%</td></tr>
+  <tr><td>3</td><td>Water / flood buffer</td><td class="weight">14%</td></tr>
+  <tr><td>4</td><td>Settlement clearance</td><td class="weight">10%</td></tr>
+  <tr><td>5</td><td>Power connectivity</td><td class="weight">10%</td></tr>
+  <tr><td>6</td><td>Voltage suitability</td><td class="weight">8%</td></tr>
+  <tr><td>7</td><td>Connection distance</td><td class="weight">8%</td></tr>
+  <tr><td>8</td><td>Elevation</td><td class="weight">8%</td></tr>
+  <tr><td>9</td><td>Land cover</td><td class="weight">8%</td></tr>
+  <tr><td>10</td><td>Soil / SBC</td><td class="weight">8%</td></tr>
+  <tr><td>11</td><td>Wind</td><td class="weight">6%</td></tr>
+  <tr><td>12</td><td>Corridor feasibility</td><td class="weight">6%</td></tr>
+</table>
+
+<p class="note">This document describes open-data screening logic in TAMS Tower Suitability. It is not utility approval, ROW certification, or foundation design. Lab values are only shown when entered in TAMS /geotech or marked FIELD TEST REQUIRED.</p>
+
+</body>
+</html>

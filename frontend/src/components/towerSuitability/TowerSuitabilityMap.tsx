@@ -8,9 +8,14 @@ import type { PlannedTower } from './lineTowers'
 import { voltageLabel } from './lineTowers'
 import type { NearbyPowerAsset } from './nearbyPowerSupply'
 import { powerKindLabel } from './nearbyPowerSupply'
-import type { PlannedTowerAdvice, PowerConnectSuggestion } from './corridorPlacementAdvice'
+import type { PlannedTowerAdvice, PowerConnectSuggestion, CorridorConnectHint, PlacementVerdict } from './corridorPlacementAdvice'
+import type { SelectedTowerDetail } from './TowerAssetDetailCard'
+import type { TowerConnectionOverlay } from './towerConnection'
+import { formatMeters } from './towerConnection'
+import { closestPointOnCorridor, metersLabel, transmissionLineSegments } from './towerGridLinks'
 import type { SuitabilityResult } from './scoring'
 import { verdictColor } from './scoring'
+import SearchRadiusToolbarButton from './analysis/SearchRadiusToolbarButton'
 
 export type DrawMode = 'pin' | 'line' | 'polygon' | 'point'
 
@@ -96,11 +101,23 @@ function corridorScanPoints(plannedTowers: PlannedTower[], kmlFeatures: KmlFeatu
   return []
 }
 
+function formatDistKm(km: number): string {
+  return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(2)} km`
+}
+
+function towerKvDisplay(asset: NearbyPowerAsset): string {
+  if (asset.voltageKv != null) {
+    return asset.voltageInferred ? `~${asset.voltageKv} kV` : `${asset.voltageKv} kV`
+  }
+  return 'kV unmapped'
+}
+
 export default function TowerSuitabilityMap({
   lat,
   lon,
   result,
   kmlFeatures,
+  planningKmlFeatures = [],
   plannedTowers = [],
   nearbyAssets = [],
   placementAdvice = [],
@@ -110,21 +127,47 @@ export default function TowerSuitabilityMap({
   corridorLineColor = '#fbbf24',
   highlightTowerId = null,
   highlightStationId = null,
+  corridorNearestTower = null,
+  corridorNearestStation = null,
+  corridorPowerLoading = false,
+  corridorPath = [],
+  showNearbyGrid = false,
+  onTowerSelect,
   powerConnect = null,
+  roadNearest = null,
+  padRoadAccess = [],
+  onMapBackgroundClick,
   analyzing = false,
   drawMode,
   drawingEnabled = true,
   focusTick = 0,
+  padFocusTick = 0,
+  focusedPadIndex = null,
+  verdictFilter = null,
+  connectionOverlay = null,
   undoDraftTick = 0,
   onDraftCountChange,
   onDrawModeChange,
   onPick,
+  candidateIdByIndex = null,
+  candidateColorByIndex = null,
   onGeometryDrawn,
+  startLocationSlot = null,
+  chromeElevated = false,
+  onSearchRadiusKm,
+  geometryActionSlot = null,
+  geometryPending = false,
+  onGeometryCancel,
+  highlightBoreholeId = null,
+  onBoreholeSelect,
+  boreholeFocusTick = 0,
 }: {
   lat: number | null
   lon: number | null
   result: SuitabilityResult | null
   kmlFeatures: KmlFeature[]
+  /** Phase I planning geometry — distinct from investigation geometry */
+  planningKmlFeatures?: KmlFeature[]
   plannedTowers?: PlannedTower[]
   nearbyAssets?: NearbyPowerAsset[]
   placementAdvice?: PlannedTowerAdvice[]
@@ -136,17 +179,60 @@ export default function TowerSuitabilityMap({
   /** Emphasize nearest existing tower / station on map */
   highlightTowerId?: string | null
   highlightStationId?: string | null
+  /** Nearest tower/station measured from drawn corridor (perpendicular distance) */
+  corridorNearestTower?: CorridorConnectHint | null
+  corridorNearestStation?: CorridorConnectHint | null
+  corridorPowerLoading?: boolean
+  corridorPath?: Array<{ lat: number; lon: number }>
+  /** Show existing grid + interconnect lines after user picks kV */
+  showNearbyGrid?: boolean
+  onTowerSelect?: (detail: SelectedTowerDetail | null) => void
   /** Station ↔ best new pad (+ existing tower) connect suggestion */
   powerConnect?: PowerConnectSuggestion | null
+  /** Nearest drivable road snap from OSRM (site pin fallback) */
+  roadNearest?: { lat: number; lon: number; km: number } | null
+  /** Nearest road for each planned pad (T1, T2, …) */
+  padRoadAccess?: Array<{
+    index: number
+    lat: number
+    lon: number
+    roadLat: number
+    roadLon: number
+    km: number
+  }>
+  /** Dismiss tower detail card when clicking empty map */
+  onMapBackgroundClick?: () => void
   analyzing?: boolean
   drawMode: DrawMode
   drawingEnabled?: boolean
   focusTick?: number
+  /** Fly to a specific planned pad (from panel click) */
+  padFocusTick?: number
+  focusedPadIndex?: number | null
+  verdictFilter?: PlacementVerdict | null
+  connectionOverlay?: TowerConnectionOverlay | null
   undoDraftTick?: number
   onDraftCountChange?: (count: number) => void
   onDrawModeChange: (mode: DrawMode) => void
   onPick: (lat: number, lon: number) => void
   onGeometryDrawn: (feature: KmlFeature, focus: { lat: number; lon: number }) => void
+  /** Phase I tower IDs (e.g. T-01) keyed by pad index */
+  candidateIdByIndex?: Record<number, string> | null
+  candidateColorByIndex?: Record<number, string> | null
+  /** Lat/lon panel (planning mode) */
+  startLocationSlot?: React.ReactNode
+  /** Raise toolbar above Earth intro overlay (z-5000) */
+  chromeElevated?: boolean
+  onSearchRadiusKm?: (km: number) => void
+  /** Save KML / Analyze site — shown center-bottom after drawing */
+  geometryActionSlot?: React.ReactNode
+  /** Drawn line/polygon awaiting Save or Analyze */
+  geometryPending?: boolean
+  /** Map click in pin mode cancels committed geometry */
+  onGeometryCancel?: () => void
+  highlightBoreholeId?: string | null
+  onBoreholeSelect?: (boreholeId: string | null) => void
+  boreholeFocusTick?: number
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -155,17 +241,30 @@ export default function TowerSuitabilityMap({
   const searchRingRef = useRef<L.Circle | null>(null)
   const kmlLayerRef = useRef<L.LayerGroup | null>(null)
   const nearbyLayerRef = useRef<L.LayerGroup | null>(null)
+  const gridHighlightLayerRef = useRef<L.LayerGroup | null>(null)
+  const roadLayerRef = useRef<L.LayerGroup | null>(null)
+  const shiftLayerRef = useRef<L.LayerGroup | null>(null)
+  const connectionLayerRef = useRef<L.LayerGroup | null>(null)
   const draftLayerRef = useRef<L.LayerGroup | null>(null)
+  const boreholeLayerRef = useRef<L.LayerGroup | null>(null)
   const draftPtsRef = useRef<KmlLatLng[]>([])
   const drawModeRef = useRef(drawMode)
   const drawingEnabledRef = useRef(drawingEnabled)
   const onPickRef = useRef(onPick)
   const onDrawnRef = useRef(onGeometryDrawn)
+  const geometryPendingRef = useRef(geometryPending)
+  const onGeometryCancelRef = useRef(onGeometryCancel)
+  const onBoreholeSelectRef = useRef(onBoreholeSelect)
+  const onMapBackgroundClickRef = useRef(onMapBackgroundClick)
   const hadStartRef = useRef(false)
   const [mapReady, setMapReady] = useState(0)
   const [draftCount, setDraftCount] = useState(0)
 
   drawModeRef.current = drawMode
+  geometryPendingRef.current = geometryPending
+  onGeometryCancelRef.current = onGeometryCancel
+  onBoreholeSelectRef.current = onBoreholeSelect
+  onMapBackgroundClickRef.current = onMapBackgroundClick
   drawingEnabledRef.current = drawingEnabled
   onPickRef.current = onPick
   onDrawnRef.current = onGeometryDrawn
@@ -278,10 +377,21 @@ export default function TowerSuitabilityMap({
     }).addTo(map)
 
     map.on('click', (e: L.LeafletMouseEvent) => {
+      const addingDrawPoint =
+        drawingEnabledRef.current &&
+        (drawModeRef.current === 'line' || drawModeRef.current === 'polygon') &&
+        draftPtsRef.current.length > 0
+      if (!addingDrawPoint) {
+        onMapBackgroundClickRef.current?.()
+      }
       if (!drawingEnabledRef.current) return
       const mode = drawModeRef.current
       const { lat: la, lng: lo } = e.latlng
       if (mode === 'pin' || mode === 'point') {
+        if (mode === 'pin' && geometryPendingRef.current && onGeometryCancelRef.current) {
+          onGeometryCancelRef.current()
+          return
+        }
         clearDraftRef.current()
         onPickRef.current(la, lo)
         return
@@ -316,6 +426,7 @@ export default function TowerSuitabilityMap({
         return
       }
       kmlLayerRef.current = L.layerGroup().addTo(map)
+      boreholeLayerRef.current = L.layerGroup().addTo(map)
       draftLayerRef.current = L.layerGroup().addTo(map)
       map.invalidateSize({ animate: false })
       fitIndia(map, false)
@@ -335,7 +446,12 @@ export default function TowerSuitabilityMap({
       mapRef.current = null
       kmlLayerRef.current = null
       nearbyLayerRef.current = null
+      gridHighlightLayerRef.current = null
+      roadLayerRef.current = null
+      shiftLayerRef.current = null
+      connectionLayerRef.current = null
       draftLayerRef.current = null
+      boreholeLayerRef.current = null
       markerRef.current = null
       ringRef.current = null
       searchRingRef.current = null
@@ -373,6 +489,50 @@ export default function TowerSuitabilityMap({
     }, 80)
     return () => window.clearTimeout(t)
   }, [result, plannedTowers.length, kmlFeatures.length])
+
+  useEffect(() => {
+    const map = mapRef.current
+    const layer = boreholeLayerRef.current
+    if (!isMapAlive(map) || !layer || !mapReady) return
+    layer.clearLayers()
+    const points = result?.geotechnicalIntelligence?.boreholeInvestigationPlan?.points
+    if (!points?.length) return
+    points.forEach((p) => {
+      const selected = highlightBoreholeId === p.boreholeId
+      const m = L.circleMarker([p.latitude, p.longitude], {
+        radius: selected ? 13 : 9,
+        color: selected ? '#f59e0b' : '#0f766e',
+        weight: selected ? 3 : 2,
+        fillColor: selected ? '#fde68a' : '#5eead4',
+        fillOpacity: 0.95,
+      })
+      m.bindTooltip(p.boreholeId, {
+        permanent: true,
+        direction: 'top',
+        className: 'ts-bh-label',
+        offset: [0, -10],
+      })
+      m.bindPopup(
+        `<strong>${p.boreholeId}</strong><br/>Proposed GIS investigation point<br/>Depth: 0.0–${p.recommendedInvestigationDepthM.toFixed(1)} m<br/><span style="font-size:10px;color:#64748b">${p.selectionReason}</span>`
+      )
+      m.on('click', () => onBoreholeSelectRef.current?.(p.boreholeId))
+      m.addTo(layer)
+    })
+  }, [
+    result?.geotechnicalIntelligence?.boreholeInvestigationPlan,
+    mapReady,
+    highlightBoreholeId,
+  ])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!isMapAlive(map) || !mapReady || !highlightBoreholeId) return
+    const pt = result?.geotechnicalIntelligence?.boreholeInvestigationPlan?.points.find(
+      (p) => p.boreholeId === highlightBoreholeId
+    )
+    if (!pt) return
+    map.setView([pt.latitude, pt.longitude], Math.max(map.getZoom(), 16), { animate: true })
+  }, [boreholeFocusTick, highlightBoreholeId, mapReady, result?.geotechnicalIntelligence?.boreholeInvestigationPlan])
 
   useEffect(() => {
     const map = mapRef.current
@@ -448,21 +608,59 @@ export default function TowerSuitabilityMap({
       }
     })
 
+    planningKmlFeatures.forEach((feat) => {
+      if (feat.type === 'Polygon') {
+        const poly = L.polygon(feat.latlngs, {
+          color: '#7c3aed',
+          weight: 3,
+          opacity: 1,
+          dashArray: '8 6',
+          fillColor: '#a78bfa',
+          fillOpacity: 0.12,
+        })
+        poly.bindTooltip('Planning investigation area', { sticky: true, className: 'ts-kml-label' })
+        poly.addTo(layer)
+        bounds.extend(poly.getBounds())
+      } else if (feat.type === 'LineString') {
+        const line = L.polyline(feat.latlngs, {
+          color: '#7c3aed',
+          weight: 6,
+          opacity: 1,
+          dashArray: '10 8',
+          lineCap: 'round',
+        })
+        line.bindTooltip('Planning transmission line', { sticky: true, className: 'ts-kml-label' })
+        line.addTo(layer)
+        bounds.extend(line.getBounds())
+      }
+    })
+
     const dense = plannedTowers.length > 60
     const adviceByIndex = new Map(placementAdvice.map((a) => [a.index, a]))
     const bestPad = powerConnect?.bestPadIndex ?? null
+    const padLabel = (index: number) => candidateIdByIndex?.[index] ?? `T${index}`
     plannedTowers.forEach((tower) => {
       const advice = adviceByIndex.get(tower.index)
       const isBest = bestPad != null && tower.index === bestPad
+      const showLabel =
+        !analyzing &&
+        (isBest ||
+          advice?.verdict === 'place' ||
+          tower.index === 1 ||
+          tower.index === plannedTowers.length ||
+          (!dense && tower.index % 8 === 0))
+      const hideSkip = advice?.verdict === 'skip_existing' && !analyzing
+      const rainbowFill = candidateColorByIndex?.[tower.index]
       const fill =
-        advice?.verdict === 'skip_existing'
-          ? '#ef4444'
+        rainbowFill ??
+        (advice?.verdict === 'skip_existing'
+          ? '#94a3b8'
           : advice?.verdict === 'too_close'
             ? '#f59e0b'
             : advice?.verdict === 'review'
               ? '#38bdf8'
-              : '#22c55e'
-      if (isBest) {
+              : '#22c55e')
+      if (isBest && !analyzing) {
         L.circleMarker([tower.lat, tower.lon], {
           radius: dense ? 16 : 20,
           color: '#0f766e',
@@ -470,7 +668,7 @@ export default function TowerSuitabilityMap({
           fillColor: '#5eead4',
           fillOpacity: 0.3,
         })
-          .bindTooltip(`★ Best new pad T${tower.index} · power take-off`, {
+          .bindTooltip(`★ Best new pad ${padLabel(tower.index)} · power take-off`, {
             permanent: true,
             direction: 'top',
             offset: [0, -10],
@@ -478,26 +676,29 @@ export default function TowerSuitabilityMap({
           })
           .addTo(layer)
       }
-      L.circleMarker([tower.lat, tower.lon], {
-        radius: isBest ? (dense ? 10 : 14) : dense ? 7 : 11,
+      const marker = L.circleMarker([tower.lat, tower.lon], {
+        radius: hideSkip ? (dense ? 5 : 6) : isBest ? (dense ? 10 : 14) : dense ? 7 : 11,
         color: isBest ? '#0f766e' : '#ffffff',
-        weight: isBest ? 4 : 3,
+        weight: isBest ? 4 : hideSkip ? 2 : 3,
         fillColor: isBest ? '#14b8a6' : fill,
-        fillOpacity: 1,
+        fillOpacity: hideSkip ? 0.55 : 1,
       })
-        .bindTooltip(isBest ? `★ T${tower.index} (best for power)` : `T${tower.index}`, {
-          permanent:
-            isBest ||
-            !dense ||
-            tower.index === 1 ||
-            tower.index === plannedTowers.length ||
-            tower.index % 5 === 0,
-          direction: 'top',
-          offset: [0, -8],
-          className: 'ts-tower-label',
-        })
+      if (showLabel) {
+        marker.bindTooltip(
+          isBest
+            ? `★ ${padLabel(tower.index)} · ${voltageLabel(voltageKv)}`
+            : `${padLabel(tower.index)} · ${voltageLabel(voltageKv)}`,
+          {
+            permanent: true,
+            direction: 'top',
+            offset: [0, -8],
+            className: 'ts-tower-label',
+          }
+        )
+      }
+      marker
         .bindPopup(
-          `<strong>${isBest ? '★ Best new transmission pad ' : 'Suggested pad '}T${tower.index
+          `<strong>${isBest ? '★ Best new transmission pad ' : 'Suggested pad '}${padLabel(tower.index)
           }</strong><br/>${voltageLabel(voltageKv)}<br/>${spanM ? `${spanM} m span` : ''}<br/>${isBest && powerConnect
             ? `<b style="color:#0f766e">Suggested power take-off toward “${powerConnect.station.name
             }” (~${powerConnect.stationToPadKm.toFixed(2)} km) · ~${powerConnect.confidencePct
@@ -513,8 +714,21 @@ export default function TowerSuitabilityMap({
                   : 'Suggestion: review first'
             }</b><br/>${advice.reason}<br/><em>Not an order — change kV anytime.</em><br/>`
             : ''
-          }${tower.lat.toFixed(5)}, ${tower.lon.toFixed(5)}`
+          }${tower.lat.toFixed(6)}, ${tower.lon.toFixed(6)}<br/><em>Click marker for full details</em>`
         )
+        .on('click', (e: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(e)
+          onTowerSelect?.({
+            kind: 'planned',
+            index: tower.index,
+            lat: tower.lat,
+            lon: tower.lon,
+            voltageKv,
+            spanM,
+            advice,
+            isBestPad: isBest,
+          })
+        })
         .addTo(layer)
       bounds.extend([tower.lat, tower.lon])
     })
@@ -522,7 +736,7 @@ export default function TowerSuitabilityMap({
     if (bounds.isValid() && isMapAlive(map)) {
       map.fitBounds(bounds.pad(0.2), { animate: false, maxZoom: 16 })
     }
-  }, [kmlFeatures, plannedTowers, voltageKv, spanM, placementAdvice, corridorLineColor, powerConnect, mapReady])
+  }, [kmlFeatures, planningKmlFeatures, plannedTowers, voltageKv, spanM, placementAdvice, corridorLineColor, powerConnect, mapReady, analyzing, onTowerSelect, candidateIdByIndex, candidateColorByIndex])
 
   useEffect(() => {
     const map = mapRef.current
@@ -650,7 +864,7 @@ export default function TowerSuitabilityMap({
     const layer = nearbyLayerRef.current
     layer.clearLayers()
 
-    // Existing infrastructure only — never mix with planned T1…Tn (those are on kml layer)
+    if (!showNearbyGrid) return
     const hiTowerIds = new Set<string>()
     const hiStationIds = new Set<string>()
     if (highlightTowerId) hiTowerIds.add(highlightTowerId)
@@ -683,6 +897,39 @@ export default function TowerSuitabilityMap({
     ensure(powerConnect?.station, powerConnect?.station?.kind === 'plant' ? 'plant' : 'substation')
     ensure(powerConnect?.towerNearStation, 'tower')
     ensure(powerConnect?.towerNearPad, 'tower')
+
+    // Existing transmission lines between towers (draw under markers)
+    if (showNearbyGrid && corridorPath.length >= 2) {
+      const lineSegs = transmissionLineSegments(drawAssets, corridorPath)
+      for (const link of lineSegs) {
+        const midLat = (link.from.lat + link.to.lat) / 2
+        const midLon = (link.from.lon + link.to.lon) / 2
+        const spanM = Math.round(link.km * 1000)
+        L.polyline(
+          [
+            [link.from.lat, link.from.lon],
+            [link.to.lat, link.to.lon],
+          ],
+          { color: '#22c55e', weight: 5, opacity: 0.92, lineCap: 'round' }
+        )
+          .bindTooltip(
+            `${towerKvDisplay(link.from)} ↔ ${towerKvDisplay(link.to)} · ${spanM} m`,
+            { permanent: spanM < 800, direction: 'center', className: 'ts-power-line-label' }
+          )
+          .addTo(layer)
+        L.circleMarker([midLat, midLon], {
+          radius: 0,
+          opacity: 0,
+          fillOpacity: 0,
+        })
+          .bindTooltip(`${spanM} m span`, {
+            permanent: spanM >= 800,
+            direction: 'center',
+            className: 'ts-power-line-label',
+          })
+          .addTo(layer)
+      }
+    }
 
     drawAssets.forEach((asset) => {
       const isHiTower = hiTowerIds.has(asset.id)
@@ -732,17 +979,18 @@ export default function TowerSuitabilityMap({
       })
 
       const voltageText =
-        asset.voltageKv != null ? `${asset.voltageKv} kV` : 'Unknown'
+        asset.voltageKv != null
+          ? asset.voltageInferred
+            ? `~${asset.voltageKv} kV (from line/name)`
+            : `${asset.voltageKv} kV`
+          : 'Not tagged in OSM/TAMS'
       const conf =
         asset.voltageKv != null
           ? asset.voltageInferred
-            ? 'medium (inferred)'
+            ? 'medium (inferred from line/name)'
             : 'high (tagged)'
           : 'low'
-      const distText =
-        asset.distanceKm < 1
-          ? `${Math.round(asset.distanceKm * 1000)} m`
-          : `${asset.distanceKm.toFixed(2)} km`
+      const distText = formatDistKm(asset.distanceKm)
 
       const roleLabel = isHiStation
         ? '★ Nearest station · '
@@ -754,12 +1002,46 @@ export default function TowerSuitabilityMap({
               ? '★ Nearest tower · '
               : ''
 
-      marker
-        .bindTooltip(
-          `${roleLabel}${powerKindLabel(asset.kind)}${asset.voltageKv != null ? ` · ${asset.voltageKv} kV` : ' · Unknown V'
-          } · ${distText}`,
-          { direction: 'top', offset: [0, -6], sticky: true }
+      const towerKvLabel =
+        asset.kind === 'tower' || asset.kind === 'pole' ? towerKvDisplay(asset) : null
+
+      if (asset.kind === 'substation' || asset.kind === 'plant') {
+        const distM = Math.round(asset.distanceKm * 1000)
+        marker.bindTooltip(
+          `${isHiStation ? '★ ' : ''}${asset.name} · ${distM} m · ${towerKvDisplay(asset)}`,
+          {
+            permanent: true,
+            direction: 'top',
+            offset: [0, -8],
+            className: 'ts-nearest-ss-label',
+          }
         )
+      } else {
+        const distM = Math.round(asset.distanceKm * 1000)
+        marker.bindTooltip(
+          towerKvLabel != null
+            ? isHighlight
+              ? `${roleLabel}${towerKvLabel} · ${distM} m`
+              : `${towerKvLabel} · ${distM} m`
+            : `${roleLabel}${powerKindLabel(asset.kind)}${
+                asset.voltageKv != null ? ` · ${towerKvDisplay(asset)}` : ' · kV unmapped'
+              } · ${distText}`,
+          {
+            direction: towerKvLabel != null ? 'bottom' : 'top',
+            offset: towerKvLabel != null ? [0, 8] : [0, -6],
+            permanent: asset.kind === 'tower' || asset.kind === 'pole' || isHighlight,
+            sticky: towerKvLabel == null && !isHighlight,
+            className:
+              towerKvLabel != null
+                ? asset.voltageKv != null && !asset.voltageInferred
+                  ? 'ts-tower-kv-label'
+                  : 'ts-tower-kv-label ts-tower-kv-label--unknown'
+                : undefined,
+          }
+        )
+      }
+
+      marker
         .bindPopup(
           `<strong>${asset.name}</strong><br/>` +
           (roleLabel
@@ -768,9 +1050,14 @@ export default function TowerSuitabilityMap({
           `ID: ${asset.id}<br/>` +
           `${powerKindLabel(asset.kind)} · ${distText} (Haversine)<br/>` +
           `Voltage: ${voltageText}<br/>` +
+          `Lat: ${asset.lat.toFixed(6)} · Lon: ${asset.lon.toFixed(6)}<br/>` +
           `Source: ${asset.source === 'tams' ? 'TAMS GIS' : 'OSM'} · Confidence: ${conf}<br/>` +
-          `<span style="opacity:.7">Existing infrastructure — suggestion reference only</span>`
+          `<span style="opacity:.7">Click marker for full details</span>`
         )
+        .on('click', (e: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(e)
+          onTowerSelect?.({ kind: 'existing', asset })
+        })
         .addTo(layer)
 
       if (asset.kind === 'line') {
@@ -784,76 +1071,7 @@ export default function TowerSuitabilityMap({
       }
     })
 
-    // Power take-off links: station → best new pad, station → existing tower
-    if (powerConnect) {
-      const ss = powerConnect.station
-      L.polyline(
-        [
-          [ss.lat, ss.lon],
-          [powerConnect.bestPadLat, powerConnect.bestPadLon],
-        ],
-        {
-          color: '#0f766e',
-          weight: 4,
-          opacity: 0.95,
-          dashArray: '10 6',
-        }
-      )
-        .bindTooltip(
-          `Power take-off · SS → new T${powerConnect.bestPadIndex} · ${powerConnect.stationToPadKm.toFixed(
-            2
-          )} km · ~${powerConnect.confidencePct}% fit`,
-          { sticky: true }
-        )
-        .addTo(layer)
-
-      if (powerConnect.towerNearStation) {
-        const tw = powerConnect.towerNearStation
-        L.polyline(
-          [
-            [ss.lat, ss.lon],
-            [tw.lat, tw.lon],
-          ],
-          {
-            color: '#7c3aed',
-            weight: 3,
-            opacity: 0.9,
-            dashArray: '6 4',
-          }
-        )
-          .bindTooltip(
-            `Station → nearest existing tower · ${tw.name} · ${tw.distanceKm.toFixed(2)} km`,
-            { sticky: true }
-          )
-          .addTo(layer)
-      }
-
-      if (
-        powerConnect.towerNearPad &&
-        powerConnect.towerNearPad.id !== powerConnect.towerNearStation?.id
-      ) {
-        const tw = powerConnect.towerNearPad
-        L.polyline(
-          [
-            [powerConnect.bestPadLat, powerConnect.bestPadLon],
-            [tw.lat, tw.lon],
-          ],
-          {
-            color: '#2563eb',
-            weight: 2.5,
-            opacity: 0.85,
-            dashArray: '4 4',
-          }
-        )
-          .bindTooltip(
-            `New T${powerConnect.bestPadIndex} → nearest existing tower · ${tw.name} · ${tw.distanceKm.toFixed(
-              2
-            )} km`,
-            { sticky: true }
-          )
-          .addTo(layer)
-      }
-    } else if (hasStart) {
+    if (!powerConnect && hasStart && showNearbyGrid) {
       // Fallback: start pin → nearest asset
       const nearest =
         [...drawAssets].sort((a, b) => a.distanceKm - b.distanceKm)[0] ?? null
@@ -880,7 +1098,452 @@ export default function TowerSuitabilityMap({
           .addTo(layer)
       }
     }
-  }, [nearbyAssets, lat, lon, mapReady, highlightTowerId, highlightStationId, powerConnect])
+  }, [
+    nearbyAssets,
+    lat,
+    lon,
+    mapReady,
+    highlightTowerId,
+    highlightStationId,
+    powerConnect,
+    plannedTowers,
+    kmlFeatures,
+    voltageKv,
+    showNearbyGrid,
+    corridorPath,
+    onTowerSelect,
+  ])
+
+  /** Nearest tower / SS + power take-off — always visible (not gated on kV pick). */
+  useEffect(() => {
+    const map = mapRef.current
+    if (!isMapAlive(map) || !mapReady) return
+
+    if (!map.getPane('ts-grid-highlight')) {
+      map.createPane('ts-grid-highlight')
+      const pane = map.getPane('ts-grid-highlight')
+      if (pane) pane.style.zIndex = '470'
+    }
+
+    if (!gridHighlightLayerRef.current) {
+      gridHighlightLayerRef.current = L.layerGroup([], { pane: 'ts-grid-highlight' }).addTo(map)
+    }
+    const layer = gridHighlightLayerRef.current
+    layer.clearLayers()
+
+    const path =
+      corridorPath.length >= 2
+        ? corridorPath
+        : corridorScanPoints(plannedTowers, kmlFeatures).map((p) => ({ lat: p.lat, lon: p.lng }))
+
+    const drawNearest = (
+      hint: CorridorConnectHint | null | undefined,
+      kind: 'tower' | 'station'
+    ) => {
+      if (!hint || path.length < 2) return
+      const snap = closestPointOnCorridor(hint.lat, hint.lon, path)
+      const distLabel = metersLabel(hint.distanceKm)
+      const kv =
+        hint.voltageKv != null
+          ? ` · ${hint.voltageKv} kV`
+          : voltageKv != null
+            ? ` · ${voltageKv} kV`
+            : ''
+      const color = kind === 'tower' ? '#2563eb' : '#7e22ce'
+      const css = kind === 'tower' ? 'ts-nearest-tower-label' : 'ts-nearest-ss-label'
+      const lineLabel =
+        kind === 'tower'
+          ? `Nearest tower · ${distLabel} from line${kv}`
+          : `Nearest SS · ${hint.name} · ${distLabel}${kv}`
+
+      L.polyline(
+        [
+          [snap.lat, snap.lon],
+          [hint.lat, hint.lon],
+        ],
+        { color, weight: 5, opacity: 0.95, dashArray: '12 8' }
+      )
+        .bindTooltip(lineLabel, { permanent: true, direction: 'center', className: css })
+        .addTo(layer)
+
+      L.circleMarker([snap.lat, snap.lon], {
+        radius: 7,
+        color: '#ffffff',
+        weight: 2,
+        fillColor: color,
+        fillOpacity: 1,
+      })
+        .bindTooltip('Closest point on your line', { direction: 'bottom', offset: [0, 6] })
+        .addTo(layer)
+
+      const assetKind = kind === 'station' ? ('substation' as const) : ('tower' as const)
+      L.circleMarker([hint.lat, hint.lon], {
+        radius: kind === 'station' ? 17 : 15,
+        color: '#ffffff',
+        weight: 4,
+        fillColor: kind === 'station' ? '#a855f7' : '#3b82f6',
+        fillOpacity: 1,
+      })
+        .bindTooltip(
+          kind === 'tower' ? `★ Nearest tower · ${distLabel}${kv}` : `★ ${hint.name} · ${distLabel}${kv}`,
+          { permanent: true, direction: 'top', offset: [0, -14], className: css }
+        )
+        .bindPopup(
+          `<strong>${kind === 'tower' ? 'Nearest transmission tower' : 'Nearest substation / power station'}</strong><br/>` +
+            `${hint.name}<br/>` +
+            `Distance from corridor: <b>${distLabel}</b>${kv}<br/>` +
+            `Lat: ${hint.lat.toFixed(6)} · Lon: ${hint.lon.toFixed(6)}<br/>` +
+            `<em>Click for full details in side card</em>`
+        )
+        .on('click', (e: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(e)
+          onTowerSelect?.({
+            kind: 'existing',
+            asset: {
+              id: hint.id,
+              name: hint.name,
+              kind: assetKind,
+              distanceKm: hint.distanceKm,
+              voltageKv: hint.voltageKv,
+              voltagesKv: hint.voltageKv != null ? [hint.voltageKv] : [],
+              source: 'osm',
+              lat: hint.lat,
+              lon: hint.lon,
+            },
+          })
+        })
+        .addTo(layer)
+    }
+
+    drawNearest(corridorNearestTower, 'tower')
+    drawNearest(corridorNearestStation, 'station')
+
+    if (powerConnect) {
+      const ss = powerConnect.station
+      const padM = Math.round(powerConnect.stationToPadKm * 1000)
+      L.polyline(
+        [
+          [ss.lat, ss.lon],
+          [powerConnect.bestPadLat, powerConnect.bestPadLon],
+        ],
+        { color: '#0f766e', weight: 5, opacity: 0.95, dashArray: '10 6' }
+      )
+        .bindTooltip(
+          `Power take-off · SS → T${powerConnect.bestPadIndex} · ${padM} m · ~${powerConnect.confidencePct}% fit`,
+          { permanent: true, direction: 'center', className: 'ts-nearest-ss-label' }
+        )
+        .addTo(layer)
+
+      if (powerConnect.towerNearStation) {
+        const tw = powerConnect.towerNearStation
+        const dM = Math.round(tw.distanceKm * 1000)
+        L.polyline(
+          [
+            [ss.lat, ss.lon],
+            [tw.lat, tw.lon],
+          ],
+          { color: '#7c3aed', weight: 4, opacity: 0.95, dashArray: '8 5' }
+        )
+          .bindTooltip(`SS → existing tower · ${dM} m`, {
+            permanent: true,
+            direction: 'center',
+            className: 'ts-nearest-ss-label',
+          })
+          .addTo(layer)
+      }
+
+      if (
+        powerConnect.towerNearPad &&
+        powerConnect.towerNearPad.id !== powerConnect.towerNearStation?.id
+      ) {
+        const tw = powerConnect.towerNearPad
+        const dM = Math.round(tw.distanceKm * 1000)
+        L.polyline(
+          [
+            [powerConnect.bestPadLat, powerConnect.bestPadLon],
+            [tw.lat, tw.lon],
+          ],
+          { color: '#2563eb', weight: 4, opacity: 0.95, dashArray: '6 4' }
+        )
+          .bindTooltip(`T${powerConnect.bestPadIndex} → existing tower · ${dM} m`, {
+            permanent: true,
+            direction: 'center',
+            className: 'ts-nearest-tower-label',
+          })
+          .addTo(layer)
+      }
+    }
+  }, [
+    corridorNearestTower,
+    corridorNearestStation,
+    corridorPath,
+    plannedTowers,
+    kmlFeatures,
+    powerConnect,
+    voltageKv,
+    mapReady,
+    onTowerSelect,
+  ])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!isMapAlive(map) || !mapReady) return
+    if (!roadLayerRef.current) {
+      roadLayerRef.current = L.layerGroup().addTo(map)
+    }
+    const layer = roadLayerRef.current
+    layer.clearLayers()
+
+    const drawRoad = (
+      fromLat: number,
+      fromLon: number,
+      roadLat: number,
+      roadLon: number,
+      km: number,
+      label: string
+    ) => {
+      const distLabel = km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(2)} km`
+      L.polyline(
+        [
+          [fromLat, fromLon],
+          [roadLat, roadLon],
+        ],
+        { color: '#f97316', weight: 2.5, opacity: 0.88, dashArray: '6 5' }
+      )
+        .bindTooltip(`${label} · ${distLabel} (road)`, { sticky: true, className: 'ts-road-label' })
+        .addTo(layer)
+
+      L.circleMarker([roadLat, roadLon], {
+        radius: 6,
+        color: '#ffffff',
+        weight: 2,
+        fillColor: '#f97316',
+        fillOpacity: 1,
+      })
+        .bindTooltip(`${label} · nearest road · ${distLabel}`, {
+          permanent: padRoadAccess.length <= 8,
+          direction: 'top',
+          offset: [0, -6],
+          className: 'ts-road-label',
+        })
+        .addTo(layer)
+    }
+
+    for (const pad of padRoadAccess) {
+      drawRoad(pad.lat, pad.lon, pad.roadLat, pad.roadLon, pad.km, `T${pad.index}`)
+    }
+
+    if (
+      padRoadAccess.length === 0 &&
+      lat != null &&
+      lon != null &&
+      Number.isFinite(lat) &&
+      Number.isFinite(lon) &&
+      roadNearest
+    ) {
+      drawRoad(lat, lon, roadNearest.lat, roadNearest.lon, roadNearest.km, 'Site pin')
+    }
+  }, [lat, lon, roadNearest, padRoadAccess, mapReady])
+
+  /** Shift / reuse ghost markers when filtering or selecting pads */
+  useEffect(() => {
+    const map = mapRef.current
+    if (!isMapAlive(map) || !mapReady) return
+
+    if (!map.getPane('ts-shift')) {
+      map.createPane('ts-shift')
+      const pane = map.getPane('ts-shift')
+      if (pane) pane.style.zIndex = '465'
+    }
+
+    if (!shiftLayerRef.current) {
+      shiftLayerRef.current = L.layerGroup([], { pane: 'ts-shift' }).addTo(map)
+    }
+    const layer = shiftLayerRef.current
+    layer.clearLayers()
+
+    const showShiftFor = (advice: PlannedTowerAdvice) => {
+      if (advice.suggestedLat == null || advice.suggestedLon == null) return false
+      if (advice.verdict !== 'too_close' && advice.verdict !== 'skip_existing') return false
+      if (focusedPadIndex === advice.index) return true
+      if (verdictFilter && advice.verdict === verdictFilter) return true
+      return false
+    }
+
+    for (const advice of placementAdvice) {
+      if (!showShiftFor(advice)) continue
+      const isShift = advice.verdict === 'too_close'
+      const ghostColor = isShift ? '#f59e0b' : '#94a3b8'
+      const label = isShift ? `Shift T${advice.index}` : `Reuse T${advice.index}`
+
+      L.polyline(
+        [
+          [advice.lat, advice.lon],
+          [advice.suggestedLat!, advice.suggestedLon!],
+        ],
+        { color: ghostColor, weight: 4, opacity: 0.9, dashArray: '10 8' }
+      )
+        .bindTooltip(
+          isShift
+            ? `Suggested shift for T${advice.index} · ≥ min span`
+            : `Reuse existing tower for T${advice.index}`,
+          { permanent: true, direction: 'center', className: 'ts-shift-label' }
+        )
+        .addTo(layer)
+
+      L.circleMarker([advice.suggestedLat!, advice.suggestedLon!], {
+        radius: 13,
+        color: '#ffffff',
+        weight: 3,
+        fillColor: ghostColor,
+        fillOpacity: 0.35,
+      })
+        .bindTooltip(label, {
+          permanent: true,
+          direction: 'top',
+          offset: [0, -10],
+          className: 'ts-shift-label',
+        })
+        .addTo(layer)
+
+      if (advice.nearestExistingLat != null && advice.nearestExistingLon != null) {
+        L.polyline(
+          [
+            [advice.suggestedLat!, advice.suggestedLon!],
+            [advice.nearestExistingLat, advice.nearestExistingLon],
+          ],
+          { color: '#2563eb', weight: 3, opacity: 0.75, dashArray: '6 5' }
+        )
+          .bindTooltip(
+            advice.nearestExistingM != null
+              ? `To ${advice.nearestExistingName ?? 'existing'} · ${formatMeters(advice.nearestExistingM)}`
+              : `To ${advice.nearestExistingName ?? 'existing tower'}`,
+            { sticky: true, className: 'ts-nearest-tower-label' }
+          )
+          .addTo(layer)
+      }
+    }
+
+    // Focus ring on selected pad
+    if (focusedPadIndex != null) {
+      const tower = plannedTowers.find((t) => t.index === focusedPadIndex)
+      if (tower) {
+        L.circleMarker([tower.lat, tower.lon], {
+          radius: 22,
+          color: '#17879a',
+          weight: 3,
+          fillColor: '#17879a',
+          fillOpacity: 0.12,
+        }).addTo(layer)
+      }
+    }
+  }, [placementAdvice, plannedTowers, focusedPadIndex, verdictFilter, mapReady])
+
+  /** Straight-line + optional OSRM road route when a tower/pad is selected */
+  useEffect(() => {
+    const map = mapRef.current
+    if (!isMapAlive(map) || !mapReady) return
+
+    if (!map.getPane('ts-connection')) {
+      map.createPane('ts-connection')
+      const pane = map.getPane('ts-connection')
+      if (pane) pane.style.zIndex = '480'
+    }
+
+    if (!connectionLayerRef.current) {
+      connectionLayerRef.current = L.layerGroup([], { pane: 'ts-connection' }).addTo(map)
+    }
+    const layer = connectionLayerRef.current
+    layer.clearLayers()
+
+    if (!connectionOverlay) return
+
+    const {
+      from,
+      to,
+      straightM,
+      showRoad,
+      roadKm,
+      roadCoords,
+      roadLoading,
+      corridorSnap,
+      corridorDistM,
+    } = connectionOverlay
+    const straightLabel = `Power line · ${formatMeters(straightM)}`
+
+    L.polyline(
+      [
+        [from.lat, from.lon],
+        [to.lat, to.lon],
+      ],
+      { color: '#64748b', weight: 4, opacity: 0.95, dashArray: '14 8' }
+    )
+      .bindTooltip(straightLabel, {
+        permanent: true,
+        direction: 'center',
+        className: 'ts-connection-straight-label',
+      })
+      .addTo(layer)
+
+    if (corridorSnap) {
+      L.circleMarker([corridorSnap.lat, corridorSnap.lon], {
+        radius: 8,
+        color: '#ffffff',
+        weight: 3,
+        fillColor: '#2563eb',
+        fillOpacity: 1,
+      })
+        .bindTooltip(
+          corridorDistM != null
+            ? `Closest on your line · ${formatMeters(corridorDistM)}`
+            : 'Closest on your line',
+          { permanent: true, direction: 'bottom', offset: [0, 6], className: 'ts-nearest-tower-label' }
+        )
+        .addTo(layer)
+    }
+
+    if (showRoad) {
+      if (roadCoords?.length) {
+        const roadM = roadKm != null ? roadKm * 1000 : null
+        L.polyline(roadCoords, { color: '#f97316', weight: 6, opacity: 0.95 })
+          .bindTooltip(
+            roadM != null ? `By road · ${formatMeters(roadM)}` : 'By road (OSRM)',
+            { permanent: true, direction: 'center', className: 'ts-road-route-label' }
+          )
+          .addTo(layer)
+      } else if (roadLoading) {
+        const midLat = (from.lat + to.lat) / 2
+        const midLon = (from.lon + to.lon) / 2
+        L.circleMarker([midLat, midLon], {
+          radius: 0,
+          opacity: 0,
+          fillOpacity: 0,
+        })
+          .bindTooltip('Loading road route…', { permanent: true, className: 'ts-road-route-label' })
+          .addTo(layer)
+      }
+    }
+
+    L.circleMarker([to.lat, to.lon], {
+      radius: 10,
+      color: '#ffffff',
+      weight: 3,
+      fillColor: '#2563eb',
+      fillOpacity: 1,
+    })
+      .bindTooltip(to.label, { direction: 'top', offset: [0, -8], className: 'ts-nearest-tower-label' })
+      .addTo(layer)
+  }, [connectionOverlay, mapReady])
+
+  useEffect(() => {
+    if (!padFocusTick || focusedPadIndex == null || !mapReady) return
+    const map = mapRef.current
+    if (!isMapAlive(map)) return
+    const tower = plannedTowers.find((t) => t.index === focusedPadIndex)
+    if (tower) {
+      map.setView([tower.lat, tower.lon], Math.max(map.getZoom(), 16), { animate: true })
+    }
+  }, [padFocusTick, focusedPadIndex, plannedTowers, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
@@ -992,13 +1655,30 @@ export default function TowerSuitabilityMap({
           ? `Line mode · click vertices (${draftCount}) · Finish when done`
           : `Polygon mode · click corners (${draftCount}) · Finish when done`
 
+  const isDrawing = drawMode === 'line' || drawMode === 'polygon'
+  const showDrawPhase = isDrawing && draftCount > 0
+
   return (
     <div className="absolute inset-0">
       <div ref={containerRef} className="absolute inset-0 w-full h-full ts-suitability-map" />
 
+      {drawingEnabled && startLocationSlot && (
+        <div
+          className={`absolute top-3 right-3 pointer-events-none w-[min(380px,calc(100vw-2rem))] ${
+            chromeElevated ? 'z-[5000]' : 'z-[1200]'
+          }`}
+        >
+          <div className="pointer-events-auto ts-glass ts-glass-see px-3 py-2.5">{startLocationSlot}</div>
+        </div>
+      )}
+
       {drawingEnabled && (
-        <div className="absolute top-3 left-1/2 z-[1200] -translate-x-1/2 w-[min(640px,calc(100%-1.5rem))] pointer-events-auto">
-          <div className="ts-glass px-3 py-2.5">
+        <div
+          className={`absolute left-1/2 -translate-x-1/2 pointer-events-none w-[min(720px,calc(100vw-2rem))] ${
+            geometryActionSlot ? 'bottom-[8.5rem]' : 'bottom-6'
+          } ${chromeElevated ? 'z-[5000]' : 'z-[1200]'}`}
+        >
+          <div className="pointer-events-auto ts-glass ts-glass-see px-3 py-2.5">
             <div className="flex flex-wrap items-center justify-center gap-1.5">
               {(
                 [
@@ -1023,48 +1703,98 @@ export default function TowerSuitabilityMap({
                   title={m.title}
                   aria-pressed={drawMode === m.id}
                   onClick={() => onDrawModeChange(m.id)}
-                  className={`h-9 px-3 rounded-xl text-xs font-black border transition-colors ${drawMode === m.id
+                  className={`h-9 px-3 rounded-xl text-xs font-black border transition-colors ${
+                    drawMode === m.id
                       ? 'bg-[#17879a] text-white border-[#126b79]'
                       : 'bg-white/80 text-[#0f172a] border-[rgba(51,65,85,0.22)] hover:border-[#17879a]'
-                    }`}
+                  }`}
                 >
                   {m.label}
                 </button>
               ))}
-              {(drawMode === 'line' || drawMode === 'polygon') && (
-                <>
-                  <button
-                    type="button"
-                    disabled={!canFinish}
-                    onClick={() => finishDraftRef.current()}
-                    className="h-9 px-3 rounded-xl text-xs font-black border border-[#27856b]/50 bg-[#dff0e8] text-[#126b79] disabled:opacity-40"
-                  >
-                    Finish drawing
-                  </button>
-                  <button
-                    type="button"
-                    disabled={draftCount === 0}
-                    onClick={() => clearDraftRef.current()}
-                    className="h-9 px-3 rounded-xl text-xs font-bold border border-[rgba(51,65,85,0.22)] text-[#0f172a] disabled:opacity-40 hover:bg-white/50"
-                  >
-                    Clear draft
-                  </button>
-                </>
+              {onSearchRadiusKm && (
+                <SearchRadiusToolbarButton value={searchRadiusKm} onChange={onSearchRadiusKm} />
               )}
             </div>
-            <p className="mt-1.5 text-center text-[11px] font-bold text-[#0f172a]">{hint}</p>
-            {plannedTowers.length > 0 && (
-              <p className="mt-1 text-center text-sm font-black text-[#b97816] tabular-nums">
-                {plannedTowers.length} towers · {voltageLabel(voltageKv)}
-                {spanM != null ? ` · ${spanM} m` : ''}
-              </p>
-            )}
+            <p className="mt-1.5 text-center text-[11px] font-bold text-[#0f172a] leading-snug">{hint}</p>
             {lat != null && lon != null && (
               <p className="mt-0.5 text-center text-[10px] font-bold text-[#17879a] tabular-nums">
                 Live search {searchRadiusKm} km
+                {corridorPowerLoading ? ' · loading grid…' : ''}
               </p>
             )}
+            {(corridorNearestTower || corridorNearestStation) && (
+              <div className="mt-1.5 rounded-lg border border-[rgba(51,65,85,0.14)] bg-white/85 px-2 py-1.5 text-[10px] leading-snug text-[#263238]">
+                {corridorNearestTower && (
+                  <p>
+                    <span className="font-black text-[#1d4ed8]">Nearest tower:</span>{' '}
+                    {corridorNearestTower.name} · {formatDistKm(corridorNearestTower.distanceKm)}
+                  </p>
+                )}
+                {corridorNearestStation && (
+                  <p className={corridorNearestTower ? 'mt-0.5' : ''}>
+                    <span className="font-black text-[#7e22ce]">Nearest station:</span>{' '}
+                    {corridorNearestStation.name} · {formatDistKm(corridorNearestStation.distanceKm)}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
+        </div>
+      )}
+
+      {drawingEnabled && showDrawPhase && (
+        <div
+          className={`absolute bottom-[7.5rem] left-1/2 -translate-x-1/2 pointer-events-none ${
+            chromeElevated ? 'z-[5001]' : 'z-[1201]'
+          }`}
+        >
+          <div className="pointer-events-auto ts-glass ts-glass-see px-4 py-3 text-center shadow-lg min-w-[min(22rem,calc(100vw-2rem))]">
+            <p className="text-[11px] font-black uppercase tracking-wide text-[#17879a]">
+              {drawMode === 'line' ? 'Drawing corridor' : 'Drawing site polygon'}
+            </p>
+            <p className="mt-1 text-[11px] font-bold text-[#0f172a]">
+              {draftCount} point{draftCount === 1 ? '' : 's'} placed · click map to add corners
+            </p>
+            <div className="mt-2 flex flex-wrap justify-center gap-2">
+              <button
+                type="button"
+                disabled={!canFinish}
+                onClick={() => finishDraftRef.current()}
+                className="h-10 px-4 rounded-xl text-xs font-black border border-[#27856b]/50 bg-[#dff0e8] text-[#126b79] disabled:opacity-40"
+              >
+                Finish drawing
+              </button>
+              <button
+                type="button"
+                disabled={draftCount === 0}
+                onClick={() => clearDraftRef.current()}
+                className="h-10 px-4 rounded-xl text-xs font-bold border border-[rgba(51,65,85,0.22)] text-[#0f172a] disabled:opacity-40 hover:bg-white/50"
+              >
+                Clear draft
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearDraftRef.current()
+                  onDrawModeChange('pin')
+                }}
+                className="h-10 px-4 rounded-xl text-xs font-bold border border-rose-200 text-rose-800 hover:bg-rose-50"
+              >
+                Cancel drawing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {geometryActionSlot && (
+        <div
+          className={`absolute bottom-6 left-1/2 -translate-x-1/2 pointer-events-none ${
+            chromeElevated ? 'z-[5002]' : 'z-[1202]'
+          }`}
+        >
+          <div className="pointer-events-auto">{geometryActionSlot}</div>
         </div>
       )}
     </div>

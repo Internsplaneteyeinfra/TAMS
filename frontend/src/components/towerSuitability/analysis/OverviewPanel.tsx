@@ -2,7 +2,8 @@ import React from 'react'
 
 import CorridorPlacementPanel from '../CorridorPlacementPanel'
 import PowerNetworkAnalysisPanel from '../PowerNetworkAnalysisPanel'
-import type { CorridorPlacementAdvice } from '../corridorPlacementAdvice'
+import SiteScoreCard from './SiteScoreCard'
+import type { CorridorPlacementAdvice, PlacementVerdict } from '../corridorPlacementAdvice'
 import type { FactorResult, SuitabilityResult, SuitabilitySuggestions } from '../scoring'
 
 /** Honest confidence bands for live open-data signals used in Key Findings. */
@@ -43,6 +44,12 @@ export default function OverviewPanel({
   onExploreFactors,
   lat,
   lon,
+  focusedPadIndex,
+  verdictFilter,
+  onVerdictFilter,
+  onSelectPad,
+  powerLoading,
+  powerDiagnostics,
 }: {
   result: SuitabilityResult
   suggestions: SuitabilitySuggestions
@@ -52,6 +59,17 @@ export default function OverviewPanel({
   onExploreFactors: () => void
   lat?: number | null
   lon?: number | null
+  focusedPadIndex?: number | null
+  verdictFilter?: PlacementVerdict | null
+  onVerdictFilter?: (v: PlacementVerdict | null) => void
+  onSelectPad?: (index: number) => void
+  powerLoading?: boolean
+  powerDiagnostics?: {
+    tamsTowerCount: number
+    tamsSsCount: number
+    osmAssetCount: number
+    errors?: string[]
+  } | null
 }) {
   const findings = result.factors.slice(0, 4).map((f) => {
     const conf = signalConfidence(f, result)
@@ -64,10 +82,10 @@ export default function OverviewPanel({
   })
 
   const soil = result.signals.soilScreening
-  const overallConf = Math.round(result.confidencePct)
 
   return (
     <div className="space-y-3 text-[#263238]">
+      <SiteScoreCard result={result} expandable={false} />
       {lat != null && lon != null && (
         <p className="text-[11px] font-mono font-bold tabular-nums">
           Start {lat.toFixed(6)}, {lon.toFixed(6)}
@@ -78,15 +96,6 @@ export default function OverviewPanel({
       )}
       <p className="text-sm font-black">Analysis complete</p>
       <p className="text-[12px] text-[#263238] leading-relaxed">{suggestions.summary}</p>
-      <div>
-        <p className="text-[10px] font-black uppercase tracking-wider text-[#263238]">Site score</p>
-        <p className="text-2xl font-black tabular-nums">
-          {result.finalScore.toFixed(1)} <span className="text-sm text-[#263238]">/ 10</span>
-        </p>
-        <p className="text-[11px] text-[#66727a] mt-0.5">
-          Overall screening confidence ~{overallConf}% (open data — not a design certificate)
-        </p>
-      </div>
       <div>
         <p className="text-[10px] font-black uppercase tracking-wider text-[#263238] mb-1.5">Key findings</p>
         <ul className="space-y-1 text-[12px]">
@@ -128,6 +137,12 @@ export default function OverviewPanel({
           advice={corridorAdvice}
           manualVoltageKv={manualVoltageKv}
           onManualVoltageKv={onManualVoltageKv}
+          focusedPadIndex={focusedPadIndex}
+          verdictFilter={verdictFilter}
+          onVerdictFilter={onVerdictFilter}
+          onSelectPad={onSelectPad}
+          powerLoading={powerLoading}
+          powerDiagnostics={powerDiagnostics}
         />
       )}
     </div>

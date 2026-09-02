@@ -1,6 +1,9 @@
 /**
  * Open-source soil screening helpers (SoilGrids → texture → indicative ranges).
  * Not lab accuracy — suitability screening with explicit confidence %.
+ *
+ * Production scoring uses texture from 0–30 cm average only (unchanged).
+ * Deeper layers (60–100, 100–200 cm) + soc are carried for geotechnicalIntelligence.
  */
 
 export interface SoilDepthSlice {
@@ -11,6 +14,8 @@ export interface SoilDepthSlice {
   bulkDensityGcc: number | null
   ph: number | null
   coarseFragPct: number | null
+  /** Soil organic carbon (g/kg) — SoilGrids soc; optional */
+  organicCarbonGkg?: number | null
 }
 
 export interface SoilScreening {
@@ -105,7 +110,15 @@ export function parseSoilGridsResponse(
   const layers = root?.properties?.layers
   if (!Array.isArray(layers) || !layers.length) return null
 
-  const depthLabels = ['0-5cm', '5-15cm', '15-30cm', '30-60cm']
+  // Include deeper bands for GEO profile; texture still from top 0–30 cm only.
+  const depthLabels = [
+    '0-5cm',
+    '5-15cm',
+    '15-30cm',
+    '30-60cm',
+    '60-100cm',
+    '100-200cm',
+  ]
   const slices: SoilDepthSlice[] = depthLabels.map((depthLabel) => ({
     depthLabel,
     clayPct: readMean(layers, 'clay', depthLabel),
@@ -113,13 +126,15 @@ export function parseSoilGridsResponse(
     siltPct: readMean(layers, 'silt', depthLabel),
     bulkDensityGcc: (() => {
       const v = readMean(layers, 'bdod', depthLabel)
-      // SoilGrids bdod target is kg/dm³ ≈ g/cm³ after d_factor
+      // SoilGrids bdod = oven-dry bulk density (g/cm³ after d_factor) — NEVER soil depth
       return v
     })(),
     ph: readMean(layers, 'phh2o', depthLabel),
     coarseFragPct: readMean(layers, 'cfvo', depthLabel),
+    organicCarbonGkg: readMean(layers, 'soc', depthLabel),
   }))
 
+  // Production texture: top three layers only (0–5, 5–15, 15–30 cm) — frozen behaviour
   const top = slices.slice(0, 3)
   const avg = (key: keyof SoilDepthSlice) => {
     const vals = top
@@ -134,7 +149,6 @@ export function parseSoilGridsResponse(
   const silt = avg('siltPct')
   if (clay == null || sand == null || silt == null) return null
 
-  // Normalize to 100% if needed
   const sum = clay + sand + silt
   const c = sum > 0 ? (clay / sum) * 100 : clay
   const sa = sum > 0 ? (sand / sum) * 100 : sand
@@ -157,6 +171,8 @@ export function parseSoilGridsResponse(
       bulkDensityGcc: s.bulkDensityGcc != null ? Number(s.bulkDensityGcc.toFixed(2)) : null,
       ph: s.ph != null ? Number(s.ph.toFixed(1)) : null,
       coarseFragPct: s.coarseFragPct != null ? Number(s.coarseFragPct.toFixed(1)) : null,
+      organicCarbonGkg:
+        s.organicCarbonGkg != null ? Number(s.organicCarbonGkg.toFixed(1)) : null,
     })),
     textureClass,
     indicativeSbcTm2: ind.sbc,

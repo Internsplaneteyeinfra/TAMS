@@ -25,10 +25,10 @@ import {
   type KmlFeature,
 } from './fetchSiteSignals'
 import { downloadSuitabilityReport } from './downloadSuitabilityReport'
-import type { SoilReportOpts } from './downloadSoilScreeningReport'
-import { fetchSoilScreening } from './soilScreening'
+import { prebuildGeotechDocx, isGeotechDocxCached, invalidateGeotechDocxCache, warmGeotechDocxModules, defaultGeotechDocxInput, type GeotechDocxInput, ReportValidationError } from './geotech'
+import { parseInvestigationGeometry } from './geotech/boreholePlanning'
 import { downloadKmlFile } from './kmlExport'
-import { assetMatchesNeighborKv, parseKmlOrKmzFile } from './readKmlOrKmz'
+import { parseKmlOrKmzFile } from './readKmlOrKmz'
 import {
   estimateTowerBand,
   planTowersFromKml,
@@ -36,15 +36,26 @@ import {
   standardForVoltageKv,
   towerPredictionNote,
   voltageLabel,
+  planningVoltageKv,
+  DEFAULT_PLANNING_VOLTAGE_KV,
   VOLTAGE_OPTIONS_KV,
   type SpanPolicy,
 } from './lineTowers'
+import TowerAssetDetailCard, { type SelectedTowerDetail } from './TowerAssetDetailCard'
 import SuitabilityHub, { type SuitabilityEntryMode } from './SuitabilityHub'
 import {
   DEFAULT_SEARCH_RADIUS_KM,
+  findNearbyPowerSupply,
   SEARCH_RADIUS_OPTIONS_KM,
+  type NearbyPowerSupply,
 } from './nearbyPowerSupply'
-import { analyzeCorridorPlacement } from './corridorPlacementAdvice'
+import { analyzeCorridorPlacement, type PlacementVerdict } from './corridorPlacementAdvice'
+import {
+  buildConnectionOverlay,
+  connectionKeyFor,
+  type TowerConnectionOverlay,
+} from './towerConnection'
+import { fetchDrivingRoute, fetchNearestRoad } from './osrmRouting'
 import {
   buildSuitabilitySuggestions,
   scoreSiteSignals,
@@ -52,9 +63,10 @@ import {
 } from './scoring'
 import type { DrawMode } from './TowerSuitabilityMap'
 import type { IntelligencePanel, TowerWorkspaceMode } from './workspaceTypes'
-import SiteScoreCard from './analysis/SiteScoreCard'
 import SoilReportCard from './analysis/SoilReportCard'
-import DownloadReportCard from './analysis/DownloadReportCard'
+import GeotechIntelligencePanel from './analysis/GeotechIntelligencePanel'
+import StartLocationBar from './analysis/StartLocationBar'
+import type { TowerPlanningPanelProps } from './analysis/TowerPlanningPanel'
 import IntelligenceRail from './analysis/IntelligenceRail'
 import IntelligenceDrawer from './analysis/IntelligenceDrawer'
 import OverviewPanel from './analysis/OverviewPanel'
@@ -64,6 +76,21 @@ import ControlsPanel from './analysis/ControlsPanel'
 import ScoreBreakdownPanel from './analysis/ScoreBreakdownPanel'
 import SuggestionsDetailPanel from './analysis/SuggestionsDetailPanel'
 import EarthZoomIndia from './EarthZoomIndia'
+import { parseStartCoordinates } from './parseCoordinates'
+import {
+  analyzeTowerCandidate,
+  attachPlanningGeometry,
+  buildTowerPlanningContext,
+  buildPhaseIReportBundle,
+  suggestTowerLocations,
+  summarizePowerInfrastructure,
+  type TowerCandidate,
+  type TowerCandidateAnalysis,
+  type TowerPlanningContext,
+  kmlFeaturesToInvestigationGeometry,
+  planningCorridorFromKml,
+} from './towerPlanning'
+import { buildProjectAnalysisContext, type ProjectAnalysisContext } from './projectAnalysisContext'
 
 const MapPane = dynamic(() => import('./TowerSuitabilityMap'), { ssr: false })
 
@@ -108,41 +135,6 @@ type PlanningSnapshot = {
   kmlFileName: string
 }
 
-function SearchRadiusPicker({
-  value,
-  onChange,
-}: {
-  value: number
-  onChange: (km: number) => void
-}) {
-  return (
-    <div>
-      <p className="text-[10px] font-bold uppercase text-[#263238]">Search radius</p>
-      <div className="mt-1 grid grid-cols-4 gap-1">
-        {SEARCH_RADIUS_OPTIONS_KM.map((km) => (
-          <button
-            key={km}
-            type="button"
-            title={`Search existing grid within ${km} km of the focus point`}
-            onClick={() => onChange(km)}
-            className={`h-8 rounded-lg text-[10px] font-black border ${value === km
-              ? 'bg-[#17879a] text-white border-[#126b79]'
-              : 'bg-white/55 text-[#263238] border-[rgba(51,65,85,0.16)] hover:border-[#17879a]'
-              }`}
-          >
-            {km} km
-          </button>
-        ))}
-      </div>
-      <p className="mt-1 text-[10px] text-[#263238] leading-snug">
-        Ground distance from the start point (not map pixels). 8 km = 8,000 m around the pad — it looks
-        large on satellite zoom because a village is only a few km across. The cyan ring is this radius.
-        Live TAMS + OSM search existing grid inside it. Max 50 km.
-      </p>
-    </div>
-  )
-}
-
 export default function TowerSuitabilityWorkspace() {
   const [lat, setLat] = useState<number | null>(null)
   const [lon, setLon] = useState<number | null>(null)
@@ -168,6 +160,32 @@ export default function TowerSuitabilityWorkspace() {
   const [manualVoltageKv, setManualVoltageKv] = useState<number | null>(null)
   const [spanPolicy, setSpanPolicy] = useState<SpanPolicy>('ruling')
   const [searchRadiusKm, setSearchRadiusKm] = useState(DEFAULT_SEARCH_RADIUS_KM)
+  const [selectedTowerDetail, setSelectedTowerDetail] = useState<SelectedTowerDetail | null>(null)
+  const [focusedPadIndex, setFocusedPadIndex] = useState<number | null>(null)
+  const [verdictFilter, setVerdictFilter] = useState<PlacementVerdict | null>(null)
+  const [padFocusTick, setPadFocusTick] = useState(0)
+  const [connectionOverlay, setConnectionOverlay] = useState<TowerConnectionOverlay | null>(null)
+  const [geotechDocxReady, setGeotechDocxReady] = useState(false)
+  const [geotechDocxBuilding, setGeotechDocxBuilding] = useState(false)
+  /** Phase I — investigation geometry snapshot preserved after soil analyze */
+  const [investigationKmlSnapshot, setInvestigationKmlSnapshot] = useState<KmlFeature[]>([])
+  const [planningKmlFeatures, setPlanningKmlFeatures] = useState<KmlFeature[]>([])
+  const [planningDrawMode, setPlanningDrawMode] = useState<'line' | 'polygon' | null>(null)
+  const [phaseIPowerChecked, setPhaseIPowerChecked] = useState(false)
+  const [phaseIPowerLoading, setPhaseIPowerLoading] = useState(false)
+  const [phaseIPowerRaw, setPhaseIPowerRaw] = useState<NearbyPowerSupply | null>(null)
+  const [phaseIPowerSummary, setPhaseIPowerSummary] = useState<ReturnType<typeof summarizePowerInfrastructure> | null>(null)
+  /** Auto-loaded grid assets during pre-analyze planning (kV + line selected). */
+  const [planningPowerRaw, setPlanningPowerRaw] = useState<NearbyPowerSupply | null>(null)
+  const [planningPowerLoading, setPlanningPowerLoading] = useState(false)
+  const planningPowerSeq = useRef(0)
+  const [padRoadAccess, setPadRoadAccess] = useState<
+    Array<{ index: number; lat: number; lon: number; roadLat: number; roadLon: number; km: number }>
+  >([])
+  const [phaseITowerCandidates, setPhaseITowerCandidates] = useState<TowerCandidate[]>([])
+  const [selectedPhaseICandidateId, setSelectedPhaseICandidateId] = useState<string | null>(null)
+  const [phaseITowerAnalysis, setPhaseITowerAnalysis] = useState<TowerCandidateAnalysis | null>(null)
+  const [phaseITowerAnalysisLoading, setPhaseITowerAnalysisLoading] = useState(false)
   const [drawMode, setDrawMode] = useState<DrawMode>('pin')
   const [phase, setPhase] = useState<'hub' | 'work'>('hub')
   const [entryMode, setEntryMode] = useState<SuitabilityEntryMode | null>(null)
@@ -180,7 +198,10 @@ export default function TowerSuitabilityWorkspace() {
   const [kmlLocked, setKmlLocked] = useState(false)
   const [latInput, setLatInput] = useState(String(SUGGESTED_START.lat))
   const [lonInput, setLonInput] = useState(String(SUGGESTED_START.lon))
+  const [startCoordsLocked, setStartCoordsLocked] = useState(false)
   const [geoBusy, setGeoBusy] = useState(false)
+  const [highlightedBoreholeId, setHighlightedBoreholeId] = useState<string | null>(null)
+  const [boreholeFocusTick, setBoreholeFocusTick] = useState(0)
   const fileRef = useRef<HTMLInputElement>(null)
   const analyzeSeq = useRef(0)
   const uploadAfterHub = useRef(false)
@@ -223,10 +244,20 @@ export default function TowerSuitabilityWorkspace() {
       setResult(null)
       setWorkspaceMode('planning')
       setActivePanel(null)
+      setStartCoordsLocked(prev.lat != null && prev.lon != null)
       if (prev.lat != null && prev.lon != null) setFocusTick((n) => n + 1)
       return s.slice(0, -1)
     })
   }, [draftCount])
+
+  const handleBoreholeSelect = useCallback((boreholeId: string | null) => {
+    setHighlightedBoreholeId(boreholeId)
+    if (boreholeId) setBoreholeFocusTick((n) => n + 1)
+  }, [])
+
+  const cancelDrawnGeometry = useCallback(() => {
+    undoLast()
+  }, [undoLast])
 
   const runAnalyze = useCallback(async (nextLat: number, nextLon: number, label?: string) => {
     const seq = ++analyzeSeq.current
@@ -234,6 +265,10 @@ export default function TowerSuitabilityWorkspace() {
     setError(null)
     setKmlLocked(false)
     setResult(null)
+    setGeotechDocxReady(false)
+    setGeotechDocxBuilding(false)
+    invalidateGeotechDocxCache()
+    warmGeotechDocxModules()
     setWorkspaceMode('planning')
     setActivePanel(null)
     setLat(nextLat)
@@ -251,9 +286,12 @@ export default function TowerSuitabilityWorkspace() {
     }
     setProgress({ message: 'Fetching satellite & OSM signals…', percent: 8 })
     try {
-      const corridor = kmlFeatures.flatMap((f) =>
-        f.latlngs.map(([la, lo]) => ({ lat: la, lon: lo }))
-      )
+      const pathFeat =
+        kmlFeatures.find((f) => f.type === 'LineString' && f.latlngs.length >= 2) ||
+        kmlFeatures.find((f) => f.type === 'Polygon' && f.latlngs.length >= 3)
+      const corridor = pathFeat
+        ? pathFeat.latlngs.map(([la, lo]) => ({ lat: la, lon: lo }))
+        : undefined
       const signals = await collectSiteSignals(
         nextLat,
         nextLon,
@@ -262,23 +300,53 @@ export default function TowerSuitabilityWorkspace() {
           setProgress({ message, percent })
         },
         {
-          corridor: corridor.length >= 2 ? corridor : undefined,
+          corridor: corridor && corridor.length >= 2 ? corridor : undefined,
           searchRadiusKm,
         }
       )
       if (seq !== analyzeSeq.current) return
+      // Production scorer frozen — geotechnicalIntelligence is attached additively after scoring.
       const scored = scoreSiteSignals(signals)
+      const { buildGeotechnicalIntelligence } = await import('./geotech')
+      const polyFeat = kmlFeatures.find((f) => f.type === 'Polygon' && f.latlngs.length >= 3)
+      const lineFeat = kmlFeatures.find((f) => f.type === 'LineString' && f.latlngs.length >= 2)
+      const investigationGeometry = polyFeat
+        ? parseInvestigationGeometry({
+            type: 'polygon',
+            coordinates: polyFeat.latlngs.map(([la, lo]) => ({ lat: la, lon: lo })),
+          })
+        : lineFeat
+          ? parseInvestigationGeometry({
+              type: 'line',
+              coordinates: lineFeat.latlngs.map(([la, lo]) => ({ lat: la, lon: lo })),
+            })
+          : parseInvestigationGeometry({
+              type: 'point',
+              coordinates: [{ lat: nextLat, lon: nextLon }],
+            })
+      const geotechnicalIntelligence = buildGeotechnicalIntelligence(signals, {
+        investigationGeometry,
+      })
       setProgress({ message: 'Finalizing weighted score…', percent: 100 })
-      setResult(scored)
+      setResult({ ...scored, geotechnicalIntelligence })
+      setInvestigationKmlSnapshot([...kmlFeatures])
+      setPlanningKmlFeatures([])
+      setPhaseIPowerChecked(false)
+      setPhaseIPowerRaw(null)
+      setPhaseIPowerSummary(null)
+      setPlanningPowerRaw(null)
+      setPhaseITowerCandidates([])
+      setSelectedPhaseICandidateId(null)
+      setPhaseITowerAnalysis(null)
+      setGeotechDocxBuilding(true)
+      void prebuildGeotechDocx(geotechnicalIntelligence).then((entry) => {
+        if (seq === analyzeSeq.current) {
+          setGeotechDocxBuilding(false)
+          if (entry) setGeotechDocxReady(true)
+        }
+      })
       setWorkspaceMode('analysis')
       setActivePanel('overview')
-      if (manualVoltageKv == null && scored.signals.nearbyPower?.suggestedVoltageKv != null) {
-        const src = scored.signals.nearbyPower.suggestedSource
-        setInferredVoltage({
-          kv: scored.signals.nearbyPower.suggestedVoltageKv,
-          source: src === 'tams' ? 'substation' : src === 'osm' ? 'osm' : 'substation',
-        })
-      }
       setPendingFocus(null)
     } catch (e) {
       if (seq !== analyzeSeq.current) return
@@ -306,6 +374,7 @@ export default function TowerSuitabilityWorkspace() {
       setLon(nextLon)
       setLatInput(nextLat.toFixed(6))
       setLonInput(nextLon.toFixed(6))
+      setStartCoordsLocked(true)
       setSiteLabel(`Start ${nextLat.toFixed(5)}, ${nextLon.toFixed(5)}`)
       setResult(null)
       setWorkspaceMode('planning')
@@ -317,6 +386,20 @@ export default function TowerSuitabilityWorkspace() {
 
   const onGeometryDrawn = useCallback(
     (feature: KmlFeature, focus: { lat: number; lon: number }) => {
+      if (planningDrawMode && result?.geotechnicalIntelligence) {
+        setPlanningKmlFeatures([feature])
+        setPlanningDrawMode(null)
+        setPhaseIPowerChecked(false)
+        setPhaseIPowerRaw(null)
+        setPhaseIPowerSummary(null)
+        setPhaseITowerCandidates([])
+        setSelectedPhaseICandidateId(null)
+        setPhaseITowerAnalysis(null)
+        setDrawMode('pin')
+        setWorkspaceMode('analysis')
+        setActivePanel('geotech')
+        return
+      }
       pushPlanningUndo()
       setKmlFeatures([feature])
       setKmlLocked(false)
@@ -337,34 +420,36 @@ export default function TowerSuitabilityWorkspace() {
       )
       setDrawMode('pin')
     },
-    [pushPlanningUndo]
+    [pushPlanningUndo, result?.geotechnicalIntelligence, planningDrawMode]
   )
 
   const applyLatLon = useCallback(() => {
-    const nextLat = Number(latInput)
-    const nextLon = Number(lonInput)
-    if (!Number.isFinite(nextLat) || !Number.isFinite(nextLon)) {
-      setError('Enter valid latitude and longitude numbers.')
+    const parsed = parseStartCoordinates(latInput, lonInput)
+    if ('error' in parsed) {
+      setError(parsed.error)
       return
     }
-    if (nextLat < -90 || nextLat > 90 || nextLon < -180 || nextLon > 180) {
-      setError('Latitude must be −90…90 and longitude −180…180.')
-      return
-    }
+    const { lat: nextLat, lon: nextLon, format } = parsed
     setError(null)
     pushPlanningUndo()
     setLat(nextLat)
     setLon(nextLon)
-    setLatInput(nextLat.toFixed(6))
-    setLonInput(nextLon.toFixed(6))
-    setFocusTick((n) => n + 1)
-    setSiteLabel(`Start ${nextLat.toFixed(5)}, ${nextLon.toFixed(5)}`)
+      setLatInput(nextLat.toFixed(6))
+      setLonInput(nextLon.toFixed(6))
+      setStartCoordsLocked(true)
+      setFocusTick((n) => n + 1)
+    setSiteLabel(
+      format === 'utm'
+        ? `Start ${nextLat.toFixed(5)}, ${nextLon.toFixed(5)} (from N/E)`
+        : `Start ${nextLat.toFixed(5)}, ${nextLon.toFixed(5)}`
+    )
     setResult(null)
     setWorkspaceMode('planning')
     setActivePanel(null)
     setPendingFocus(null)
     setDrawMode('pin')
     if (earthIntroRef.current) {
+      // Stop globe spin and zoom onto India / typed target for drawing on land
       setEarthFlyTo({ lat: nextLat, lon: nextLon })
     }
   }, [latInput, lonInput, pushPlanningUndo])
@@ -385,6 +470,7 @@ export default function TowerSuitabilityWorkspace() {
         setLon(nextLon)
         setLatInput(nextLat.toFixed(6))
         setLonInput(nextLon.toFixed(6))
+        setStartCoordsLocked(true)
         setSiteLabel(`Live location ${nextLat.toFixed(5)}, ${nextLon.toFixed(5)}`)
         setResult(null)
         setWorkspaceMode('planning')
@@ -530,13 +616,26 @@ export default function TowerSuitabilityWorkspace() {
   const lineTowerPlan = useMemo(
     () =>
       planTowersFromKml(kmlFeatures, {
-        voltageKv: manualVoltageKv ?? inferredVoltage?.kv ?? null,
+        voltageKv:
+          manualVoltageKv ??
+          inferredVoltage?.kv ??
+          DEFAULT_PLANNING_VOLTAGE_KV,
         voltageSource: manualVoltageKv != null ? 'manual' : inferredVoltage?.source,
         spanPolicy,
         extraText: kmlFileName,
         focus: lat != null && lon != null ? { lat, lon } : undefined,
       }),
     [kmlFeatures, inferredVoltage, manualVoltageKv, spanPolicy, kmlFileName, lat, lon]
+  )
+
+  const displayVoltageKv = useMemo(
+    () =>
+      planningVoltageKv(
+        manualVoltageKv,
+        inferredVoltage?.kv ?? null,
+        lineTowerPlan?.voltageKv ?? null
+      ),
+    [manualVoltageKv, inferredVoltage, lineTowerPlan?.voltageKv]
   )
 
   const voltageStandard = useMemo(
@@ -549,41 +648,51 @@ export default function TowerSuitabilityWorkspace() {
     return estimateTowerBand(lineTowerPlan.lengthKm, voltageStandard)
   }, [lineTowerPlan, voltageStandard])
 
+  const activeNearbyPower = useMemo(() => {
+    if (phaseIPowerChecked && phaseIPowerRaw) return phaseIPowerRaw
+    if (planningPowerRaw) return planningPowerRaw
+    return null
+  }, [phaseIPowerChecked, phaseIPowerRaw, planningPowerRaw])
+
+  const showNearbyGrid = useMemo(
+    () => (result?.geotechnicalIntelligence ? phaseIPowerChecked : displayVoltageKv != null),
+    [result?.geotechnicalIntelligence, phaseIPowerChecked, displayVoltageKv]
+  )
+
   const corridorAdvice = useMemo(() => {
     if (!lineTowerPlan?.towers?.length) return null
     const pathFeat =
       kmlFeatures.find((f) => f.type === 'LineString' && f.latlngs.length >= 2) ||
       kmlFeatures.find((f) => f.type === 'Polygon' && f.latlngs.length >= 3)
     const corridorPath = pathFeat?.latlngs ?? lineTowerPlan.towers.map((t) => [t.lat, t.lon] as [number, number])
-    const filterKv = manualVoltageKv ?? lineTowerPlan.voltageKv
-    const existing = (result?.signals.nearbyPower?.assets ?? []).filter((a) =>
-      assetMatchesNeighborKv(a, filterKv)
-    )
+    const existing = activeNearbyPower?.assets ?? []
     return analyzeCorridorPlacement({
       plannedTowers: lineTowerPlan.towers,
       corridorPath,
       existingAssets: existing,
       std: voltageStandard,
       spanM: lineTowerPlan.spanM,
-      voltageKv: lineTowerPlan.voltageKv,
+      voltageKv: displayVoltageKv,
       searchRadiusKm,
     })
   }, [
     lineTowerPlan,
     kmlFeatures,
-    result?.signals.nearbyPower?.assets,
+    activeNearbyPower?.assets,
     voltageStandard,
     searchRadiusKm,
     manualVoltageKv,
+    displayVoltageKv,
   ])
 
   const mapNearbyAssets = useMemo(() => {
-    const filterKv = manualVoltageKv ?? lineTowerPlan?.voltageKv ?? null
-    const base = (result?.signals.nearbyPower?.assets ?? []).filter((a) =>
-      assetMatchesNeighborKv(a, filterKv)
-    )
+    const phaseIMode = Boolean(result?.geotechnicalIntelligence && phaseIPowerChecked)
+    if (!phaseIMode && displayVoltageKv == null) return []
+    const base = activeNearbyPower?.assets ?? []
     const byId = new Map(base.map((a) => [a.id, a]))
     const hints = [
+      ...(corridorAdvice?.nearestTowersTop5 ?? []),
+      ...(corridorAdvice?.nearestStationsTop3 ?? []),
       corridorAdvice?.nearestTower,
       corridorAdvice?.nearestStation,
       corridorAdvice?.powerConnect?.station,
@@ -592,7 +701,6 @@ export default function TowerSuitabilityWorkspace() {
     ]
     for (const hint of hints) {
       if (!hint) continue
-      if (!assetMatchesNeighborKv(hint, filterKv)) continue
       if (byId.has(hint.id)) continue
       byId.set(hint.id, {
         id: hint.id,
@@ -606,15 +714,204 @@ export default function TowerSuitabilityWorkspace() {
         lon: hint.lon,
       })
     }
-    return [...byId.values()].slice(0, 120)
+    return [...byId.values()]
   }, [
-    result?.signals.nearbyPower?.assets,
+    activeNearbyPower?.assets,
     corridorAdvice?.nearestTower,
     corridorAdvice?.nearestStation,
     corridorAdvice?.powerConnect,
     manualVoltageKv,
     lineTowerPlan?.voltageKv,
+    displayVoltageKv,
+    corridorAdvice?.nearestTowersTop5,
+    corridorAdvice?.nearestStationsTop3,
+    phaseIPowerChecked,
+    result?.geotechnicalIntelligence,
   ])
+
+  const corridorPathForMap = useMemo(() => {
+    const pathFeat =
+      kmlFeatures.find((f) => f.type === 'LineString' && f.latlngs.length >= 2) ||
+      kmlFeatures.find((f) => f.type === 'Polygon' && f.latlngs.length >= 3)
+    if (pathFeat?.latlngs.length) {
+      return pathFeat.latlngs.map(([la, lo]) => ({ lat: la, lon: lo }))
+    }
+    return (lineTowerPlan?.towers ?? []).map((t) => ({ lat: t.lat, lon: t.lon }))
+  }, [kmlFeatures, lineTowerPlan?.towers])
+
+  const adviceByIndex = useMemo(() => {
+    const m = new Map<number, NonNullable<typeof corridorAdvice>['items'][number]>()
+    for (const item of corridorAdvice?.items ?? []) {
+      m.set(item.index, item)
+    }
+    return m
+  }, [corridorAdvice?.items])
+
+  const loadRoadRoute = useCallback((overlay: TowerConnectionOverlay) => {
+    void fetchDrivingRoute(overlay.from, overlay.to).then((route) => {
+      setConnectionOverlay((prev) =>
+        prev?.key === overlay.key
+          ? {
+              ...prev,
+              roadKm: route?.km ?? null,
+              roadCoords: route?.coordinates ?? [],
+              roadLoading: false,
+            }
+          : prev
+      )
+    })
+  }, [])
+
+  const applyTowerSelection = useCallback(
+    (detail: SelectedTowerDetail | null) => {
+      if (!detail) {
+        setSelectedTowerDetail(null)
+        setConnectionOverlay(null)
+        return
+      }
+
+      const key = connectionKeyFor(detail)
+      if (connectionOverlay?.key === key) {
+        if (connectionOverlay.showRoad) {
+          setConnectionOverlay({ ...connectionOverlay, showRoad: false })
+        } else {
+          setConnectionOverlay(null)
+        }
+        setSelectedTowerDetail(detail)
+        return
+      }
+
+      const advice =
+        detail.kind === 'planned'
+          ? detail.advice ?? adviceByIndex.get(detail.index)
+          : undefined
+      const overlay = buildConnectionOverlay(
+        detail,
+        advice,
+        lineTowerPlan?.towers ?? [],
+        corridorPathForMap,
+        mapNearbyAssets
+      )
+      setSelectedTowerDetail(detail)
+      if (detail.kind === 'planned') {
+        setFocusedPadIndex(detail.index)
+      } else {
+        setFocusedPadIndex(null)
+      }
+      if (overlay) {
+        setConnectionOverlay(overlay)
+        loadRoadRoute(overlay)
+      } else {
+        setConnectionOverlay(null)
+      }
+    },
+    [connectionOverlay, adviceByIndex, lineTowerPlan?.towers, loadRoadRoute, corridorPathForMap, mapNearbyAssets]
+  )
+
+  const handleMapBackgroundClick = useCallback(() => {
+    if (selectedTowerDetail) {
+      setSelectedTowerDetail(null)
+      setConnectionOverlay(null)
+    }
+  }, [selectedTowerDetail])
+
+  useEffect(() => {
+    if (!showNearbyGrid) {
+      if (!result?.geotechnicalIntelligence) {
+        setPlanningPowerRaw(null)
+      }
+      return
+    }
+    if (phaseIPowerChecked && phaseIPowerRaw) return
+    if (displayVoltageKv == null) return
+    if (corridorPathForMap.length < 2) return
+    if (lat == null || lon == null) return
+
+    const seq = ++planningPowerSeq.current
+    const mid = corridorPathForMap[Math.floor(corridorPathForMap.length / 2)] ?? { lat, lon }
+    setPlanningPowerLoading(true)
+    void findNearbyPowerSupply(mid.lat, mid.lon, searchRadiusKm, { corridor: corridorPathForMap })
+      .then((raw) => {
+        if (seq !== planningPowerSeq.current) return
+        setPlanningPowerRaw(raw)
+      })
+      .finally(() => {
+        if (seq === planningPowerSeq.current) setPlanningPowerLoading(false)
+      })
+  }, [
+    showNearbyGrid,
+    phaseIPowerChecked,
+    phaseIPowerRaw,
+    displayVoltageKv,
+    corridorPathForMap,
+    searchRadiusKm,
+    lat,
+    lon,
+    result?.geotechnicalIntelligence,
+  ])
+
+  useEffect(() => {
+    const towers = lineTowerPlan?.towers ?? []
+    if (!towers.length) {
+      setPadRoadAccess([])
+      return
+    }
+    let cancelled = false
+    const run = async () => {
+      const out: typeof padRoadAccess = []
+      for (const t of towers) {
+        if (cancelled) return
+        const hit = await fetchNearestRoad(t.lat, t.lon)
+        if (hit) {
+          out.push({
+            index: t.index,
+            lat: t.lat,
+            lon: t.lon,
+            roadLat: hit.lat,
+            roadLon: hit.lon,
+            km: hit.km,
+          })
+        }
+      }
+      if (!cancelled) setPadRoadAccess(out)
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [lineTowerPlan?.towers])
+
+  const handleSelectPad = useCallback(
+    (index: number) => {
+      const item = adviceByIndex.get(index)
+      const tower = lineTowerPlan?.towers.find((t) => t.index === index)
+      if (!tower) return
+      setFocusedPadIndex(index)
+      setPadFocusTick((n) => n + 1)
+      applyTowerSelection({
+        kind: 'planned',
+        index,
+        lat: tower.lat,
+        lon: tower.lon,
+        voltageKv: displayVoltageKv,
+        spanM: lineTowerPlan?.spanM,
+        advice: item,
+        isBestPad: corridorAdvice?.powerConnect?.bestPadIndex === index,
+      })
+    },
+    [adviceByIndex, lineTowerPlan, displayVoltageKv, corridorAdvice?.powerConnect?.bestPadIndex, applyTowerSelection]
+  )
+
+  const handleToggleConnection = useCallback(() => {
+    if (!connectionOverlay) return
+    if (connectionOverlay.showRoad) {
+      setConnectionOverlay({ ...connectionOverlay, showRoad: false })
+    } else {
+      const next = { ...connectionOverlay, showRoad: true, roadLoading: !connectionOverlay.roadCoords?.length }
+      setConnectionOverlay(next)
+      if (!connectionOverlay.roadCoords?.length) loadRoadRoute(next)
+    }
+  }, [connectionOverlay, loadRoadRoute])
 
   useEffect(() => {
     if (!analyzing) {
@@ -679,6 +976,242 @@ export default function TowerSuitabilityWorkspace() {
     }
   }, [kmlFeatures, lat, lon, manualVoltageKv])
 
+  const towerPlanningContext = useMemo((): TowerPlanningContext | null => {
+    const geo = result?.geotechnicalIntelligence
+    if (!geo || lat == null || lon == null) return null
+    const invGeom = kmlFeaturesToInvestigationGeometry(
+      investigationKmlSnapshot.length ? investigationKmlSnapshot : kmlFeatures,
+      { lat, lon }
+    )
+    const base = buildTowerPlanningContext(geo, { lat, lon }, invGeom)
+    const planGeom = kmlFeaturesToInvestigationGeometry(planningKmlFeatures)
+    return attachPlanningGeometry(base, planGeom)
+  }, [result?.geotechnicalIntelligence, lat, lon, investigationKmlSnapshot, kmlFeatures, planningKmlFeatures])
+
+  const projectAnalysisContext = useMemo((): ProjectAnalysisContext | null => {
+    const geo = result?.geotechnicalIntelligence
+    if (!geo || lat == null || lon == null) return null
+    const invGeom = kmlFeaturesToInvestigationGeometry(
+      investigationKmlSnapshot.length ? investigationKmlSnapshot : kmlFeatures,
+      { lat, lon }
+    )
+    const selected = phaseITowerCandidates.find((c) => c.id === selectedPhaseICandidateId) ?? null
+    return buildProjectAnalysisContext({
+      geo,
+      lat,
+      lon,
+      investigationGeometry: invGeom,
+      parameterCompleteness: geo.parameterCompleteness ?? null,
+      foundationRecommendation: geo.foundationRecommendation ?? null,
+      powerChecked: phaseIPowerChecked,
+      powerRaw: phaseIPowerRaw,
+      powerSummary: phaseIPowerSummary,
+      towerCandidates: phaseITowerCandidates,
+      selectedTowerCandidate: selected,
+      towerAnalysis: phaseITowerAnalysis,
+      siteSignals: result?.signals ?? null,
+    })
+  }, [
+    result?.geotechnicalIntelligence,
+    lat,
+    lon,
+    investigationKmlSnapshot,
+    kmlFeatures,
+    phaseIPowerChecked,
+    phaseIPowerRaw,
+    phaseIPowerSummary,
+    phaseITowerCandidates,
+    selectedPhaseICandidateId,
+    phaseITowerAnalysis,
+    result?.signals,
+  ])
+
+  const geotechDocxInput = useMemo((): GeotechDocxInput | null => {
+    const geo = projectAnalysisContext?.geotechnicalIntelligence ?? result?.geotechnicalIntelligence
+    if (!geo || lat == null || lon == null) return null
+    const invGeom = kmlFeaturesToInvestigationGeometry(
+      investigationKmlSnapshot.length ? investigationKmlSnapshot : kmlFeatures,
+      { lat, lon }
+    )
+    const planGeom = kmlFeaturesToInvestigationGeometry(planningKmlFeatures)
+    const phaseI = buildPhaseIReportBundle({
+      geo,
+      investigationCenter: { lat, lon },
+      investigationGeometry: invGeom,
+      planningGeometry: planGeom,
+      powerChecked: phaseIPowerChecked,
+      powerSummary: phaseIPowerSummary,
+      towerCandidates: phaseITowerCandidates,
+      selectedTowerAnalysis: phaseITowerAnalysis,
+    })
+    return { ...defaultGeotechDocxInput(geo), phaseI }
+  }, [
+    projectAnalysisContext,
+    result?.geotechnicalIntelligence,
+    lat,
+    lon,
+    investigationKmlSnapshot,
+    kmlFeatures,
+    planningKmlFeatures,
+    phaseIPowerChecked,
+    phaseIPowerSummary,
+    phaseITowerCandidates,
+    phaseITowerAnalysis,
+  ])
+
+  const displayKmlFeatures = useMemo(() => {
+    if (investigationKmlSnapshot.length > 0) return investigationKmlSnapshot
+    return kmlFeatures
+  }, [investigationKmlSnapshot, kmlFeatures])
+
+  const phaseIPlannedTowers = useMemo(() => {
+    if (phaseITowerCandidates.length > 0) {
+      return phaseITowerCandidates.map((c) => ({
+        lat: c.latitude,
+        lon: c.longitude,
+        index: c.index,
+        chainageM: 0,
+      }))
+    }
+    return lineTowerPlan?.towers ?? []
+  }, [phaseITowerCandidates, lineTowerPlan?.towers])
+
+  const handleCreateTransmissionLine = useCallback(() => {
+    setPlanningDrawMode('line')
+    setWorkspaceMode('planning')
+    setDrawMode('line')
+    setKmlLocked(false)
+    setActivePanel('geotech')
+  }, [])
+
+  const handleCreateInvestigationArea = useCallback(() => {
+    setPlanningDrawMode('polygon')
+    setWorkspaceMode('planning')
+    setDrawMode('polygon')
+    setKmlLocked(false)
+    setActivePanel('geotech')
+  }, [])
+
+  const handleCheckTowerSuitability = useCallback(() => {
+    setActivePanel('geotech')
+  }, [])
+
+  const handleCheckPhaseIPower = useCallback(async () => {
+    if (lat == null || lon == null) return
+    const kmlForPower = planningKmlFeatures.length
+      ? planningKmlFeatures
+      : investigationKmlSnapshot.length
+        ? investigationKmlSnapshot
+        : kmlFeatures
+    if (!kmlForPower.length) return
+    const corridor = planningCorridorFromKml(kmlForPower) ?? [{ lat, lon }]
+    const mid = corridor[Math.floor(corridor.length / 2)] ?? { lat, lon }
+    setPhaseIPowerLoading(true)
+    try {
+      const raw = await findNearbyPowerSupply(mid.lat, mid.lon, searchRadiusKm, { corridor })
+      setPhaseIPowerRaw(raw)
+      setPhaseIPowerSummary(summarizePowerInfrastructure(raw, mid.lat, mid.lon, searchRadiusKm))
+      setPhaseIPowerChecked(true)
+      setPhaseITowerCandidates([])
+      setSelectedPhaseICandidateId(null)
+      setPhaseITowerAnalysis(null)
+    } finally {
+      setPhaseIPowerLoading(false)
+    }
+  }, [planningKmlFeatures, investigationKmlSnapshot, kmlFeatures, lat, lon, searchRadiusKm])
+
+  const handleGenerateTowerSuggestions = useCallback(() => {
+    const geo = result?.geotechnicalIntelligence
+    const kmlForTowers = planningKmlFeatures.length ? planningKmlFeatures : investigationKmlSnapshot
+    if (!geo || !phaseIPowerChecked || !phaseIPowerSummary || !kmlForTowers.length) return
+    const { candidates } = suggestTowerLocations({
+      planningKmlFeatures: kmlForTowers,
+      geo,
+      power: phaseIPowerRaw,
+      powerSummary: phaseIPowerSummary,
+      searchRadiusKm,
+      voltageKv: displayVoltageKv,
+      baseSuitability: result ?? undefined,
+    })
+    setPhaseITowerCandidates(candidates)
+  }, [
+    result,
+    phaseIPowerChecked,
+    phaseIPowerSummary,
+    phaseIPowerRaw,
+    planningKmlFeatures,
+    investigationKmlSnapshot,
+    searchRadiusKm,
+    displayVoltageKv,
+  ])
+
+  const handleSelectPhaseICandidate = useCallback(
+    async (candidate: TowerCandidate) => {
+      const geo = result?.geotechnicalIntelligence
+      if (!geo) return
+      setSelectedPhaseICandidateId(candidate.id)
+      setFocusedPadIndex(candidate.index)
+      setPadFocusTick((n) => n + 1)
+      setPhaseITowerAnalysisLoading(true)
+      try {
+        const analysis = await analyzeTowerCandidate({
+          candidate,
+          geotechnicalIntelligence: geo,
+          corridor: planningCorridorFromKml(planningKmlFeatures),
+          searchRadiusKm,
+        })
+        setPhaseITowerAnalysis(analysis)
+      } finally {
+        setPhaseITowerAnalysisLoading(false)
+      }
+    },
+    [result?.geotechnicalIntelligence, planningKmlFeatures, searchRadiusKm]
+  )
+
+  const towerPlanningPanelProps: TowerPlanningPanelProps | null = useMemo(() => {
+    const geo = result?.geotechnicalIntelligence
+    if (!geo?.soilVerdictAnalysis || !towerPlanningContext) return null
+    return {
+      geo,
+      context: towerPlanningContext,
+      planningGeometryReady: planningKmlFeatures.length > 0 || investigationKmlSnapshot.length > 0,
+      powerChecked: phaseIPowerChecked,
+      powerLoading: phaseIPowerLoading,
+      powerSummary: phaseIPowerSummary,
+      searchRadiusKm,
+      onSearchRadiusKm: setSearchRadiusKm,
+      towerCandidates: phaseITowerCandidates,
+      selectedCandidateId: selectedPhaseICandidateId,
+      towerAnalysis: phaseITowerAnalysis,
+      towerAnalysisLoading: phaseITowerAnalysisLoading,
+      onCreateTransmissionLine: handleCreateTransmissionLine,
+      onCreateInvestigationArea: handleCreateInvestigationArea,
+      onCheckTowerSuitability: handleCheckTowerSuitability,
+      onCheckPowerInfrastructure: handleCheckPhaseIPower,
+      onGenerateTowerSuggestions: handleGenerateTowerSuggestions,
+      onSelectCandidate: handleSelectPhaseICandidate,
+    }
+  }, [
+    result?.geotechnicalIntelligence,
+    towerPlanningContext,
+    planningKmlFeatures.length,
+    investigationKmlSnapshot.length,
+    phaseIPowerChecked,
+    phaseIPowerLoading,
+    phaseIPowerSummary,
+    searchRadiusKm,
+    phaseITowerCandidates,
+    selectedPhaseICandidateId,
+    phaseITowerAnalysis,
+    phaseITowerAnalysisLoading,
+    handleCreateTransmissionLine,
+    handleCreateInvestigationArea,
+    handleCheckTowerSuitability,
+    handleCheckPhaseIPower,
+    handleGenerateTowerSuggestions,
+    handleSelectPhaseICandidate,
+  ])
+
   const onDownloadReport = useCallback(() => {
     if (!result || !suggestions || lat == null || lon == null) return
     downloadSuitabilityReport({
@@ -689,7 +1222,7 @@ export default function TowerSuitabilityWorkspace() {
       suggestions,
       kmlOutlineCount: kmlFeatures.length,
       towerCount: lineTowerPlan?.towerCount,
-      voltageLabel: lineTowerPlan ? voltageLabel(lineTowerPlan.voltageKv) : undefined,
+      voltageLabel: lineTowerPlan ? voltageLabel(displayVoltageKv) : undefined,
       spanM: lineTowerPlan?.spanM,
     })
   }, [result, suggestions, siteLabel, lat, lon, kmlFeatures.length, lineTowerPlan])
@@ -712,68 +1245,75 @@ export default function TowerSuitabilityWorkspace() {
       lon,
       soil: { ...soil, placeName: soil.placeName || result.signals.placeLabel || undefined },
       signals: result.signals,
+      geotechnicalIntelligence: result.geotechnicalIntelligence ?? undefined,
     }
   }, [lat, lon, result, soilReportLabel])
 
-  const onGenerateSoilReport = useCallback(async (): Promise<SoilReportOpts> => {
-    if (lat == null || lon == null || !result) {
-      throw new Error('Analyze a site first')
+  useEffect(() => {
+    if (!geotechDocxInput) {
+      setGeotechDocxReady(false)
+      setGeotechDocxBuilding(false)
+      return
     }
-    const label = soilReportLabel
-    let soil = result.signals.soilScreening
-    let signals = result.signals
-    if (!soil) {
-      const place = result.signals.placeLabel || siteLabel
-      soil = await fetchSoilScreening(lat, lon, place)
-      if (!soil) throw new Error('Soil screening unavailable')
-      signals = {
-        ...result.signals,
-        soilScreening: soil,
-        liveOk: {
-          dem: result.signals.liveOk?.dem ?? false,
-          road: result.signals.liveOk?.road ?? false,
-          water: result.signals.liveOk?.water ?? false,
-          settlement: result.signals.liveOk?.settlement ?? false,
-          grid: result.signals.liveOk?.grid ?? false,
-          wind: result.signals.liveOk?.wind ?? false,
-          landcover: result.signals.liveOk?.landcover ?? false,
-          geotech: result.signals.liveOk?.geotech,
-          soilScreening: true,
-        },
-      }
-      setResult({ ...result, signals })
+    if (isGeotechDocxCached(geotechDocxInput)) {
+      setGeotechDocxReady(true)
+      setGeotechDocxBuilding(false)
+      return
     }
-    return {
-      siteLabel: label,
-      lat,
-      lon,
-      soil: { ...soil, placeName: soil.placeName || signals.placeLabel || undefined },
-      signals,
+    setGeotechDocxBuilding(true)
+    setGeotechDocxReady(false)
+    let cancelled = false
+    void prebuildGeotechDocx(geotechDocxInput)
+      .then((entry) => {
+        if (!cancelled) {
+          setGeotechDocxBuilding(false)
+          if (entry) setGeotechDocxReady(true)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setGeotechDocxBuilding(false)
+      })
+    return () => {
+      cancelled = true
     }
-  }, [lat, lon, result, siteLabel, soilReportLabel])
-
+  }, [geotechDocxInput])
 
   const analysisReady = workspaceMode === 'analysis' && !!result && !!suggestions
   const drawerTitle =
-    activePanel === 'score'
-      ? 'Site suitability'
-      : activePanel === 'soil'
-        ? 'Soil report'
-        : activePanel === 'report'
-          ? 'Download report'
-          : activePanel === 'suggestions'
-            ? 'Suggestions'
-            : activePanel === 'overview'
-              ? 'Analysis overview'
-              : activePanel === 'live'
-                ? 'Live data signals'
-                : activePanel === 'factors'
-                  ? 'Suitability factors'
-                  : activePanel === 'controls'
-                    ? 'Map & analysis controls'
-                    : activePanel === 'breakdown'
-                      ? 'Score breakdown'
-                      : ''
+    activePanel === 'soil'
+      ? 'Soil screening'
+      : activePanel === 'geotech'
+        ? 'Geotechnical intelligence'
+        : activePanel === 'suggestions'
+          ? 'Suggestions'
+          : activePanel === 'overview'
+            ? 'Analysis overview'
+            : activePanel === 'live'
+              ? 'Live data signals'
+              : activePanel === 'factors'
+                ? 'Suitability factors'
+                : activePanel === 'controls'
+                  ? 'Setup'
+                  : activePanel === 'breakdown'
+                    ? 'Score breakdown'
+                    : ''
+
+  const showStartLocation =
+    workspaceMode === 'planning' && !analyzing && entryMode !== 'upload'
+
+  const startLocationPanel = showStartLocation ? (
+    <StartLocationBar
+      latInput={latInput}
+      lonInput={lonInput}
+      onLatInput={setLatInput}
+      onLonInput={setLonInput}
+      coordsLocked={startCoordsLocked}
+      onEditCoords={() => setStartCoordsLocked(false)}
+      onGoToLocation={applyLatLon}
+      onLiveLocation={goLiveLocation}
+      geoBusy={geoBusy}
+    />
+  ) : null
 
   return (
     <div
@@ -794,10 +1334,10 @@ export default function TowerSuitabilityWorkspace() {
           flyTo={earthFlyTo}
           caption={
             entryMode === 'live'
-              ? 'Keeps rotating until GPS lock — or press Go to lat/lon'
+              ? 'Keeps rotating until GPS lock — or press Go (slows over India)'
               : entryMode === 'upload'
                 ? 'Keeps rotating until your KML/KMZ is read, then flies to the corridor'
-                : 'Keeps rotating until you press Go to lat/lon'
+                : 'Keeps rotating until you press Go — slows over India land, then zooms for drawing'
           }
           onComplete={() => {
             setEarthIntro(false)
@@ -808,6 +1348,21 @@ export default function TowerSuitabilityWorkspace() {
             if (pending) void runAnalyze(pending.lat, pending.lon, pending.label)
           }}
         />
+      )}
+
+      {earthIntro && startLocationPanel && (
+        <div className="fixed top-4 left-1/2 z-[5000] w-[min(400px,calc(100vw-2rem))] -translate-x-1/2 pointer-events-auto">
+          <div className="ts-glass ts-glass-see p-3 shadow-lg">
+            <p className="text-[10px] font-black uppercase tracking-wider text-[#17879a] mb-2">
+              Enter start coordinates
+            </p>
+            {startLocationPanel}
+            <p className="mt-2 text-[10px] text-[#66727a] leading-snug">
+              Type lat/lon (or UTM N/E), then press <strong>Go to Site</strong> to land on the map and start
+              drawing. Pick search radius from the draw toolbar after you land.
+            </p>
+          </div>
+        </div>
       )}
 
       {phase === 'work' && (
@@ -831,7 +1386,7 @@ export default function TowerSuitabilityWorkspace() {
             <div className="ml-auto flex items-center gap-2">
               {kmlFeatures.length > 0 && lineTowerPlan && (
                 <span className="hidden md:inline text-xs text-[#b97816] font-semibold">
-                  Planning · {lineTowerPlan.towerCount} towers · {voltageLabel(lineTowerPlan.voltageKv)} ·{' '}
+                  Planning · {lineTowerPlan.towerCount} towers · {voltageLabel(displayVoltageKv)} ·{' '}
                   {lineTowerPlan.spanM} m
                 </span>
               )}
@@ -947,35 +1502,124 @@ export default function TowerSuitabilityWorkspace() {
               lat={lat}
               lon={lon}
               result={result}
-              kmlFeatures={kmlFeatures}
-              plannedTowers={lineTowerPlan?.towers ?? []}
+              kmlFeatures={displayKmlFeatures}
+              planningKmlFeatures={planningKmlFeatures}
+              plannedTowers={phaseIPlannedTowers}
               nearbyAssets={mapNearbyAssets}
               searchRadiusKm={searchRadiusKm}
               placementAdvice={corridorAdvice?.items ?? []}
-              voltageKv={lineTowerPlan?.voltageKv ?? null}
+              voltageKv={displayVoltageKv}
               spanM={lineTowerPlan?.spanM}
               corridorLineColor={corridorAdvice?.lineColor ?? '#fbbf24'}
-              highlightTowerId={
-                corridorAdvice?.powerConnect?.towerNearStation?.id ??
-                corridorAdvice?.nearestTower?.id ??
-                null
+              corridorPath={corridorPathForMap}
+              showNearbyGrid={showNearbyGrid}
+              onMapBackgroundClick={handleMapBackgroundClick}
+              padRoadAccess={padRoadAccess}
+              onTowerSelect={
+                phaseITowerCandidates.length > 0
+                  ? (detail) => {
+                      if (detail?.kind === 'planned') {
+                        const c = phaseITowerCandidates.find((x) => x.index === detail.index)
+                        if (c) void handleSelectPhaseICandidate(c)
+                      }
+                    }
+                  : applyTowerSelection
               }
+              candidateIdByIndex={
+                phaseITowerCandidates.length > 0
+                  ? Object.fromEntries(phaseITowerCandidates.map((c) => [c.index, c.id]))
+                  : null
+              }
+              candidateColorByIndex={
+                phaseITowerCandidates.length > 0
+                  ? Object.fromEntries(
+                      phaseITowerCandidates.map((c) => [c.index, c.colorHex ?? '#22c55e'])
+                    )
+                  : null
+              }
+              highlightTowerId={corridorAdvice?.nearestTower?.id ?? null}
               highlightStationId={
-                corridorAdvice?.powerConnect?.station?.id ??
                 corridorAdvice?.nearestStation?.id ??
+                corridorAdvice?.powerConnect?.station?.id ??
                 null
               }
+              corridorNearestTower={corridorAdvice?.nearestTower ?? null}
+              corridorNearestStation={corridorAdvice?.nearestStation ?? null}
+              corridorPowerLoading={phaseIPowerLoading || planningPowerLoading}
               powerConnect={corridorAdvice?.powerConnect ?? null}
+              roadNearest={result?.signals.roadNearest ?? null}
               analyzing={analyzing}
               drawMode={drawMode}
-              drawingEnabled={workspaceMode === 'planning' && !analyzing && !kmlLocked}
+              drawingEnabled={
+                (workspaceMode === 'planning' && !analyzing && !kmlLocked) ||
+                (planningDrawMode != null && !!result?.geotechnicalIntelligence)
+              }
               focusTick={focusTick}
+              padFocusTick={padFocusTick}
+              focusedPadIndex={focusedPadIndex}
+              verdictFilter={verdictFilter}
+              connectionOverlay={connectionOverlay}
               undoDraftTick={undoDraftTick}
               onDraftCountChange={setDraftCount}
               onDrawModeChange={setDrawMode}
               onPick={onMapPick}
               onGeometryDrawn={onGeometryDrawn}
+              startLocationSlot={!earthIntro ? startLocationPanel : null}
+              chromeElevated={earthIntro}
+              onSearchRadiusKm={setSearchRadiusKm}
+              geometryPending={
+                workspaceMode === 'planning' &&
+                kmlFeatures.length > 0 &&
+                !analyzing &&
+                !!(pendingFocus || kmlLocked)
+              }
+              onGeometryCancel={cancelDrawnGeometry}
+              highlightBoreholeId={highlightedBoreholeId}
+              onBoreholeSelect={handleBoreholeSelect}
+              boreholeFocusTick={boreholeFocusTick}
+              geometryActionSlot={
+                workspaceMode === 'planning' &&
+                kmlFeatures.length > 0 &&
+                !analyzing &&
+                (pendingFocus || kmlLocked) ? (
+                  <div className="ts-glass ts-glass-see p-2.5 flex flex-col items-center gap-2 shadow-lg">
+                    <p className="text-[10px] font-bold text-[#66727a] text-center">
+                      Shape ready — Save KML or Analyze site · click map to cancel
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={saveDrawnKml}
+                        className="inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-xl border border-[rgba(51,65,85,0.16)] bg-white/70 text-xs font-bold text-[#263238]"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        Save KML
+                      </button>
+                      <button
+                        type="button"
+                        onClick={analyzePendingGeometry}
+                        className="inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-xl bg-[#17879a] text-xs font-black text-white hover:bg-[#126b79]"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Analyze site
+                      </button>
+                    </div>
+                  </div>
+                ) : null
+              }
             />
+
+            {selectedTowerDetail && (
+              <TowerAssetDetailCard
+                detail={selectedTowerDetail}
+                connection={connectionOverlay}
+                onToggleConnection={connectionOverlay ? handleToggleConnection : undefined}
+                onClose={() => {
+                  setSelectedTowerDetail(null)
+                  setConnectionOverlay(null)
+                }}
+              />
+            )}
 
             {earthIntro && entryMode === 'upload' && !earthFlyTo && (
               <div className="absolute bottom-6 left-1/2 z-[5000] w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 pointer-events-auto">
@@ -1026,158 +1670,6 @@ export default function TowerSuitabilityWorkspace() {
               </div>
             )}
 
-            {workspaceMode === 'planning' && !analyzing && !kmlLocked && entryMode !== 'upload' && (
-              <div
-                className={`absolute bottom-3 left-3 pointer-events-none ${earthIntro ? 'z-[5000]' : 'z-[1150]'
-                  }`}
-              >
-                <div className="pointer-events-auto ts-glass ts-glass-see p-3 w-[min(360px,calc(100vw-1.5rem))]">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-[#0f172a] mb-2">
-                    Start projection · lat / lon
-                  </p>
-                  <div className="mb-2">
-                    <SearchRadiusPicker value={searchRadiusKm} onChange={setSearchRadiusKm} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="text-[10px] text-[#0f172a] font-bold">
-                      Latitude
-                      <input
-                        value={latInput}
-                        onChange={(e) => setLatInput(e.target.value)}
-                        placeholder={String(SUGGESTED_START.lat)}
-                        inputMode="decimal"
-                        className="mt-1 w-full h-9 rounded-lg border border-[rgba(51,65,85,0.16)] bg-white/70 px-2 text-xs font-mono text-[#0f172a]"
-                      />
-                    </label>
-                    <label className="text-[10px] text-[#0f172a] font-bold">
-                      Longitude
-                      <input
-                        value={lonInput}
-                        onChange={(e) => setLonInput(e.target.value)}
-                        placeholder={String(SUGGESTED_START.lon)}
-                        inputMode="decimal"
-                        className="mt-1 w-full h-9 rounded-lg border border-[rgba(51,65,85,0.16)] bg-white/70 px-2 text-xs font-mono text-[#0f172a]"
-                      />
-                    </label>
-                  </div>
-                  <p className="mt-1.5 text-[10px] text-[#0f172a] leading-snug">
-                    Suggested India centre is filled in. Click <strong>Go to lat/lon</strong> to fly there, or
-                    type any coordinates first and then Go.
-                  </p>
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      type="button"
-                      onClick={applyLatLon}
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-[#17879a] text-xs font-bold text-white hover:bg-[#126b79]"
-                    >
-                      <Crosshair className="w-3.5 h-3.5" />
-                      Go to lat/lon
-                    </button>
-                    <button
-                      type="button"
-                      disabled={geoBusy}
-                      onClick={goLiveLocation}
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-[rgba(51,65,85,0.16)] text-xs font-bold text-[#0f172a] disabled:opacity-50"
-                    >
-                      <Navigation className="w-3.5 h-3.5" />
-                      {geoBusy ? 'Locating…' : 'Live location'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {workspaceMode === 'planning' &&
-              kmlFeatures.length > 0 &&
-              !analyzing &&
-              (pendingFocus || kmlLocked) && (
-              <div className="absolute bottom-3 right-3 z-[1150] pointer-events-auto ts-glass p-3 w-[min(360px,calc(100vw-1.5rem))] max-h-[min(70vh,420px)] overflow-y-auto">
-                <p className="text-xs font-black text-[#b97816] uppercase tracking-wider">
-                  {kmlLocked ? 'Edit projections · same KML' : 'Drawn shape ready'}
-                </p>
-                <p className="text-sm text-[#0f172a] mt-1 leading-snug">
-                  {kmlLocked
-                    ? 'Corridor geometry stays as-is. Change kV class or Dense / Ruling / Long span to re-place towers, then Analyze.'
-                    : 'Pick voltage class (CEA planning bands) — then Save KML or Analyze live suitability.'}
-                </p>
-                <label className="mt-2 block text-[10px] font-bold uppercase text-[#0f172a]">
-                  Line voltage
-                  <select
-                    value={manualVoltageKv ?? lineTowerPlan?.voltageKv ?? ''}
-                    onChange={(e) => {
-                      const v = e.target.value ? Number(e.target.value) : null
-                      setManualVoltageKv(v)
-                    }}
-                    className="mt-1 w-full h-9 rounded-lg border border-[rgba(51,65,85,0.16)] bg-white/70 px-2 text-sm font-bold text-[#263238]"
-                  >
-                    <option value="">Select kV class…</option>
-                    {VOLTAGE_OPTIONS_KV.map((kv) => {
-                      const std = standardForVoltageKv(kv)
-                      return (
-                        <option key={kv} value={kv}>
-                          {kv} kV · ruling {std?.rulingSpanM ?? spanForVoltageKv(kv)} m
-                        </option>
-                      )
-                    })}
-                  </select>
-                </label>
-                <div className="mt-2 grid grid-cols-3 gap-1">
-                  {(
-                    [
-                      { id: 'dense' as const, label: 'Dense' },
-                      { id: 'ruling' as const, label: 'Ruling' },
-                      { id: 'long' as const, label: 'Long' },
-                    ] as const
-                  ).map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => setSpanPolicy(p.id)}
-                      className={`h-8 rounded-lg text-[10px] font-black border ${spanPolicy === p.id
-                        ? 'bg-[#b97816] text-white border-[#b97816]'
-                        : 'bg-white/55 text-[#263238] border-[rgba(51,65,85,0.16)]'
-                        }`}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-                {lineTowerPlan && (
-                  <p className="mt-2 text-[11px] text-[#66727a] leading-snug">
-                    {towerPredictionNote(
-                      lineTowerPlan.lengthKm,
-                      lineTowerPlan.spanM,
-                      lineTowerPlan.towerCount,
-                      voltageStandard
-                    )}
-                  </p>
-                )}
-                {towerBand && voltageStandard && (
-                  <p className="mt-1 text-[10px] text-[#66727a] leading-snug">
-                    Band for {voltageStandard.label}: {towerBand.dense} (dense) – {towerBand.ruling}{' '}
-                    (ruling) – {towerBand.long} (long) towers · ROW ~{voltageStandard.rowWidthM} m
-                  </p>
-                )}
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={saveDrawnKml}
-                    className="inline-flex items-center justify-center gap-1.5 h-10 rounded-xl border border-[rgba(51,65,85,0.16)] bg-white/70 text-xs font-bold text-[#263238]"
-                  >
-                    <Save className="w-3.5 h-3.5" />
-                    Save KML
-                  </button>
-                  <button
-                    type="button"
-                    onClick={analyzePendingGeometry}
-                    className="inline-flex items-center justify-center gap-1.5 h-10 rounded-xl bg-[#17879a] text-xs font-black text-white hover:bg-[#126b79]"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    Analyze
-                  </button>
-                </div>
-              </div>
-            )}
 
             {workspaceMode === 'planning' &&
               !result &&
@@ -1197,6 +1689,7 @@ export default function TowerSuitabilityWorkspace() {
                 <div className="hidden md:flex absolute top-3 right-3 z-[1160] pointer-events-none">
                   <IntelligenceRail
                     active={activePanel}
+                    geotechBuilding={geotechDocxBuilding}
                     onSelect={(id) => setActivePanel((cur) => (cur === id ? null : id))}
                   />
                 </div>
@@ -1204,16 +1697,32 @@ export default function TowerSuitabilityWorkspace() {
                 {activePanel && (
                   <div className="absolute z-[1170] pointer-events-none md:top-3 md:bottom-3 md:right-[5.6rem] max-md:left-2 max-md:right-2 max-md:bottom-[4.25rem]">
                     <IntelligenceDrawer title={drawerTitle} onClose={() => setActivePanel(null)}>
-                      {activePanel === 'score' && <SiteScoreCard result={result} expandable={false} />}
                       {activePanel === 'soil' && (
                         <SoilReportCard
                           soil={result.signals.soilScreening}
                           siteLabel={soilReportLabel}
-                          reportOpts={soilReportOpts}
-                          onGenerate={onGenerateSoilReport}
+                          onOpenGeotech={() => setActivePanel('geotech')}
                         />
                       )}
-                      {activePanel === 'report' && <DownloadReportCard onDownload={onDownloadReport} />}
+                      {activePanel === 'geotech' && (
+                        <GeotechIntelligencePanel
+                          geo={result.geotechnicalIntelligence}
+                          geotechDocxInput={geotechDocxInput}
+                          docxReady={geotechDocxReady}
+                          docxBuilding={geotechDocxBuilding}
+                          soilReportOpts={soilReportOpts}
+                          towerPlanning={towerPlanningPanelProps}
+                          soilScreening={result.signals.soilScreening}
+                          selectedBoreholeId={highlightedBoreholeId}
+                          onSelectBorehole={handleBoreholeSelect}
+                          siteSignals={result.signals}
+                          siteLat={lat ?? result.signals.lat}
+                          siteLon={lon ?? result.signals.lon}
+                          siteLabel={siteLabel}
+                          towerCandidates={phaseITowerCandidates}
+                          powerChecked={phaseIPowerChecked}
+                        />
+                      )}
                       {activePanel === 'suggestions' && (
                         <SuggestionsDetailPanel
                           suggestions={suggestions}
@@ -1231,6 +1740,12 @@ export default function TowerSuitabilityWorkspace() {
                           onExploreFactors={() => setActivePanel('factors')}
                           lat={lat}
                           lon={lon}
+                          focusedPadIndex={focusedPadIndex}
+                          verdictFilter={verdictFilter}
+                          onVerdictFilter={setVerdictFilter}
+                          onSelectPad={handleSelectPad}
+                          powerLoading={phaseIPowerLoading}
+                          powerDiagnostics={activeNearbyPower?.diagnostics ?? null}
                         />
                       )}
                       {activePanel === 'live' && (
@@ -1241,18 +1756,16 @@ export default function TowerSuitabilityWorkspace() {
                         <ControlsPanel
                           searchRadiusKm={searchRadiusKm}
                           onSearchRadiusKm={setSearchRadiusKm}
-                          latInput={latInput}
-                          lonInput={lonInput}
-                          onLatInput={setLatInput}
-                          onLonInput={setLonInput}
-                          onGoToLocation={applyLatLon}
-                          onLiveLocation={goLiveLocation}
-                          geoBusy={geoBusy}
                           lineTowerPlan={lineTowerPlan}
                           manualVoltageKv={manualVoltageKv}
                           onManualVoltageKv={setManualVoltageKv}
                           spanPolicy={spanPolicy}
                           onSpanPolicy={setSpanPolicy}
+                          showCorridorPlanning={
+                            Boolean(result.geotechnicalIntelligence) && kmlFeatures.length > 0
+                          }
+                          voltageStandard={voltageStandard}
+                          towerBand={towerBand}
                         />
                       )}
                       {activePanel === 'breakdown' && <ScoreBreakdownPanel result={result} />}
@@ -1263,6 +1776,7 @@ export default function TowerSuitabilityWorkspace() {
                 <div className="md:hidden absolute bottom-2 left-2 right-2 z-[1160] pointer-events-none">
                   <IntelligenceRail
                     active={activePanel}
+                    geotechBuilding={geotechDocxBuilding}
                     onSelect={(id) => setActivePanel((cur) => (cur === id ? null : id))}
                   />
                 </div>

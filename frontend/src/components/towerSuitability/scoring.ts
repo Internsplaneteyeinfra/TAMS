@@ -25,6 +25,8 @@ export interface SiteSignals {
   elevationM: number | null
   slopeDeg: number | null
   roadKm: number | null
+  /** Nearest drivable road snap point from OSRM (for map overlay). */
+  roadNearest?: { lat: number; lon: number; km: number } | null
   waterKm: number | null
   buildingKm: number | null
   towerKm: number | null
@@ -42,6 +44,7 @@ export interface SiteSignals {
     landcover: boolean
     geotech?: boolean
     soilScreening?: boolean
+    flood?: boolean
   }
   /** True when Overpass failed and Photon geocode fallback was used. */
   usedFallback?: {
@@ -63,11 +66,16 @@ export interface SiteSignals {
     adopted_resistivity_ohm_m?: number
     groundwater_note?: string
     recommended_pile?: string
+    investigation_depth_m?: number
+    layer_count?: number
+    full?: import('@/lib/geotechApi').GeotechInvestigation | null
   } | null
   /** Open GIS soil screening (SoilGrids) — not lab accuracy. */
   soilScreening?: import('./soilScreening').SoilScreening | null
   /** Human place label from Nominatim when available. */
   placeLabel?: string | null
+  /** Multi-source enrichment (terrain, water, flood, settlement, land cover). */
+  enrichment?: import('./siteSignals/types').SiteSignalsEnrichment
 }
 
 export interface SuitabilityResult {
@@ -78,6 +86,11 @@ export interface SuitabilityResult {
   signals: SiteSignals
   disclaimer: string
   fetchedAt?: string
+  /**
+   * Additive GEO-1 block. Built OUTSIDE scoreSiteSignals.
+   * Must never feed finalScore / factors / verdict.
+   */
+  geotechnicalIntelligence?: import('./geotech').GeotechnicalIntelligence
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))

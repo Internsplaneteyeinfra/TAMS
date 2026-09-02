@@ -106,6 +106,7 @@ export function assetMatchesNeighborKv(
       : asset.voltageKv != null
         ? [asset.voltageKv]
         : []
-  if (!pool.length) return false
+  // Keep untagged towers visible — label as Unknown V on map rather than hiding them.
+  if (!pool.length) return true
   return pool.some((kv) => Math.abs(kv - targetKv) <= 25)
 }

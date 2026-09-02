@@ -3,6 +3,7 @@ export type TowerWorkspaceMode = 'planning' | 'analysis'
 export type IntelligencePanel =
   | 'score'
   | 'soil'
+  | 'geotech'
   | 'report'
   | 'suggestions'
   | 'overview'

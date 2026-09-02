@@ -142,3 +142,38 @@ export async function deleteGeotech(id: string): Promise<void> {
 export function getGeotechReportUrl(id: string): string {
   return `${getApiBase()}/geotech/${id}/report`
 }
+
+export type GeminiGeotechReportResult = {
+  html: string
+  cached: boolean
+  cache_key?: string
+  place_label?: string
+  generated_at?: string
+  model?: string
+  source?: 'cache' | 'gemini' | 'local'
+}
+
+export async function fetchCachedGeminiGeotechReport(
+  lat: number,
+  lon: number
+): Promise<GeminiGeotechReportResult | null> {
+  try {
+    const data = await fetchApi<GeminiGeotechReportResult | null>(
+      `/geotech/report/ai?lat=${lat}&lon=${lon}`
+    )
+    return data?.html ? data : null
+  } catch {
+    return null
+  }
+}
+
+export async function generateGeminiGeotechReport(payload: {
+  latitude: number
+  longitude: number
+  place_label: string
+  region?: string | null
+  geo_summary: Record<string, unknown>
+  force?: boolean
+}): Promise<GeminiGeotechReportResult> {
+  return postApi<GeminiGeotechReportResult>('/geotech/report/ai', payload)
+}

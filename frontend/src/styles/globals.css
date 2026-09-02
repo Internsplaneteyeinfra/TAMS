@@ -487,6 +487,152 @@ body {
   border-top-color: #fbbf24 !important;
 }
 
+.ts-bh-label.leaflet-tooltip {
+  background: #0f766e !important;
+  border: 2px solid #fff !important;
+  color: #fff !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+  padding: 2px 8px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  letter-spacing: 0.04em;
+}
+
+.ts-bh-label.leaflet-tooltip::before {
+  border-top-color: #0f766e !important;
+}
+
+.ts-tower-kv-label.leaflet-tooltip {
+  background: #1e40af !important;
+  border: 2px solid #fff !important;
+  color: #fff !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+}
+
+.ts-tower-kv-label.leaflet-tooltip::before {
+  border-bottom-color: #1e40af !important;
+}
+
+.ts-tower-kv-label--unknown.leaflet-tooltip {
+  background: #64748b !important;
+  color: #f8fafc !important;
+}
+
+.ts-tower-kv-label--unknown.leaflet-tooltip::before {
+  border-bottom-color: #64748b !important;
+}
+
+.ts-road-label.leaflet-tooltip {
+  background: #f97316 !important;
+  border: 2px solid #fff !important;
+  color: #111827 !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  padding: 2px 8px !important;
+  border-radius: 999px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.ts-road-label.leaflet-tooltip::before {
+  border-top-color: #f97316 !important;
+}
+
+.ts-nearest-tower-label.leaflet-tooltip {
+  background: #1d4ed8 !important;
+  border: 2px solid #fff !important;
+  color: #fff !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  padding: 3px 10px !important;
+  border-radius: 999px !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+}
+
+.ts-nearest-tower-label.leaflet-tooltip::before {
+  border-top-color: #1d4ed8 !important;
+}
+
+.ts-nearest-ss-label.leaflet-tooltip {
+  background: #7e22ce !important;
+  border: 2px solid #fff !important;
+  color: #fff !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  padding: 3px 10px !important;
+  border-radius: 999px !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+}
+
+.ts-nearest-ss-label.leaflet-tooltip::before {
+  border-top-color: #7e22ce !important;
+}
+
+.ts-shift-label.leaflet-tooltip {
+  background: #f59e0b !important;
+  border: 2px solid #fff !important;
+  color: #111827 !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+  padding: 2px 8px !important;
+  border-radius: 999px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+}
+
+.ts-shift-label.leaflet-tooltip::before {
+  border-top-color: #f59e0b !important;
+}
+
+.ts-connection-straight-label.leaflet-tooltip {
+  background: #64748b !important;
+  border: 2px solid #fff !important;
+  color: #fff !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+  padding: 2px 8px !important;
+  border-radius: 999px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+}
+
+.ts-connection-straight-label.leaflet-tooltip::before {
+  border-top-color: #64748b !important;
+}
+
+.ts-road-route-label.leaflet-tooltip {
+  background: #f97316 !important;
+  border: 2px solid #fff !important;
+  color: #111827 !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  padding: 3px 10px !important;
+  border-radius: 999px !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+}
+
+.ts-road-route-label.leaflet-tooltip::before {
+  border-top-color: #f97316 !important;
+}
+
+.ts-power-line-label.leaflet-tooltip {
+  background: rgba(34, 197, 94, 0.92) !important;
+  border: 1px solid #fff !important;
+  color: #052e16 !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  padding: 1px 6px !important;
+  border-radius: 4px !important;
+}
+
 @keyframes tsAnalyzeShimmer {
   0% {
     transform: translateX(-100%);
