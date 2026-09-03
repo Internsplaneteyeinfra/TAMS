@@ -3,7 +3,7 @@
  */
 
 import type { GeotechnicalIntelligence } from '../types'
-import type { PhaseIReportBundle } from '../../towerPlanning/types'
+import type { PhaseIReportBundle, PowerInfrastructureSummary } from '../../towerPlanning/types'
 import type { FoundationRecommendation } from '../foundationRecommendation'
 import type { ParameterCompletenessResult } from '../parameterResolution/completenessEngine'
 import {
@@ -33,7 +33,7 @@ export interface GeotechnicalReportDataModel {
   soilVerdict: GeotechnicalIntelligence['soilVerdictAnalysis']
   foundationRecommendation: FoundationRecommendation | null
   parameterCompleteness: ParameterCompletenessResult | null
-  powerInfrastructure: PhaseIReportBundle['power'] | null
+  powerInfrastructure: PowerInfrastructureSummary | null
   towerSuitability: PhaseIReportBundle | null
   limitations: string[]
   provenanceSummary: string
@@ -75,7 +75,7 @@ export function buildReportDataModel(input: GeotechDocxInput & {
     soilVerdict: geo.soilVerdictAnalysis,
     foundationRecommendation: input.foundationRecommendation ?? null,
     parameterCompleteness: input.parameterCompleteness ?? null,
-    powerInfrastructure: input.phaseI?.power ?? null,
+    powerInfrastructure: input.phaseI?.powerInfrastructureSummary ?? null,
     towerSuitability: input.phaseI ?? null,
     limitations: geo.limitations,
     provenanceSummary:

@@ -163,7 +163,7 @@ ${perBhHtml || '<p>Run analyze to populate soil tables.</p>'}
 
 <h2>11. Final verdict</h2>
 <p><span class="badge">${esc(String(verdict?.status ?? 'SCREENING'))}</span></p>
-<p>${esc(String(verdict?.summary ?? geo.soilVerdictAnalysis?.overall.explanation ?? 'See soil verdict panel.'))}</p>
+<p>${esc(String(verdict?.explanation ?? geo.soilVerdictAnalysis?.overall.explanation ?? 'See soil verdict panel.'))}</p>
 <p class="meta">GIS-derived / engineering-correlated values — not field or laboratory measurements unless explicitly tagged.</p>
 </body></html>`
 }

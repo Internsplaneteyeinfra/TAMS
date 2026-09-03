@@ -58,7 +58,7 @@ async function main() {
     towerKm: 1.2,
     substationKm: 3.5,
     windMs: 4.2,
-    landCoverHint: 'cropland',
+    landCoverHint: 'vegetation',
     placeLabel: NASHIK.label,
     soilScreening: soil,
     geotech: null,
@@ -88,7 +88,7 @@ async function main() {
   const outDir = path.resolve(__dirname, '../sample-reports')
   fs.mkdirSync(outDir, { recursive: true })
   const outPath = path.join(outDir, 'Geotech_Investigation_Report_Nashik_Maharashtra.docx')
-  fs.writeFileSync(outPath, Buffer.from(buf as ArrayBuffer))
+  fs.writeFileSync(outPath, Buffer.from(buf as unknown as ArrayBuffer))
   console.log('Wrote', outPath)
   console.log('Texture:', soil.textureClass)
   console.log('Screening SBC:', soil.indicativeSbcTm2)

@@ -97,6 +97,8 @@ export function formatDerivedValue(p: DerivedParameter<number | string | null> |
 export function statusBadgeLabel(status: GeoDataStatus): string {
   const map: Record<GeoDataStatus, string> = {
     MEASURED: 'MEASURED',
+    PROJECT_DATA: 'PROJECT DATA',
+    REFERENCE_CALIBRATED: 'REFERENCE CALIBRATED',
     MODELLED: 'MODELLED',
     DERIVED: 'DERIVED',
     CALCULATED: 'CALCULATED',

@@ -3,6 +3,8 @@
  * Must not mutate SiteSignals used by production scoring.
  */
 
+import type { SiteSignals } from '../scoring'
+import type { SoilScreening } from '../soilScreening'
 import {
   buildDataQuality,
   buildReportReadiness,
@@ -41,8 +43,6 @@ import type {
   GeotechnicalIntelligence,
   ReportDepthId,
 } from './types'
-import type { SiteSignals } from '../scoring'
-import type { SoilScreening } from '../soilScreening'
 
 function mapPileCell(cell: import('./pileEngine').PileCellResult) {
   return {
@@ -298,6 +298,8 @@ export function buildGeotechnicalIntelligence(
       lengthM: sbcRaw.foundation.lengthM,
       assumedScreeningDefaults: sbcRaw.foundation.assumedScreeningDefaults,
       fosShear: sbcRaw.foundation.fosShear,
+      allowableSettlementMm: sbcRaw.foundation.allowableSettlementMm ?? null,
+      groundwater: sbcRaw.foundation.groundwater ?? 'unknown',
     },
     soilInputs: sbcRaw.soilInputs
       ? {
@@ -415,7 +417,7 @@ export function buildGeotechnicalIntelligence(
     boreholeInvestigationPlan,
     resolvedParameterContext,
     parameterCompleteness,
-    foundationRecommendation: null as import('./foundationRecommendation').FoundationRecommendation | null,
+    foundationRecommendation: undefined,
     sourceObservations: observations,
     engineeringParameters: engineering,
     engineeringParameterEstimation: engineering,

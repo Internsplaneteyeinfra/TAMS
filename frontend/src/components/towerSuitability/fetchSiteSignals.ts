@@ -45,17 +45,6 @@ async function fetchJson(url: string, ms = 7000): Promise<unknown | null> {
   )
 }
 
-async function fetchElevations(
-  points: { lat: number; lon: number }[]
-): Promise<(number | null)[]> {
-  const lats = points.map((p) => p.lat).join(',')
-  const lons = points.map((p) => p.lon).join(',')
-  const url = `https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lons}`
-  const json = (await fetchJson(url, 7000)) as { elevation?: number[] } | null
-  if (!json?.elevation) return points.map(() => null)
-  return json.elevation.map((e) => (Number.isFinite(e) ? e : null))
-}
-
 async function fetchWind(lat: number, lon: number): Promise<number | null> {
   const end = new Date()
   const start = new Date(end.getTime() - 90 * 24 * 60 * 60 * 1000)
@@ -133,17 +122,6 @@ function elementPoint(el: OverpassEl): { lat: number; lon: number } | null {
   return null
 }
 
-function nearestElementKm(lat: number, lon: number, elements: OverpassEl[]): number | null {
-  let best: number | null = null
-  for (const el of elements) {
-    const p = elementPoint(el)
-    if (!p) continue
-    const d = haversineKm(lat, lon, p.lat, p.lon)
-    if (best == null || d < best) best = d
-  }
-  return best
-}
-
 function parseOsmVoltageTag(raw?: string): number | null {
   if (!raw) return null
   const parts = raw.split(/[;/|,]+/).map((p) => p.trim()).filter(Boolean)
@@ -191,41 +169,6 @@ export async function inferOsmLineVoltageKv(
   return bestKv
 }
 
-/** Live OSM around-site query. `null` = request failed; otherwise min km or search radius if none. */
-async function liveOsmDistanceKm(
-  lat: number,
-  lon: number,
-  radiusM: number,
-  selectors: string[]
-): Promise<{ km: number; found: boolean; live: boolean }> {
-  const body = selectors.map((sel) => `${sel}(around:${radiusM},${lat},${lon});`).join('')
-  const query = `[out:json][timeout:18];(${body});out center 80;`
-  const json = await overpassJson(query)
-  if (!json) return { km: radiusM / 1000, found: false, live: false }
-  const nearest = nearestElementKm(lat, lon, json.elements ?? [])
-  if (nearest == null) return { km: radiusM / 1000, found: false, live: true }
-  return { km: nearest, found: true, live: true }
-}
-
-type PhotonFeature = {
-  geometry?: { coordinates?: [number, number] }
-}
-
-async function photonFallbackKm(lat: number, lon: number, query: string, osmTag?: string): Promise<number | null> {
-  const tag = osmTag ? `&osm_tag=${encodeURIComponent(osmTag)}` : ''
-  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&lat=${lat}&lon=${lon}&limit=12${tag}`
-  const json = (await fetchJson(url, 6500)) as { features?: PhotonFeature[] } | null
-  const feats = json?.features ?? []
-  let best: number | null = null
-  for (const f of feats) {
-    const c = f.geometry?.coordinates
-    if (!c || c.length < 2) continue
-    const d = haversineKm(lat, lon, c[1], c[0])
-    if (best == null || d < best) best = d
-  }
-  return best
-}
-
 /** Reverse-geocode a pad to "City, State" for the analysis header. */
 export async function resolveCityStateLabel(lat: number, lon: number): Promise<string | null> {
   const json = (await fetchJson(`/api/geo/nominatim?lat=${lat}&lon=${lon}`, 6500)) as {
@@ -255,56 +198,6 @@ export async function resolveCityStateLabel(lat: number, lon: number): Promise<s
   if (cityName) return cityName
   if (stateName) return stateName
   return null
-}
-
-async function landCoverLive(lat: number, lon: number): Promise<SiteSignals['landCoverHint']> {
-  const query = `[out:json][timeout:15];(
-    way["landuse"](around:180,${lat},${lon});
-    way["natural"](around:180,${lat},${lon});
-    node["landuse"](around:180,${lat},${lon});
-    node["natural"](around:180,${lat},${lon});
-  );out tags 30;`
-  const osm = await overpassJson(query)
-  const blob = (osm?.elements ?? [])
-    .flatMap((el) => [el.tags?.landuse, el.tags?.natural, el.tags?.water])
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
-
-  if (blob) {
-    if (/water|river|lake|reservoir|pond|basin|wetland/.test(blob)) return 'water'
-    if (/industrial|residential|commercial|retail|construction|garages/.test(blob)) return 'built'
-    if (/forest|wood|farm|farmland|meadow|grass|orchard|scrub|vineyard|allotments/.test(blob)) {
-      return 'vegetation'
-    }
-    if (/quarry|bare_rock|scree|sand|heath|shingle|brownfield/.test(blob)) return 'barren'
-  }
-
-  const json = (await fetchJson(`/api/geo/nominatim?lat=${lat}&lon=${lon}`, 6500)) as {
-    category?: string
-    type?: string
-    addresstype?: string
-    extratags?: Record<string, string>
-    address?: Record<string, string>
-  } | null
-  if (!json) return 'unknown'
-  const named = [
-    json.category,
-    json.type,
-    json.addresstype,
-    json.extratags?.landuse,
-    json.extratags?.natural,
-    json.address?.landuse,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
-
-  if (/water|river|lake|reservoir/.test(named)) return 'water'
-  if (/industrial|residential|commercial|building/.test(named)) return 'built'
-  if (/forest|wood|farm|meadow|grass|orchard|scrub|field/.test(named)) return 'vegetation'
-  if (/quarry|bare|rock|heath|sand/.test(named)) return 'barren'
-  return 'unknown'
 }
 
 export type ProgressFn = (message: string, percent: number) => void

@@ -47,7 +47,7 @@ function cbrForLayer(
 ): ProvenanceValue<number | null> {
   const resolved = geo.resolvedParameterContext?.byLayer.find((l) => l.reportDepth === reportDepth)
   if (resolved?.estimatedCbrPct.value != null) {
-    return toProvenance(resolved.estimatedCbrPct)
+    return toProvenance(resolved.estimatedCbrPct) as ProvenanceValue<number | null>
   }
   const meas = geo.cbrAnalysis.measuredByDepth.find((r) => r.reportDepth === reportDepth)
   if (meas?.measuredCBR.value != null && meas.measuredCBR.status === 'MEASURED') {
@@ -145,23 +145,23 @@ export function buildSoilTestSummary(
         plasticLimit: L.plasticLimit,
         plasticityIndex: L.plasticityIndex,
         soilClassification: L.soilClassification,
-        maximumDryDensityGcc: resolved
+        maximumDryDensityGcc: (resolved
           ? toProvenance(resolved.maximumDryDensityGcc)
-          : noData('g/cc', 'MDD unavailable'),
-        optimumMoistureContentPct: resolved
+          : noData('g/cc', 'MDD unavailable')) as ProvenanceValue<number | null>,
+        optimumMoistureContentPct: (resolved
           ? toProvenance(resolved.optimumMoistureContentPct)
-          : noData('%', 'OMC unavailable'),
-        dryDensityGcc: resolved
+          : noData('%', 'OMC unavailable')) as ProvenanceValue<number | null>,
+        dryDensityGcc: (resolved
           ? toProvenance(resolved.dryDensityGcc)
-          : profileRow?.dryDensityGcc ?? noData('g/cc', 'Dry density unavailable'),
-        freeSwellingIndexPct: resolved
+          : profileRow?.dryDensityGcc ?? noData('g/cc', 'Dry density unavailable')) as ProvenanceValue<number | null>,
+        freeSwellingIndexPct: (resolved
           ? toProvenance(resolved.freeSwellingIndexPct)
-          : noData('%', 'FSI unavailable'),
-        bulkDensityGcc: resolved
+          : noData('%', 'FSI unavailable')) as ProvenanceValue<number | null>,
+        bulkDensityGcc: (resolved
           ? toProvenance(resolved.bulkDensityGcc)
-          : profileRow?.bulkDensityGcc ?? noData('g/cc', 'Bulk density unavailable'),
-        ucsKgCm2: resolved ? toProvenance(resolved.ucsKgCm2) : noData('kg/cm²', 'UCS unavailable'),
-        specificGravity: resolved ? toProvenance(resolved.specificGravity) : noData('', 'SG unavailable'),
+          : profileRow?.bulkDensityGcc ?? noData('g/cc', 'Bulk density unavailable')) as ProvenanceValue<number | null>,
+        ucsKgCm2: (resolved ? toProvenance(resolved.ucsKgCm2) : noData('kg/cm²', 'UCS unavailable')) as ProvenanceValue<number | null>,
+        specificGravity: (resolved ? toProvenance(resolved.specificGravity) : noData('', 'SG unavailable')) as ProvenanceValue<number | null>,
         sbcTm2: sbcForLayer(geo, L.depthToM, texture),
         cbrPct: cbrForLayer(geo, L.reportDepth, texture),
         soilClass: L.soilClassification,

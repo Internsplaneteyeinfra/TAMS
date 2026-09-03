@@ -2,7 +2,7 @@
  * Phase F — Per-borehole pile matrix summary.
  */
 
-import type { BoreholePileAnalysis, PileCellAnalysis, PileDepthKey, PileDiameterKey } from './types'
+import type { BoreholePileAnalysis, PileCellAnalysis, PileDepthKey } from './types'
 import { pileDepthKey, pileDiameterKey } from './types'
 
 export function buildBoreholePileMatrix(cells: PileCellAnalysis[]): BoreholePileAnalysis['byDiameter'] {

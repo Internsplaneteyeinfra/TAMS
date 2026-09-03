@@ -195,7 +195,9 @@ export default function TowerPlanningPanel({
           </p>
           <p className="text-[9px]">
             Geotechnical context — Soil verdict:{' '}
-            {formatVerdictLabel(towerAnalysis.geotechnicalContext.soilVerdictAnalysis?.overall.status ?? 'NOT_ASSESSABLE')}
+            {towerAnalysis.geotechnicalContext.soilVerdictAnalysis?.overall.status
+              ? formatVerdictLabel(towerAnalysis.geotechnicalContext.soilVerdictAnalysis.overall.status)
+              : 'NOT ASSESSABLE'}
           </p>
           <p className="text-[8px] text-rose-800 italic">
             {towerAnalysis.mandatoryInvestigations.length > 0

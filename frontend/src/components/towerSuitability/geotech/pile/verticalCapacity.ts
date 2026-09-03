@@ -77,7 +77,7 @@ export function calculateVerticalCapacity(opts: {
       step: 2,
       name: 'Shaft friction Qs',
       formula: 'Qs = Σ layer shaft contributions',
-      inputs: { layers: layers.length, layerQs: layers.map((l) => l.shaftFrictionContributionT) },
+      inputs: { layers: layers.length, layerQs: layers.map((l) => l.shaftFrictionContributionT?.toFixed(3) ?? '—').join(', ') },
       result: Qs,
       unit: 'T',
     },

@@ -98,9 +98,9 @@ function reportIdFor(geo: GeotechnicalIntelligence): string {
 }
 
 function geometryLabel(geo: GeotechnicalIntelligence): string | null {
-  const g = geo.boreholeInvestigationPlan?.geometry
-  if (!g) return null
-  return `${g.type} — ${g.label || g.type}`
+  const plan = geo.boreholeInvestigationPlan
+  if (!plan) return null
+  return plan.geometryType
 }
 
 export function buildGeotechReportData(input: GeotechDocxInput): ValidatedGeotechnicalReportData {

@@ -16,10 +16,10 @@ export interface PileCellResult {
   calculationStatus: 'INSUFFICIENT_DATA' | 'FIELD_TEST_REQUIRED' | 'CALCULATED' | 'PARTIAL'
   missingParameters: string[]
   inputs: {
-    Ap_m2: number
-    perimeter_m: number
-    D_m: number
-    L_m: number
+    Ap_m2: number | null
+    perimeter_m: number | null
+    D_m: number | null
+    L_m: number | null
     c_Tm2: number | null
     phi_deg: number | null
     gamma_Tm3: number | null

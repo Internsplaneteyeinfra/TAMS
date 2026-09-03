@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 
-import { runSbcEngineAnalysis, defaultScreeningFoundation } from '../sbc/sbcEngine'
 import { validateSbcInputs } from '../sbc/sbcValidation'
 import { governingSbc } from '../sbc/settlementAnalysis'
 import { buildGeotechnicalIntelligence } from '../buildGeotechnicalIntelligence'

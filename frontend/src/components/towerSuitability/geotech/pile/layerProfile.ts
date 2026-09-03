@@ -4,7 +4,7 @@
 
 import { resolveSoilAtDepth } from '../sbc/bearingCapacity'
 import type { EngineeringParameterSet, SoilLayerParameters, SoilProfileInterval } from '../types'
-import type { PileEngineeringParameter, PileLayerCalculation, SoilConditionType } from './types'
+import type { PileEngineeringParameter, PileLayerCalculation } from './types'
 import { classifySoilCondition } from './pileValidation'
 
 const DEG = Math.PI / 180
@@ -49,7 +49,6 @@ export function buildPileLayerProfile(
     const profLayer = profile.find((p) => p.reportDepth === band.id)
     const clayPct = soilLayer?.clayPct.value ?? profLayer?.clayPct.value ?? 20
     const sandPct = soilLayer?.sandPct.value ?? profLayer?.sandPct.value ?? 40
-    const siltPct = soilLayer?.siltPct.value ?? profLayer?.siltPct.value ?? 40
 
     const soilAtMid = resolveSoilAtDepth(mid, engineering, profile, soilLayers, {
       screeningTextureClass,

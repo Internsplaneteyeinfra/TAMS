@@ -1,6 +1,5 @@
 import React from 'react'
 
-import SearchRadiusPicker from './SearchRadiusPicker'
 import {
   spanForVoltageKv,
   standardForVoltageKv,
@@ -10,6 +9,7 @@ import {
   type LineTowerPlan,
   type SpanPolicy,
 } from '../lineTowers'
+import SearchRadiusPicker from './SearchRadiusPicker'
 
 export default function ControlsPanel({
   searchRadiusKm,

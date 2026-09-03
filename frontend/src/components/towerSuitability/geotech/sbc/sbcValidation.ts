@@ -38,7 +38,6 @@ export function validateSbcInputs(soil: SbcSoilInputs): SbcValidationResult {
     }
   }
 
-  const confParts = [soil.phiStatus, soil.cStatus, soil.gammaStatus]
   const provenanceSummary = `φ: ${soil.phiStatus} · c: ${soil.cStatus} · γ: ${soil.gammaStatus} · basis: ${soil.dataBasis}`
 
   return {

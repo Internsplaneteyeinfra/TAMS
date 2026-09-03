@@ -2,7 +2,7 @@
  * Phase G — Resistivity types.
  */
 
-import type { GeoDataStatus, ProvenanceValue } from '../types'
+import type { ProvenanceValue } from '../types'
 
 export type ResistivityBasis = 'GEOSPATIAL_MODEL' | 'DEPTH_MODELLED_ESTIMATE' | 'MEASURED' | 'FIELD_TEST_REQUIRED'
 

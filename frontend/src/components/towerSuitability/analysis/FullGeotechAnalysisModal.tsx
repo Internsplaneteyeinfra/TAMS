@@ -4,16 +4,16 @@ import React, { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Loader2, RefreshCw, X } from 'lucide-react'
 
-import type { GeotechnicalIntelligence } from '../geotech'
-import type { SiteSignals } from '../scoring'
-import type { TowerCandidate } from '../towerPlanning/types'
-import { buildFullGeotechAnalysisHtml } from './buildFullGeotechAnalysisHtml'
-import { buildGeminiGeoSummary, geminiReportCacheKey } from './buildGeminiGeoSummary'
 import {
   fetchCachedGeminiGeotechReport,
   generateGeminiGeotechReport,
   type GeminiGeotechReportResult,
 } from '@/lib/geotechApi'
+import type { GeotechnicalIntelligence } from '../geotech'
+import type { SiteSignals } from '../scoring'
+import type { TowerCandidate } from '../towerPlanning/types'
+import { buildFullGeotechAnalysisHtml } from './buildFullGeotechAnalysisHtml'
+import { buildGeminiGeoSummary, geminiReportCacheKey } from './buildGeminiGeoSummary'
 
 function readSessionCache(key: string): string | null {
   try {
@@ -55,7 +55,7 @@ export default function FullGeotechAnalysisModal({
   const [html, setHtml] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [meta, setMeta] = useState<Pick<GeminiGeotechReportResult, 'cached' | 'source' | 'place_label'>>({})
+  const [meta, setMeta] = useState<Pick<GeminiGeotechReportResult, 'cached' | 'source' | 'place_label'>>({} as Pick<GeminiGeotechReportResult, 'cached' | 'source' | 'place_label'>)
 
   const placeLabel =
     signals?.placeLabel ||

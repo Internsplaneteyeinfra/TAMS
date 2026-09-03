@@ -94,12 +94,12 @@ export function runResistivityEngineAnalysis(opts: {
     const model = modelResistivityFromLayer(layer, depthFactor)
     const validation = validateResistivityModel(model)
 
-    const steps = [
+    const steps: import('./types').ResistivityDepthRow['steps'] = [
       {
         step: 1,
         name: 'Input data sources',
         formula: 'Shared Phase C grain size fractions',
-        inputs: { sand: layer.sandPct.value, silt: layer.siltPct.value, clay: layer.clayPct.value },
+        inputs: { sand: layer.sandPct.value, silt: layer.siltPct.value, clay: layer.clayPct.value } as Record<string, number | string | null>,
         result: null,
         unit: '—',
       },
@@ -107,7 +107,7 @@ export function runResistivityEngineAnalysis(opts: {
         step: 2,
         name: 'Resistivity model',
         formula: model.method,
-        inputs: { depthFactor },
+        inputs: { depthFactor } as Record<string, number | string | null>,
         result: `≈ ${model.midOhmM} Ω·m`,
         unit: 'Ω·m',
       },
@@ -115,7 +115,7 @@ export function runResistivityEngineAnalysis(opts: {
         step: 3,
         name: 'Depth modulation',
         formula: 'DEPTH MODELLED ESTIMATE — not independently measured per layer',
-        inputs: { depthLabel: iv.label, factor: depthFactor },
+        inputs: { depthLabel: iv.label, factor: depthFactor } as Record<string, number | string | null>,
         result: 'Applied',
         unit: '—',
       },

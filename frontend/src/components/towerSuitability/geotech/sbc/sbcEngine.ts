@@ -18,7 +18,6 @@ import { calculateSizeCorrection } from './sizeCorrection'
 import { governingSbc, settlementControlledCapacity } from './settlementAnalysis'
 import { aggregateCalculationStatus, validateSbcInputs } from './sbcValidation'
 import type {
-  ALL_SBC_DEPTHS_M,
   BoreholeSbcAnalysis,
   SbcDepthMatrixRow,
   SbcEngineAnalysis,
@@ -267,13 +266,6 @@ export function runSbcEngineAnalysis(opts: {
   const primary = byBorehole[0]
   const calcStatus = aggregateCalculationStatus(byBorehole.map((b) => b.calculationStatus))
 
-  const legacyStatus =
-    calcStatus === 'REQUIRES_ADDITIONAL_VERIFIED_INPUT'
-      ? 'INSUFFICIENT_DATA'
-      : calcStatus === 'CALCULATED' || calcStatus === 'PARTIAL'
-        ? calcStatus
-        : 'INSUFFICIENT_DATA'
-
   return {
     version: 'SBC-E1',
     codeReference:
@@ -319,6 +311,8 @@ export function toLegacySbcAnalysis(engine: SbcEngineAnalysis) {
       lengthM: engine.foundation.lengthM,
       assumedScreeningDefaults: engine.foundation.assumedScreeningDefaults,
       fosShear: engine.foundation.fosShear,
+      allowableSettlementMm: engine.foundation.allowableSettlementMm,
+      groundwater: engine.foundation.groundwater,
     },
     soilInputs: primary
       ? {

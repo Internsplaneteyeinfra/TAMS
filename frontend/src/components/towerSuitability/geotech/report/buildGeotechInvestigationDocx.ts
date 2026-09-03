@@ -24,7 +24,7 @@ import {
   convertInchesToTwip,
 } from 'docx'
 
-import type { GeotechnicalIntelligence, GeoDataStatus, ProvenanceValue } from '../types'
+import type { GeoDataStatus, ProvenanceValue } from '../types'
 import {
   buildGeotechReportData,
   type GeotechDocxInput,
@@ -57,17 +57,6 @@ export type { GeotechDocxInput } from './buildGeotechReportData'
 
 function statusLabel(s: GeoDataStatus | string | undefined): string {
   return fmtStatusLabel(s)
-}
-
-function cellText(v: unknown, status?: GeoDataStatus): string {
-  if (v == null || v === '') {
-    return statusLabel(status || 'NO_DATA')
-  }
-  if (typeof v === 'object' && v !== null && 'low' in v && 'high' in v) {
-    const r = v as { low: number; high: number }
-    return `${r.low}–${r.high}`
-  }
-  return String(v)
 }
 
 function pVal(p: ProvenanceValue<unknown> | undefined): string {
@@ -221,19 +210,6 @@ function kvTable(rows: Array<[string, string, string?]>, contentWidth = CONTENT_
       ),
     ],
   })
-}
-
-function reportIdFor(geo: GeotechnicalIntelligence): string {
-  const d = new Date(geo.generatedAt || Date.now())
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  const lat = Math.abs(geo.location.lat).toFixed(3).replace('.', '')
-  return `TAMS-GEO-${y}${m}${day}-${lat}`
-}
-
-function classLabel(c: string): string {
-  return c.replace(/_/g, ' ')
 }
 
 function layerRoman(i: number): string {
@@ -937,7 +913,7 @@ async function buildDocxFromValidatedData(
 
   // ---- §4 CBR ----
   const cbrEng = geo.cbrEngineAnalysis
-  const cbrRows = (cbrEng?.byDepth ?? geo.cbrAnalysis.estimatedByDepth.map((row, i) => ({
+  const cbrRows = (cbrEng?.byDepth ?? geo.cbrAnalysis.estimatedByDepth.map((row) => ({
     reportDepthLabel: row.reportDepth.replace('m', ' m').replace('-', '–'),
     correlatedCbrPct: { value: null, status: row.estimatedCBR.status },
     cbrRangePct: row.estimatedCBR,
@@ -1138,7 +1114,7 @@ async function buildDocxFromValidatedData(
         ...(phaseI.towerPlanningContext.planningGeometry
           ? [
               p(
-                `Geometry type: ${phaseI.towerPlanningContext.planningGeometry.type}. ${phaseI.towerPlanningContext.planningGeometry.label || ''}`
+                `Geometry type: ${phaseI.towerPlanningContext.planningGeometry.type}.`
               ),
             ]
           : [p('Planning geometry not defined.')]),
@@ -1205,7 +1181,7 @@ async function buildDocxFromValidatedData(
                 ['Tower ID', phaseI.selectedTowerAnalysis.candidate.id, ''],
                 ['Latitude', fmtCoord(phaseI.selectedTowerAnalysis.candidate.latitude), ''],
                 ['Longitude', fmtCoord(phaseI.selectedTowerAnalysis.candidate.longitude), ''],
-                ['Suitability score', String(phaseI.selectedTowerAnalysis.suitability.overallScore), ''],
+                ['Suitability score', String(phaseI.selectedTowerAnalysis.suitability.finalScore), ''],
                 ['Final status', phaseI.selectedTowerAnalysis.finalStatus.replace(/_/g, ' '), ''],
               ]),
               p(

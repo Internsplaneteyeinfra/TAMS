@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import { buildGeotechnicalIntelligence } from '../buildGeotechnicalIntelligence'
-import { runPileEngineAnalysis } from '../pile/pileEngine'
 import type { SiteSignals } from '../../scoring'
 
 function sandySignals(): SiteSignals {

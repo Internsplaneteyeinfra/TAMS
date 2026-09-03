@@ -118,7 +118,7 @@ function predictEquivalentSptN(
   depthM: number
 ): ResolvedParameter {
   const densityTerm = bulkDensity != null ? (bulkDensity - 1.4) * 12 : 0
-  const raw = calibrateSptN(8 + sandPct * 0.25 - clayPct * 0.15 + depthM * 1.5 + densityTerm, clayPct)
+  const raw = calibrateSptN(8 + sandPct * 0.25 - clayPct * 0.15 + depthM * 1.5 + densityTerm)
   const conf = scoreConfidence({ status: 'MODEL_PREDICTED', sourceCount: 3, depthM })
   return rp(
     raw,
@@ -225,10 +225,10 @@ export function predictLayerParameters(
     reportDepth: layer.reportDepth,
     reportDepthLabel: layer.reportDepthLabel,
     depthMidM,
-    gravelPct: num(gravel, '%', 'MODELLED', 'Normalized gravel %', ['SoilGrids']),
-    sandPct: num(sand, '%', 'MODELLED', 'Normalized sand %', ['SoilGrids']),
-    siltPct: num(silt, '%', 'MODELLED', 'Normalized silt %', ['SoilGrids']),
-    clayPct: num(clay, '%', 'MODELLED', 'Normalized clay %', ['SoilGrids']),
+    gravelPct: num(gravel, '%', 'GIS_DERIVED', 'Normalized gravel %', ['SoilGrids']),
+    sandPct: num(sand, '%', 'GIS_DERIVED', 'Normalized sand %', ['SoilGrids']),
+    siltPct: num(silt, '%', 'GIS_DERIVED', 'Normalized silt %', ['SoilGrids']),
+    clayPct: num(clay, '%', 'GIS_DERIVED', 'Normalized clay %', ['SoilGrids']),
     liquidLimit: num(ll, '%', 'ENGINEERING_CORRELATED', 'Correlated LL', ['Clay/silt fractions']),
     plasticLimit: num(pl, '%', 'ENGINEERING_CORRELATED', 'Correlated PL', ['LL', 'Clay%']),
     plasticityIndex: num(pi, '%', 'CALCULATED', 'PI = LL − PL', ['LL', 'PL']),
@@ -237,7 +237,8 @@ export function predictLayerParameters(
       'IS 1498',
       'CALCULATED',
       'IS 1498 from grain size + Atterberg inputs',
-      ['Grain size', 'LL', 'PI']
+      ['Grain size', 'LL', 'PI'],
+      scoreConfidence({ status: 'CALCULATED', sourceCount: 2 })
     ),
     maximumDryDensityGcc: mdd,
     optimumMoistureContentPct: omc,

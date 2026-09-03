@@ -2,9 +2,9 @@ import React from 'react'
 
 import CorridorPlacementPanel from '../CorridorPlacementPanel'
 import PowerNetworkAnalysisPanel from '../PowerNetworkAnalysisPanel'
-import SiteScoreCard from './SiteScoreCard'
 import type { CorridorPlacementAdvice, PlacementVerdict } from '../corridorPlacementAdvice'
 import type { FactorResult, SuitabilityResult, SuitabilitySuggestions } from '../scoring'
+import SiteScoreCard from './SiteScoreCard'
 
 /** Honest confidence bands for live open-data signals used in Key Findings. */
 function signalConfidence(f: FactorResult, result: SuitabilityResult): number {

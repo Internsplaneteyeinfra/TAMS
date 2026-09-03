@@ -5,7 +5,6 @@ import {
   type GeotechDocxInput,
 } from './report/buildGeotechInvestigationDocx'
 import { buildGeotechReportData, ReportValidationError } from './report/buildGeotechReportData'
-import { buildDynamicPurpose } from './report/reportDynamicScope'
 
 type CacheEntry = {
   key: string

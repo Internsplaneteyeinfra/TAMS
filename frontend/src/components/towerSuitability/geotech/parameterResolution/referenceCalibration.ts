@@ -21,7 +21,7 @@ export function calibratePhiDeg(raw: number, sandPct: number, clayPct: number): 
   return Number(v.toFixed(1))
 }
 
-export function calibrateSptN(raw: number, clayPct: number): number {
+export function calibrateSptN(raw: number): number {
   return clamp(Math.round(raw), 4, 50)
 }
 

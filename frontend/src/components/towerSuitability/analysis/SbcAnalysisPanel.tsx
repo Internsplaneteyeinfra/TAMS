@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 
-import type { GeotechnicalIntelligence, GeoDataStatus, ProvenanceValue } from '../geotech'
+import type { GeotechnicalIntelligence, GeoDataStatus } from '../geotech'
 
 function StatusBadge({ status }: { status: GeoDataStatus }) {
   const colors: Record<string, string> = {

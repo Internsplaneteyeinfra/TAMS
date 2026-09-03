@@ -31,7 +31,7 @@ export function evaluateFoundationVerdict(geo: GeotechnicalIntelligence): Dimens
   const hasCalculated = status === 'CALCULATED' || status === 'PARTIAL'
   const clayHeavy = layers.some((l) => (l.clayPct.value ?? 0) >= 25)
   const cohesionResolved =
-    geo.resolvedParameterContext?.site.cohesionKpa.status !== 'FIELD_TEST_REQUIRED' &&
+    (geo.resolvedParameterContext?.site.cohesionKpa.status as string | undefined) !== 'FIELD_TEST_REQUIRED' &&
     geo.resolvedParameterContext?.site.cohesionKpa.value != null
   const cohesionBlocked = !cohesionResolved && geo.engineeringParameters.cohesionKpa.status === 'FIELD_TEST_REQUIRED'
 

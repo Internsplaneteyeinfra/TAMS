@@ -7,8 +7,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import {
-  Crosshair,
-  Navigation,
   Pencil,
   Save,
   Sparkles,
@@ -24,8 +22,7 @@ import {
   resolveCityStateLabel,
   type KmlFeature,
 } from './fetchSiteSignals'
-import { downloadSuitabilityReport } from './downloadSuitabilityReport'
-import { prebuildGeotechDocx, isGeotechDocxCached, invalidateGeotechDocxCache, warmGeotechDocxModules, defaultGeotechDocxInput, type GeotechDocxInput, ReportValidationError } from './geotech'
+import { prebuildGeotechDocx, isGeotechDocxCached, invalidateGeotechDocxCache, warmGeotechDocxModules, defaultGeotechDocxInput, type GeotechDocxInput } from './geotech'
 import { parseInvestigationGeometry } from './geotech/boreholePlanning'
 import { downloadKmlFile } from './kmlExport'
 import { parseKmlOrKmzFile } from './readKmlOrKmz'
@@ -34,7 +31,6 @@ import {
   planTowersFromKml,
   spanForVoltageKv,
   standardForVoltageKv,
-  towerPredictionNote,
   voltageLabel,
   planningVoltageKv,
   DEFAULT_PLANNING_VOLTAGE_KV,
@@ -46,7 +42,6 @@ import SuitabilityHub, { type SuitabilityEntryMode } from './SuitabilityHub'
 import {
   DEFAULT_SEARCH_RADIUS_KM,
   findNearbyPowerSupply,
-  SEARCH_RADIUS_OPTIONS_KM,
   type NearbyPowerSupply,
 } from './nearbyPowerSupply'
 import { analyzeCorridorPlacement, type PlacementVerdict } from './corridorPlacementAdvice'
@@ -1212,21 +1207,6 @@ export default function TowerSuitabilityWorkspace() {
     handleSelectPhaseICandidate,
   ])
 
-  const onDownloadReport = useCallback(() => {
-    if (!result || !suggestions || lat == null || lon == null) return
-    downloadSuitabilityReport({
-      siteLabel,
-      lat,
-      lon,
-      result,
-      suggestions,
-      kmlOutlineCount: kmlFeatures.length,
-      towerCount: lineTowerPlan?.towerCount,
-      voltageLabel: lineTowerPlan ? voltageLabel(displayVoltageKv) : undefined,
-      spanM: lineTowerPlan?.spanM,
-    })
-  }, [result, suggestions, siteLabel, lat, lon, kmlFeatures.length, lineTowerPlan])
-
   const soilReportLabel = useMemo(() => {
     if (lat == null || lon == null) return siteLabel || 'Unknown'
     return (
@@ -1712,7 +1692,6 @@ export default function TowerSuitabilityWorkspace() {
                           docxBuilding={geotechDocxBuilding}
                           soilReportOpts={soilReportOpts}
                           towerPlanning={towerPlanningPanelProps}
-                          soilScreening={result.signals.soilScreening}
                           selectedBoreholeId={highlightedBoreholeId}
                           onSelectBorehole={handleBoreholeSelect}
                           siteSignals={result.signals}

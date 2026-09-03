@@ -88,7 +88,7 @@ ${
 </div>
 
 <h2>9. Soil verdict summary</h2>
-<p class="meta">${esc(geo.soilVerdictAnalysis?.overall.summary ?? geo.limitations?.[0] ?? 'See Word report for full verdict.')}</p>
+<p class="meta">${esc(geo.soilVerdictAnalysis?.overall.explanation ?? geo.limitations?.[0] ?? 'See Word report for full verdict.')}</p>
 `
 }
 

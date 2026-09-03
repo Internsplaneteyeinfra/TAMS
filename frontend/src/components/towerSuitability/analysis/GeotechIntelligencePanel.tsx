@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 
+import { Download, Eye, FileText, Loader2, X } from 'lucide-react'
 import type { GeotechnicalIntelligence, GeoDataStatus, ProvenanceValue } from '../geotech'
-import type { SoilScreening } from '../soilScreening'
 import {
   defaultGeotechDocxInput,
   downloadCachedGeotechDocx,
@@ -16,7 +16,8 @@ import {
   downloadSoilScreeningReport,
   type SoilReportOpts,
 } from '../downloadSoilScreeningReport'
-import { Download, Eye, FileText, Loader2, X } from 'lucide-react'
+import type { SiteSignals } from '../scoring'
+import type { TowerCandidate } from '../towerPlanning/types'
 import BoreholePlanningPanel from './BoreholePlanningPanel'
 import SbcAnalysisPanel from './SbcAnalysisPanel'
 import PileAnalysisPanel from './PileAnalysisPanel'
@@ -26,8 +27,6 @@ import PostSoilActionPanel from './PostSoilActionPanel'
 import TowerPlanningPanel, { type TowerPlanningPanelProps } from './TowerPlanningPanel'
 import SignalStatusPanel from './SignalStatusPanel'
 import FullGeotechAnalysisModal from './FullGeotechAnalysisModal'
-import type { SiteSignals } from '../scoring'
-import type { TowerCandidate } from '../towerPlanning/types'
 
 function StatusBadge({ status }: { status: GeoDataStatus }) {
   const colors: Record<string, string> = {
@@ -116,7 +115,6 @@ export default function GeotechIntelligencePanel({
   docxBuilding = false,
   soilReportOpts = null,
   towerPlanning = null,
-  soilScreening: _soilScreening = null,
   selectedBoreholeId = null,
   onSelectBorehole,
   siteSignals = null,
@@ -134,7 +132,6 @@ export default function GeotechIntelligencePanel({
   docxBuilding?: boolean
   soilReportOpts?: SoilReportOpts | null
   towerPlanning?: TowerPlanningPanelProps | null
-  soilScreening?: SoilScreening | null
   selectedBoreholeId?: string | null
   onSelectBorehole?: (boreholeId: string) => void
   siteSignals?: SiteSignals | null

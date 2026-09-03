@@ -89,7 +89,7 @@ async function main() {
   const outDir = path.resolve(__dirname, '../sample-reports')
   fs.mkdirSync(outDir, { recursive: true })
   const outPath = path.join(outDir, 'Geotech_Investigation_Report_Patna_Bihar.docx')
-  fs.writeFileSync(outPath, Buffer.from(buf as ArrayBuffer))
+  fs.writeFileSync(outPath, Buffer.from(buf as unknown as ArrayBuffer))
   console.log('Wrote', outPath)
   console.log('Classification:', geo.reportClassification)
   console.log('SBC status:', geo.sbcAnalysis.calculationStatus)

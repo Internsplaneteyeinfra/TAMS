@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import { planBoreholeInvestigation, parseInvestigationGeometry } from '../boreholePlanning'
-import { normalizeGrainSize, buildSoilLayerParameters } from '../soilParameterEngine'
+import { normalizeGrainSize } from '../soilParameterEngine'
 import { buildGeotechnicalIntelligence } from '../buildGeotechnicalIntelligence'
 import type { SiteSignals } from '../../scoring'
-import type { SoilProfileInterval } from '../types'
 
 function mockSignals(overrides: Partial<SiteSignals> = {}): SiteSignals {
   return {

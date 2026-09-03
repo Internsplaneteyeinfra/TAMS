@@ -18,7 +18,7 @@ export interface ProjectAnalysisContext {
   generatedAt: string
   investigationGeometry: InvestigationGeometry | null
   selectedCoordinate: { lat: number; lon: number }
-  siteSignals: import('../scoring').SiteSignals | null
+  siteSignals: import('./scoring').SiteSignals | null
   boreholePlan: BoreholeInvestigationPlan | null
   geotechnicalIntelligence: GeotechnicalIntelligence
   resolvedParameterContext: ResolvedParameterContext | null
