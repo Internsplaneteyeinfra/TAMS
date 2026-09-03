@@ -1,11 +1,13 @@
 /**
  * Draw-KML intro: Earth keeps rotating until the user hits Go to lat/lon,
- * then flies to those coordinates and hands off to the map.
+ * then stops and flies to those coordinates (typically India) and hands off to the map.
+ * Spin slows while the facing longitude crosses the India land band.
  */
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { EARTH_DAY_URL } from './earthGlobePreload'
+import { isFacingIndiaLongitude } from './parseCoordinates'
 
 function instantGlobeTexture() {
   const c = document.createElement('canvas')
@@ -44,6 +46,21 @@ function facingRotations(lat: number, lon: number) {
   return { rotX, rotY }
 }
 
+/** Inverse of facingRotations lon → rotY (equatorial xz). */
+function facingLonFromRotY(rotY: number): number {
+  const phi = Math.atan2(Math.cos(rotY), -Math.sin(rotY))
+  let lon = (phi / (Math.PI * 2)) * 360 - 180
+  while (lon > 180) lon -= 360
+  while (lon < -180) lon += 360
+  return lon
+}
+
+const SPIN_FAST = 0.0022
+const SPIN_INDIA = 0.00075
+const MIN_SPIN_MS = 180
+const FLY_MS = 2400
+const HOLD_MS = 450
+
 export default function EarthZoomIndia({
   flyTo,
   caption,
@@ -74,7 +91,9 @@ export default function EarthZoomIndia({
   }
 
   useEffect(() => {
-    if (flyTo) setStatus(`Flying to ${flyTo.lat.toFixed(4)}, ${flyTo.lon.toFixed(4)}`)
+    if (flyTo) {
+      setStatus(`Flying to India · ${flyTo.lat.toFixed(4)}°, ${flyTo.lon.toFixed(4)}°`)
+    }
   }, [flyTo])
 
   useLayoutEffect(() => {
@@ -166,23 +185,29 @@ export default function EarthZoomIndia({
     let fromZ = camZIdle
     let toY = 0
     let toX = 0
-    const FLY_MS = 2200
-    const HOLD_MS = 500
-    const MIN_SPIN_MS = 900
     const spinStarted = performance.now()
+    let overIndia = false
 
     const tick = (now: number) => {
       if (cancelled || !renderer) return
 
       if (phase === 'spin') {
-        earthGroup.rotation.y += 0.0022
+        const facingLon = facingLonFromRotY(earthGroup.rotation.y)
+        const onIndia = isFacingIndiaLongitude(facingLon)
+        if (onIndia !== overIndia) {
+          overIndia = onIndia
+          if (!flyToRef.current) {
+            setStatus(onIndia ? 'Earth rotating · over India (slow)…' : 'Earth rotating…')
+          }
+        }
+        earthGroup.rotation.y += onIndia ? SPIN_INDIA : SPIN_FAST
+
         const target = flyToRef.current
         if (target && now - spinStarted >= MIN_SPIN_MS) {
           const face = facingRotations(target.lat, target.lon)
           fromY = earthGroup.rotation.y
           fromX = earthGroup.rotation.x
           fromZ = camera.position.z
-          // unwind so we take the short path
           let dy = face.rotY - fromY
           while (dy > Math.PI) dy -= Math.PI * 2
           while (dy < -Math.PI) dy += Math.PI * 2
@@ -190,6 +215,7 @@ export default function EarthZoomIndia({
           toX = face.rotX
           flyT0 = now
           phase = 'fly'
+          setStatus(`Zooming to India · ${target.lat.toFixed(4)}°, ${target.lon.toFixed(4)}°`)
         }
       } else if (phase === 'fly') {
         const u = Math.min(1, (now - flyT0) / FLY_MS)
@@ -201,6 +227,7 @@ export default function EarthZoomIndia({
         if (u >= 1) {
           phase = 'hold'
           flyT0 = now
+          setStatus('Opening map…')
         }
       } else {
         if (now - flyT0 > HOLD_MS) {
@@ -259,7 +286,7 @@ export default function EarthZoomIndia({
         </p>
         <p className="mt-1 text-lg font-semibold text-[#263238]">{status}</p>
         <p className="mt-1 text-[11px] font-medium text-[#37474f]">
-          {caption || 'Keeps rotating until you press Go to lat/lon'}
+          {caption || 'Keeps rotating until you press Go — slows over India land'}
         </p>
       </div>
     </div>

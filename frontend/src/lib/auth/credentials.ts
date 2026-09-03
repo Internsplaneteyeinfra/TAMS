@@ -4,7 +4,7 @@ import crypto from 'crypto'
 export function getFixedCredentials() {
   return {
     username: process.env.TAMS_AUTH_USERNAME || 'Admin',
-    password: process.env.TAMS_AUTH_PASSWORD || 'Mitcon@2026',
+    password: process.env.TAMS_AUTH_PASSWORD || 'Planeteye@2026',
   }
 }
 

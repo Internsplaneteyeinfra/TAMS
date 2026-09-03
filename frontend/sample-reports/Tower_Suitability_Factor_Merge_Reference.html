@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>TAMS Tower Suitability — Factor Merge Reference</title>
+  <style>
+    @page { size: A4; margin: 12mm 10mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      font-size: 9.5pt;
+      line-height: 1.45;
+      color: #1e293b;
+      max-width: 210mm;
+      margin: 0 auto;
+      padding: 8mm;
+    }
+    h1 { font-size: 18pt; color: #0f766e; margin: 0 0 4px; border-bottom: 3px solid #0f766e; padding-bottom: 6px; }
+    h2 { font-size: 12pt; color: #0f766e; margin: 18px 0 8px; page-break-after: avoid; }
+    h3 { font-size: 10.5pt; color: #334155; margin: 12px 0 6px; page-break-after: avoid; }
+    p.meta { font-size: 8.5pt; color: #64748b; margin: 0 0 14px; }
+    table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 8.5pt; }
+    th, td { border: 1px solid #cbd5e1; padding: 4px 6px; text-align: left; vertical-align: top; }
+    th { background: #ecfdf5; color: #0f766e; font-weight: 700; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    .merge { font-weight: 700; color: #b45309; }
+    .standalone { color: #0369a1; font-weight: 600; }
+    .note { font-size: 8pt; color: #64748b; font-style: italic; margin-top: 12px; padding: 8px; background: #fffbeb; border-left: 3px solid #f59e0b; }
+    ul { margin: 4px 0 8px; padding-left: 18px; }
+    li { margin: 2px 0; }
+    .page-break { page-break-before: always; }
+    pre.flow { font-size: 8pt; background: #f1f5f9; padding: 10px; border-radius: 4px; line-height: 1.35; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+
+<h1>TAMS Tower Suitability — Factor Merge Reference</h1>
+<p class="meta">What is merged during Analyze · How 12 scoring factors combine · TAMS open-data screening only</p>
+
+<h2>1. Final merge — all 12 factors → one score</h2>
+<p>When you click <strong>Analyze</strong>, each factor is scored 0–10, then merged into a single site score:</p>
+<table>
+  <tr><th>Formula</th><th>Detail</th></tr>
+  <tr><td>Site score (0–10)</td><td>Σ (factor_score × weight) ÷ Σ weights</td></tr>
+  <tr><td>Verdict</td><td>≥ 7.0 Preferred · 4.5–7.0 Conditional · &lt; 4.5 Unsuitable</td></tr>
+</table>
+
+<h3>All 12 factors in the merge</h3>
+<table>
+  <tr><th>#</th><th>Factor</th><th>Weight</th><th>Merge role</th></tr>
+  <tr><td>1</td><td>Terrain slope</td><td class="merge">22%</td><td>Shares DEM fetch with #8</td></tr>
+  <tr><td>2</td><td>Road access</td><td class="merge">14%</td><td class="standalone">Standalone (OSRM)</td></tr>
+  <tr><td>3</td><td>Water / flood buffer</td><td class="merge">14%</td><td>Feeds #12 corridor check</td></tr>
+  <tr><td>4</td><td>Settlement clearance</td><td class="merge">10%</td><td>Feeds #12 corridor check</td></tr>
+  <tr><td>5</td><td>Power connectivity</td><td class="merge">10%</td><td>Shares TAMS+OSM with #6, #7</td></tr>
+  <tr><td>6</td><td>Voltage suitability</td><td class="merge">8%</td><td>Shares TAMS+OSM with #5, #7</td></tr>
+  <tr><td>7</td><td>Connection distance</td><td class="merge">8%</td><td>Shares TAMS+OSM with #5, #6</td></tr>
+  <tr><td>8</td><td>Elevation</td><td class="merge">8%</td><td>Shares DEM fetch with #1</td></tr>
+  <tr><td>9</td><td>Land cover</td><td class="merge">8%</td><td class="standalone">Standalone (OSM + Nominatim)</td></tr>
+  <tr><td>10</td><td>Soil / SBC</td><td class="merge">8%</td><td>TAMS geotech OR SoilGrids → one factor</td></tr>
+  <tr><td>11</td><td>Wind</td><td class="merge">6%</td><td class="standalone">Standalone (Open-Meteo)</td></tr>
+  <tr><td>12</td><td>Corridor feasibility</td><td class="merge">6%</td><td>Merges #1 + #3 + #4 signals</td></tr>
+</table>
+
+<h2>2. Data merges before scoring (collectSiteSignals)</h2>
+<p>During Analyze, live APIs are fetched in parallel, merged into shared signal buckets, then passed to <code>scoreSiteSignals()</code>.</p>
+
+<h3>A. DEM → 2 factors (#1 Slope + #8 Elevation)</h3>
+<table>
+  <tr><th>Source</th><th>What is merged</th><th>Feeds factors</th></tr>
+  <tr><td>Open-Meteo Elevation API</td><td>5-point grid: centre pad + N/S/E/W (~133 m offset). Centre → elevation. Max angle to offsets → slope.</td><td>#1 Terrain slope · #8 Elevation</td></tr>
+</table>
+
+<h3>B. TAMS GIS + OSM Overpass → 3 factors (#5, #6, #7)</h3>
+<table>
+  <tr><th>Source</th><th>Assets merged</th><th>Feeds factors</th></tr>
+  <tr><td>TAMS GIS</td><td>Towers, substations, transmission lines</td><td rowspan="2">#5 Power connectivity<br/>#6 Voltage suitability<br/>#7 Connection distance</td></tr>
+  <tr><td>OSM Overpass</td><td>Towers, portals, poles (≤15 km), lines, cables, substations, plants</td></tr>
+</table>
+<p>All assets are deduplicated into one <strong>nearbyPower</strong> list. From that single merge:</p>
+<ul>
+  <li><strong>#5</strong> — nearest asset distance + bonuses (pole ≤350 m, tower ≤2 km, substation, interconnect ease)</li>
+  <li><strong>#6</strong> — voltage tags from merged assets vs planning tiers (11–765 kV)</li>
+  <li><strong>#7</strong> — practical spur = nearest distance × 1.2</li>
+</ul>
+
+<h3>C. TAMS Geotech OR SoilGrids → 1 factor (#10)</h3>
+<table>
+  <tr><th>Priority</th><th>Source</th><th>Rule</th></tr>
+  <tr><td>1 (preferred)</td><td>TAMS field geotech within ~5 km</td><td>Uses adopted SBC, CBR, design depth from /geotech</td></tr>
+  <tr><td>2 (fallback)</td><td>ISRIC SoilGrids 2.0</td><td>Texture class, indicative SBC/CBR, ~40–48% screening confidence</td></tr>
+</table>
+<p>Only one path is used — field geotech wins when present; otherwise open GIS soil screening.</p>
+
+<h3>D. Water + Settlement + Slope → 1 factor (#12)</h3>
+<p>Factor #12 does <strong>not</strong> fetch new data. It reuses signals already computed for other factors:</p>
+<table>
+  <tr><th>Reused signal</th><th>From factor</th><th>Penalty if triggered</th></tr>
+  <tr><td>Water &lt; 150 m</td><td>#3 Water / flood buffer</td><td>−2</td></tr>
+  <tr><td>Settlement &lt; 100 m</td><td>#4 Settlement clearance</td><td>−2</td></tr>
+  <tr><td>Slope &gt; 12°</td><td>#1 Terrain slope</td><td>−1.5</td></tr>
+  <tr><td>Slope &gt; 18°</td><td>#1 Terrain slope</td><td>−1</td></tr>
+</table>
+<p>Starts at score 8; deductions applied; capped 0–10.</p>
+
+<div class="page-break"></div>
+
+<h2>3. Standalone factors (no merge with others)</h2>
+<table>
+  <tr><th>#</th><th>Factor</th><th>Source only</th></tr>
+  <tr><td>2</td><td>Road access</td><td>OSRM nearest drivable road</td></tr>
+  <tr><td>3</td><td>Water / flood buffer</td><td>OSM water features (+ Photon fallback if Overpass fails)</td></tr>
+  <tr><td>4</td><td>Settlement clearance</td><td>OSM buildings/places (+ Photon fallback)</td></tr>
+  <tr><td>9</td><td>Land cover</td><td>OSM landuse/natural + Nominatim fallback</td></tr>
+  <tr><td>11</td><td>Wind exposure</td><td>Open-Meteo 90-day mean daily max wind @ 10 m</td></tr>
+</table>
+
+<h2>4. Confidence % — partial merge (not all 12)</h2>
+<p>Confidence is <strong>not</strong> calculated from all 12 factors. It counts <strong>7 resolved signals</strong>:</p>
+<table>
+  <tr><th>Included in confidence</th><th>Maps to factor</th></tr>
+  <tr><td>Elevation resolved</td><td>#8</td></tr>
+  <tr><td>Slope resolved</td><td>#1</td></tr>
+  <tr><td>Road distance</td><td>#2</td></tr>
+  <tr><td>Water distance</td><td>#3</td></tr>
+  <tr><td>Settlement distance</td><td>#4</td></tr>
+  <tr><td>Grid (tower or substation)</td><td>#5 (partial)</td></tr>
+  <tr><td>Wind resolved</td><td>#11</td></tr>
+</table>
+<p><strong>Not in confidence directly:</strong> #6 Voltage · #7 Connection distance · #9 Land cover · #10 Soil · #12 Corridor feasibility</p>
+<p>Formula: base 55% + up to 25% (resolved ÷ 7 × 25) − 5% per Photon/fallback used (water, settlement, grid unavailable).</p>
+
+<h2>5. NOT merged into the 12-factor score</h2>
+<table>
+  <tr><th>Module</th><th>Runs at analyze?</th><th>In /10 score?</th></tr>
+  <tr><td>Geotechnical Intelligence (GEO-1 Word/HTML report)</td><td>Yes</td><td>No — additive block outside scoreSiteSignals</td></tr>
+  <tr><td>Corridor placement panel (Suggest / Shift / Skip / Review per pad)</td><td>Yes (KML/line)</td><td>No — separate CEA span screening</td></tr>
+  <tr><td>Power network verdict (Yes / No / Unknown)</td><td>Yes</td><td>No — informational only</td></tr>
+  <tr><td>OSRM road route overlay (orange line on map)</td><td>On demand</td><td>No — display only</td></tr>
+</table>
+
+<h2>6. Analyze flow diagram</h2>
+<pre class="flow">Analyze (collectSiteSignals)
+  │
+  ├─ Parallel fetch
+  │    ├─ Open-Meteo DEM (5 pts)     ──► MERGE → #1 Slope + #8 Elevation
+  │    ├─ OSRM nearest road          ──► #2 Road (standalone)
+  │    ├─ OSM water (+ Photon fb)    ──► #3 Water (+ feeds #12)
+  │    ├─ OSM settlement (+ Photon)  ──► #4 Settlement (+ feeds #12)
+  │    ├─ OSM landuse + Nominatim    ──► #9 Land cover (standalone)
+  │    ├─ Open-Meteo wind            ──► #11 Wind (standalone)
+  │    ├─ TAMS + OSM power assets    ──► MERGE → #5 + #6 + #7
+  │    ├─ TAMS geotech OR SoilGrids   ──► MERGE → #10 (field wins)
+  │    └─ Nominatim place label      ──► header only
+  │
+  ├─ scoreSiteSignals()
+  │    ├─ Score each factor 0–10
+  │    ├─ #12 merges water + settlement + slope (reuse)
+  │    └─ MERGE ALL 12 → finalScore → verdict
+  │
+  └─ Separate (not in score)
+       ├─ Geotech Word report
+       └─ Corridor placement advice (T1…Tn)</pre>
+
+<h2>7. Quick reference — merge groups</h2>
+<table>
+  <tr><th>Merge group</th><th>Factors affected</th><th>Shared data</th></tr>
+  <tr><td>DEM group</td><td>#1, #8</td><td>Open-Meteo 5-point elevation grid</td></tr>
+  <tr><td>Power group</td><td>#5, #6, #7</td><td>TAMS + OSM deduped nearbyPower</td></tr>
+  <tr><td>Soil group</td><td>#10</td><td>TAMS geotech OR SoilGrids (one path)</td></tr>
+  <tr><td>Corridor group</td><td>#12 (uses #1, #3, #4)</td><td>Water km + building km + slope °</td></tr>
+  <tr><td>Final score</td><td>All #1–#12</td><td>Weighted average → verdict</td></tr>
+</table>
+
+<p class="note">This document describes how TAMS Tower Suitability merges open-data signals during Analyze. It is screening logic only — not utility approval, ROW certification, or foundation design.</p>
+
+</body>
+</html>

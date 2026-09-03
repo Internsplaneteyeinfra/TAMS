@@ -31,6 +31,14 @@ export interface PlannedTowerAdvice {
   reason: string
   nearestExistingM: number | null
   nearestExistingName?: string
+  nearestExistingId?: string
+  nearestExistingLat?: number | null
+  nearestExistingLon?: number | null
+  /** Suggested shift / reuse position (too_close → offset; skip_existing → existing tower) */
+  suggestedLat?: number | null
+  suggestedLon?: number | null
+  /** Why we suggest connecting to the nearest mapped tower for this pad */
+  connectRationale?: string
   ruleNote: string
 }
 
@@ -102,6 +110,10 @@ export interface CorridorPlacementAdvice {
   suggestionNote: string
   nearestTower: CorridorConnectHint | null
   nearestStation: CorridorConnectHint | null
+  /** Up to 5 nearest mapped towers/poles to the corridor (for list UI) */
+  nearestTowersTop5: CorridorConnectHint[]
+  /** Up to 3 nearest substations/plants to the corridor */
+  nearestStationsTop3: CorridorConnectHint[]
   /** Full power take-off suggestion (SS → new T# → existing tower) */
   powerConnect: PowerConnectSuggestion | null
   /** Nearby voltages seen in the radius (for compare) */
@@ -112,6 +124,26 @@ export interface CorridorPlacementAdvice {
 
 function distM(lat1: number, lon1: number, lat2: number, lon2: number): number {
   return haversineM([lat1, lon1], [lat2, lon2])
+}
+
+/** Move pad away from existing tower until target spacing (m) is reached. */
+function suggestShiftPosition(
+  exLat: number,
+  exLon: number,
+  padLat: number,
+  padLon: number,
+  targetDistM: number
+): { lat: number; lon: number } {
+  const d = distM(exLat, exLon, padLat, padLon)
+  if (d < 1) {
+    const dLat = targetDistM / 111320
+    return { lat: padLat + dLat, lon: padLon }
+  }
+  const scale = targetDistM / d
+  return {
+    lat: exLat + (padLat - exLat) * scale,
+    lon: exLon + (padLon - exLon) * scale,
+  }
 }
 
 function distToPathM(lat: number, lon: number, path: KmlLatLng[]): number {
@@ -455,61 +487,67 @@ export function analyzeCorridorPlacement(input: {
     const near = nearestExisting(t.lat, t.lon, spacingPool.length ? spacingPool : inRadius)
     const d = near?.distM ?? null
     const name = near?.asset.name
+    const nearId = near?.asset.id
+    const nearLat = near?.asset.lat ?? null
+    const nearLon = near?.asset.lon ?? null
     const ruleNote = `${voltageLabel}: min ${minSpanM} m · usual ${rulingSpanM} m · max ${maxSpanM} m · ROW ~${rowWidthM} m`
+
+    const base = {
+      index: t.index,
+      lat: t.lat,
+      lon: t.lon,
+      chainageM: t.chainageM,
+      nearestExistingM: d,
+      nearestExistingName: name,
+      nearestExistingId: nearId,
+      nearestExistingLat: nearLat,
+      nearestExistingLon: nearLon,
+      ruleNote,
+    }
 
     if (d != null && d <= conflictM) {
       return {
-        index: t.index,
-        lat: t.lat,
-        lon: t.lon,
-        chainageM: t.chainageM,
+        ...base,
         verdict: 'skip_existing' as const,
         reason: `Suggestion: skip this pad — existing “${name}” is only ${Math.round(
           d
         )} m away. You may reuse that tower or shift this pad (under ${conflictM} m). Not an order.`,
-        nearestExistingM: d,
-        nearestExistingName: name,
-        ruleNote,
+        suggestedLat: nearLat,
+        suggestedLon: nearLon,
+        connectRationale: `Reuse existing “${name}” (${Math.round(d)} m) — too close to justify a new tower. Tap to see road vs straight-line connect to your corridor.`,
       }
     }
 
     if (d != null && d < minSpanM) {
+      const shift =
+        nearLat != null && nearLon != null
+          ? suggestShiftPosition(nearLat, nearLon, t.lat, t.lon, minSpanM)
+          : null
       return {
-        index: t.index,
-        lat: t.lat,
-        lon: t.lon,
-        chainageM: t.chainageM,
+        ...base,
         verdict: 'too_close' as const,
         reason: `Suggestion: for ${voltageLabel}, aim for ≥ ~${minSpanM} m between towers. Existing “${name}” is ${Math.round(
           d
         )} m away — under the planning min. Consider shifting along the line. Screening only.`,
-        nearestExistingM: d,
-        nearestExistingName: name,
-        ruleNote,
+        suggestedLat: shift?.lat ?? null,
+        suggestedLon: shift?.lon ?? null,
+        connectRationale: `Shift T${t.index} to ≥${minSpanM} m from “${name}” (now ${Math.round(d)} m). Amber ghost on map shows the suggested offset.`,
       }
     }
 
     if (d != null && d <= rulingSpanM * 1.15) {
       return {
-        index: t.index,
-        lat: t.lat,
-        lon: t.lon,
-        chainageM: t.chainageM,
+        ...base,
         verdict: 'review' as const,
         reason: `Suggestion: review first. Existing “${name}” is ${Math.round(
           d
         )} m away (usual span ~${rulingSpanM} m). A new tower may not be needed — confirm with survey.`,
-        nearestExistingM: d,
-        nearestExistingName: name,
-        ruleNote,
+        connectRationale: `“${name}” is ${Math.round(d)} m away — within usual span band. Review whether a new tower is needed before building.`,
       }
     }
 
     return {
-      index: t.index,
-      lat: t.lat,
-      lon: t.lon,
-      chainageM: t.chainageM,
+      ...base,
       verdict: 'place' as const,
       reason:
         d != null
@@ -517,9 +555,10 @@ export function analyzeCorridorPlacement(input: {
               d
             )} m away (≥ min ${minSpanM} m). Aim for ~${rulingSpanM} m spacing if you adopt this plan.`
           : `Suggestion: no mapped tower nearby in the ${searchRadiusKm} km search. Open-corridor spacing ~${rulingSpanM} m (${minSpanM}–${maxSpanM} m) is a starting idea only.`,
-      nearestExistingM: d,
-      nearestExistingName: name,
-      ruleNote,
+      connectRationale:
+        d != null && name
+          ? `Nearest mapped tower “${name}” is ${Math.round(d)} m — spacing meets min ${minSpanM} m for ${voltageLabel}. Good candidate for line interconnect screening.`
+          : undefined,
     }
   })
 
@@ -555,6 +594,37 @@ export function analyzeCorridorPlacement(input: {
           : `Nearest station found for planning orientation.`
       )
     : null
+
+  const towerPool = existingAssets.filter((a) => a.kind === 'tower' || a.kind === 'pole')
+  const ssPool = existingAssets.filter((a) => a.kind === 'substation' || a.kind === 'plant')
+
+  const nearestTowersTop5 = towerPool
+    .map((a) => ({ asset: a, distM: distToPathM(a.lat, a.lon, path) }))
+    .sort((a, b) => a.distM - b.distM)
+    .slice(0, 5)
+    .map(({ asset, distM }) =>
+      toHint(
+        asset,
+        distM,
+        distM / 1000 <= searchRadiusKm
+          ? `Mapped tower/pole within ${searchRadiusKm} km of your line.`
+          : `Nearest mapped tower/pole (may be outside tight buffer).`
+      )
+    )
+
+  const nearestStationsTop3 = ssPool
+    .map((a) => ({ asset: a, distM: distToPathM(a.lat, a.lon, path) }))
+    .sort((a, b) => a.distM - b.distM)
+    .slice(0, 3)
+    .map(({ asset, distM }) =>
+      toHint(
+        asset,
+        distM,
+        distM / 1000 <= searchRadiusKm
+          ? `Substation/plant within ${searchRadiusKm} km of your line.`
+          : `Nearest station for orientation.`
+      )
+    )
 
   const powerConnect =
     nearSsFallback != null
@@ -685,6 +755,8 @@ export function analyzeCorridorPlacement(input: {
     suggestionNote,
     nearestTower,
     nearestStation,
+    nearestTowersTop5,
+    nearestStationsTop3,
     powerConnect,
     nearbyVoltagesKv,
     suggestedConnectKm,

@@ -68,10 +68,27 @@ export default function CorridorPlacementPanel({
   advice,
   manualVoltageKv,
   onManualVoltageKv,
+  focusedPadIndex,
+  verdictFilter,
+  onVerdictFilter,
+  onSelectPad,
+  powerLoading,
+  powerDiagnostics,
 }: {
   advice: CorridorPlacementAdvice | null
   manualVoltageKv?: number | null
   onManualVoltageKv?: (kv: number | null) => void
+  focusedPadIndex?: number | null
+  verdictFilter?: PlacementVerdict | null
+  onVerdictFilter?: (v: PlacementVerdict | null) => void
+  onSelectPad?: (index: number) => void
+  powerLoading?: boolean
+  powerDiagnostics?: {
+    tamsTowerCount: number
+    tamsSsCount: number
+    osmAssetCount: number
+    errors?: string[]
+  } | null
 }) {
   const [open, setOpen] = useState(true)
   if (!advice) return null
@@ -130,18 +147,28 @@ export default function CorridorPlacementPanel({
             <p className="text-[10px] mt-1 text-[#66727a]">
               Search radius <span className="font-bold text-[#263238]">{advice.searchRadiusKm} km</span> ·{' '}
               {advice.assetsInRadiusCount} assets · {advice.towersInRadiusCount} towers/poles near line
+              {powerLoading ? ' · searching grid…' : ''}
             </p>
+            {powerDiagnostics && advice.assetsInRadiusCount === 0 && !powerLoading && (
+              <p className="text-[10px] mt-1 text-[#b97816] leading-snug">
+                Grid search: TAMS {powerDiagnostics.tamsTowerCount} towers, {powerDiagnostics.tamsSsCount}{' '}
+                SS · OSM {powerDiagnostics.osmAssetCount} assets.
+                {powerDiagnostics.errors?.length
+                  ? ` (${powerDiagnostics.errors.slice(0, 2).join('; ')})`
+                  : ' — click Analyze or widen radius if your line is far from mapped data.'}
+              </p>
+            )}
           </div>
 
           {onManualVoltageKv && (
             <label className="block text-[10px] font-bold uppercase text-[#66727a]">
-              Try another kV (your choice)
+              Show nearby grid · pick kV class
               <select
                 value={selectedKv ?? ''}
                 onChange={(e) => onManualVoltageKv(e.target.value ? Number(e.target.value) : null)}
                 className="mt-1 w-full h-9 rounded-lg border border-[rgba(51,65,85,0.16)] bg-white/80 px-2 text-xs font-bold text-[#263238]"
               >
-                <option value="">Select kV class…</option>
+                <option value="">Select kV to show towers & stations…</option>
                 {VOLTAGE_OPTIONS_KV.map((kv) => {
                   const std = standardForVoltageKv(kv)
                   return (
@@ -152,7 +179,8 @@ export default function CorridorPlacementPanel({
                 })}
               </select>
               <span className="mt-1 block text-[10px] font-normal normal-case text-[#66727a] leading-snug">
-                Change kV to see if this same line still looks good for a bigger or smaller tower class.
+                Planning defaults to 220 kV EHV span until you pick a class. Selecting kV reveals all mapped
+                towers, substations, and interconnect lines in the search radius — click any marker for lat/lon.
               </span>
             </label>
           )}
@@ -211,31 +239,82 @@ export default function CorridorPlacementPanel({
                 </p>
                 <p className="text-[12px] font-black mt-0.5 truncate">{advice.nearestTower.name}</p>
                 <p className="text-[11px] text-[#263238]">
-                  ~{advice.nearestTower.distanceKm.toFixed(2)} km from corridor
+                  {advice.nearestTower.distanceKm < 1
+                    ? `${Math.round(advice.nearestTower.distanceKm * 1000)} m`
+                    : `${advice.nearestTower.distanceKm.toFixed(2)} km`}{' '}
+                  from corridor
                   {advice.nearestTower.voltageKv != null
                     ? ` · ${advice.nearestTower.voltageKv} kV`
-                    : ''}
+                    : selectedKv != null
+                      ? ` · ~${selectedKv} kV (line class)`
+                      : ''}
                 </p>
                 <p className="text-[10px] text-[#66727a] mt-0.5 leading-snug">{advice.nearestTower.note}</p>
               </div>
             )}
-            {advice.nearestStation && !advice.powerConnect && (
+            {advice.nearestStation && (
               <div className="rounded-lg border border-[#a855f7]/35 bg-[#faf5ff] px-2.5 py-2">
                 <p className="text-[9px] font-black uppercase text-[#7e22ce] flex items-center gap-1">
                   <Building2 className="w-3 h-3" />
-                  Nearest power station
+                  Nearest power station / substation to your line
                 </p>
                 <p className="text-[12px] font-black mt-0.5 truncate">{advice.nearestStation.name}</p>
                 <p className="text-[11px] text-[#263238]">
-                  ~{advice.nearestStation.distanceKm.toFixed(2)} km
+                  {advice.nearestStation.distanceKm < 1
+                    ? `${Math.round(advice.nearestStation.distanceKm * 1000)} m`
+                    : `${advice.nearestStation.distanceKm.toFixed(2)} km`}{' '}
+                  from corridor
                   {advice.nearestStation.voltageKv != null
                     ? ` · ${advice.nearestStation.voltageKv} kV`
-                    : ''}
+                    : selectedKv != null
+                      ? ` · ~${selectedKv} kV (line class)`
+                      : ''}
                 </p>
                 <p className="text-[10px] text-[#66727a] mt-0.5 leading-snug">{advice.nearestStation.note}</p>
               </div>
             )}
-            {!advice.nearestTower && !advice.nearestStation && (
+            {advice.nearestTowersTop5.length > 0 && (
+              <div className="rounded-lg border border-[#3b82f6]/25 bg-[#eff6ff]/80 px-2.5 py-2">
+                <p className="text-[9px] font-black uppercase text-[#1d4ed8] flex items-center gap-1">
+                  <Zap className="w-3 h-3" />
+                  Nearest {advice.nearestTowersTop5.length} tower(s)/pole(s) to your line
+                </p>
+                <ol className="mt-1.5 space-y-1 list-decimal list-inside text-[11px] text-[#263238]">
+                  {advice.nearestTowersTop5.map((tw, i) => (
+                    <li key={tw.id} className="leading-snug">
+                      <span className="font-bold">{tw.name}</span>
+                      {' · '}
+                      {tw.distanceKm < 1
+                        ? `${Math.round(tw.distanceKm * 1000)} m`
+                        : `${tw.distanceKm.toFixed(2)} km`}
+                      {tw.voltageKv != null ? ` · ${tw.voltageKv} kV` : ''}
+                      {i === 0 ? ' (closest)' : ''}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+            {advice.nearestStationsTop3.length > 0 && (
+              <div className="rounded-lg border border-[#a855f7]/25 bg-[#faf5ff]/80 px-2.5 py-2">
+                <p className="text-[9px] font-black uppercase text-[#7e22ce] flex items-center gap-1">
+                  <Building2 className="w-3 h-3" />
+                  Nearest substation(s) / plant(s) to your line
+                </p>
+                <ol className="mt-1.5 space-y-1 list-decimal list-inside text-[11px] text-[#263238]">
+                  {advice.nearestStationsTop3.map((ss) => (
+                    <li key={ss.id} className="leading-snug">
+                      <span className="font-bold">{ss.name}</span>
+                      {' · '}
+                      {ss.distanceKm < 1
+                        ? `${Math.round(ss.distanceKm * 1000)} m`
+                        : `${ss.distanceKm.toFixed(2)} km`}
+                      {ss.voltageKv != null ? ` · ${ss.voltageKv} kV` : ''}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+            {!advice.nearestTower && !advice.nearestStation && advice.nearestTowersTop5.length === 0 && (
               <p className="text-[11px] text-[#b97816] leading-snug">
                 No tower or station inside {advice.searchRadiusKm} km of this line — widen search radius and
                 re-analyze, or draw closer to the grid.
@@ -262,23 +341,33 @@ export default function CorridorPlacementPanel({
           <p className="text-[11px] text-[#263238] leading-relaxed">{advice.summary}</p>
 
           <div className="grid grid-cols-4 gap-1.5 text-center">
-            <div className="rounded-lg border border-[#27856b]/30 bg-[#dff0e8] px-1.5 py-1.5">
-              <p className="text-[9px] font-bold uppercase text-[#126b79]">Suggest</p>
-              <p className="text-lg font-black text-[#263238] tabular-nums">{advice.canPlaceCount}</p>
-            </div>
-            <div className="rounded-lg border border-[#c75b50]/30 bg-[#f8e4e1] px-1.5 py-1.5">
-              <p className="text-[9px] font-bold uppercase text-[#c75b50]">Skip</p>
-              <p className="text-lg font-black text-[#263238] tabular-nums">{advice.skipExistingCount}</p>
-            </div>
-            <div className="rounded-lg border border-[#b97816]/30 bg-[#f6ead1] px-1.5 py-1.5">
-              <p className="text-[9px] font-bold uppercase text-[#b97816]">Shift</p>
-              <p className="text-lg font-black text-[#263238] tabular-nums">{advice.tooCloseCount}</p>
-            </div>
-            <div className="rounded-lg border border-[#17879a]/30 bg-white/80 px-1.5 py-1.5">
-              <p className="text-[9px] font-bold uppercase text-[#126b79]">Review</p>
-              <p className="text-lg font-black text-[#263238] tabular-nums">{advice.reviewCount}</p>
-            </div>
+            {(
+              [
+                { v: 'place' as const, label: 'Suggest', count: advice.canPlaceCount, cls: 'border-[#27856b]/30 bg-[#dff0e8] text-[#126b79]' },
+                { v: 'skip_existing' as const, label: 'Skip', count: advice.skipExistingCount, cls: 'border-[#c75b50]/30 bg-[#f8e4e1] text-[#c75b50]' },
+                { v: 'too_close' as const, label: 'Shift', count: advice.tooCloseCount, cls: 'border-[#b97816]/30 bg-[#f6ead1] text-[#b97816]' },
+                { v: 'review' as const, label: 'Review', count: advice.reviewCount, cls: 'border-[#17879a]/30 bg-white/80 text-[#126b79]' },
+              ] as const
+            ).map(({ v, label, count, cls }) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => onVerdictFilter?.(verdictFilter === v ? null : v)}
+                className={`rounded-lg border px-1.5 py-1.5 transition-all hover:ring-2 hover:ring-[#17879a]/30 ${
+                  verdictFilter === v ? 'ring-2 ring-[#17879a] scale-[1.02]' : ''
+                } ${cls}`}
+                title={`Show ${label.toLowerCase()} pads on map`}
+              >
+                <p className="text-[9px] font-bold uppercase">{label}</p>
+                <p className="text-lg font-black text-[#263238] tabular-nums">{count}</p>
+              </button>
+            ))}
           </div>
+          {verdictFilter && (
+            <p className="text-[10px] text-[#17879a] font-semibold">
+              Map: showing {verdictStyle(verdictFilter).label} pads — click again to clear filter.
+            </p>
+          )}
 
           <div className="rounded-lg border border-[rgba(51,65,85,0.16)] bg-white/70 px-2.5 py-2 text-[10px] text-[#263238] leading-snug">
             <p className="font-bold text-[#263238] uppercase tracking-wide mb-0.5">
@@ -313,14 +402,23 @@ export default function CorridorPlacementPanel({
           </div>
 
           <ul className="space-y-1.5 max-h-56 overflow-y-auto">
-            {advice.items.map((item) => {
+            {advice.items
+              .filter((item) => !verdictFilter || item.verdict === verdictFilter)
+              .map((item) => {
               const style = verdictStyle(item.verdict)
               const Icon = style.Icon
+              const isFocused = focusedPadIndex === item.index
               return (
-                <li
-                  key={`pad-${item.index}`}
-                  className="rounded-lg border border-[rgba(51,65,85,0.12)] bg-white/70 px-2.5 py-2 text-[11px]"
-                >
+                <li key={`pad-${item.index}`}>
+                  <button
+                    type="button"
+                    onClick={() => onSelectPad?.(item.index)}
+                    className={`w-full text-left rounded-lg border px-2.5 py-2 text-[11px] transition-all hover:bg-white ${
+                      isFocused
+                        ? 'border-[#17879a] bg-white ring-2 ring-[#17879a]/40'
+                        : 'border-[rgba(51,65,85,0.12)] bg-white/70'
+                    }`}
+                  >
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-black text-[#263238]">
                       T{item.index}{' '}
@@ -336,6 +434,14 @@ export default function CorridorPlacementPanel({
                     </span>
                   </div>
                   <p className="text-[#263238] mt-1 leading-snug">{item.reason}</p>
+                  {item.suggestedLat != null && item.suggestedLon != null && (
+                    <p className="text-[10px] text-[#b97816] mt-1 font-semibold">
+                      {item.verdict === 'too_close'
+                        ? '→ Shift ghost shown on map when selected'
+                        : '→ Reuse existing tower location on map'}
+                    </p>
+                  )}
+                  </button>
                 </li>
               )
             })}

@@ -3,6 +3,9 @@ import type { KmlFeature, KmlLatLng } from './fetchSiteSignals'
 /** Fallback when voltage unknown — mid 132–220 kV practice. */
 export const DEFAULT_TOWER_SPAN_M = 350
 
+/** Default EHV planning class when user has not picked kV yet (220 kV India practice). */
+export const DEFAULT_PLANNING_VOLTAGE_KV = 220
+
 /**
  * Screening spans for India (typical corridor planning).
  * Not a certified structural design — final spans need sag-tension, wind/ice zone,
@@ -136,8 +139,17 @@ export function parseVoltageFromText(...parts: Array<string | undefined | null>)
   return null
 }
 
-export function voltageLabel(voltageKv: number | null): string {
-  return voltageKv != null ? `${voltageKv} kV` : 'Voltage unknown'
+export function voltageLabel(voltageKv: number | null, opts?: { compact?: boolean }): string {
+  const kv = voltageKv ?? DEFAULT_PLANNING_VOLTAGE_KV
+  return opts?.compact ? `${kv} kV` : `${kv} kV`
+}
+
+export function planningVoltageKv(
+  manual: number | null | undefined,
+  inferred: number | null | undefined,
+  kml: number | null | undefined
+): number {
+  return manual ?? inferred ?? kml ?? DEFAULT_PLANNING_VOLTAGE_KV
 }
 
 /** Human label for how voltage was chosen — honest about live vs planning. */
@@ -389,7 +401,9 @@ export function planTowersFromKml(
   }
   const kmlVoltage = parseVoltageFromText(...voltageParts)
   const manual = options?.voltageSource === 'manual' && options.voltageKv != null
-  const voltageKv = manual ? options!.voltageKv! : kmlVoltage ?? options?.voltageKv ?? null
+  const voltageKv = manual
+    ? options!.voltageKv!
+    : kmlVoltage ?? options?.voltageKv ?? DEFAULT_PLANNING_VOLTAGE_KV
   const spanM = options?.spanM ?? spanForVoltageKv(voltageKv, options?.spanPolicy ?? 'ruling')
   const voltageSource: LineTowerPlan['voltageSource'] = manual
     ? 'manual'
@@ -398,7 +412,6 @@ export function planTowersFromKml(
       : options?.voltageKv != null
         ? options.voltageSource ?? 'tams'
         : 'default'
-
   let lengthM = 0
   const towers: PlannedTower[] = []
   for (const row of selected) {

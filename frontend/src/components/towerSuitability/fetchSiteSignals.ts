@@ -2,6 +2,8 @@ import { fetchGeotechNearest } from '@/lib/geotechApi'
 import { findNearbyPowerSupply } from './nearbyPowerSupply'
 import type { SiteSignals } from './scoring'
 import { fetchSoilScreening } from './soilScreening'
+import { warmGeotechDocxModules } from './geotech/geotechReportCache'
+import { resolveSiteSignalEnrichment } from './siteSignals/resolveSiteSignals'
 
 const haversineKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const R = 6371
@@ -77,15 +79,24 @@ async function fetchWind(lat: number, lon: number): Promise<number | null> {
   return arr.reduce((s, v) => s + v, 0) / arr.length
 }
 
-async function nearestRoadOsrm(lat: number, lon: number): Promise<number | null> {
+async function nearestRoadOsrm(
+  lat: number,
+  lon: number
+): Promise<{ km: number; lat: number; lon: number } | null> {
   const url = `https://router.project-osrm.org/nearest/v1/driving/${lon},${lat}?number=1`
   const json = (await fetchJson(url, 6000)) as {
     waypoints?: { distance?: number; location?: [number, number] }[]
   } | null
   const wp = json?.waypoints?.[0]
-  if (wp?.distance != null && Number.isFinite(wp.distance)) return wp.distance / 1000
-  if (wp?.location) return haversineKm(lat, lon, wp.location[1], wp.location[0])
-  return null
+  if (!wp?.location) return null
+  const roadLat = wp.location[1]
+  const roadLon = wp.location[0]
+  const km =
+    wp.distance != null && Number.isFinite(wp.distance)
+      ? wp.distance / 1000
+      : haversineKm(lat, lon, roadLat, roadLon)
+  if (km == null || !Number.isFinite(km)) return null
+  return { km, lat: roadLat, lon: roadLon }
 }
 
 type OverpassEl = {
@@ -305,115 +316,104 @@ export async function collectSiteSignals(
   lat: number,
   lon: number,
   onProgress?: ProgressFn,
-  options?: { corridor?: Array<{ lat: number; lon: number }>; searchRadiusKm?: number }
+  options?: {
+    corridor?: Array<{ lat: number; lon: number }>
+    searchRadiusKm?: number
+    /** When false (default), power infrastructure is NOT fetched — user must click explicitly. */
+    includePowerInfrastructure?: boolean
+  }
 ): Promise<SiteSignals> {
-  onProgress?.('Fetching live DEM, OSM, roads & weather…', 18)
+  warmGeotechDocxModules()
+  onProgress?.('Fetching live DEM, OSM, roads, weather & soil map…', 18)
 
-  const offset = 0.0012
-  const grid = [
-    { lat, lon },
-    { lat: lat + offset, lon },
-    { lat: lat - offset, lon },
-    { lat, lon: lon + offset },
-    { lat, lon: lon - offset },
-  ]
+  const soilPromise = fetchSoilScreening(lat, lon)
 
-  // Do NOT call TAMS towers here — findNearbyPowerSupply does that once.
-  // Parallel TAMS bbox scans pile up and cause 120s proxy 502s.
-  const [elevations, windMs, roadKm, waterLive, settleLive, land] = await Promise.all([
-    fetchElevations(grid),
+  const [enrichmentSettled, windSettled, roadSettled] = await Promise.allSettled([
+    resolveSiteSignalEnrichment({ lat, lon, corridor: options?.corridor }),
     fetchWind(lat, lon),
     nearestRoadOsrm(lat, lon),
-    liveOsmDistanceKm(lat, lon, 8000, [
-      'way["natural"="water"]',
-      'relation["natural"="water"]',
-      'way["waterway"]',
-      'way["landuse"="reservoir"]',
-      'way["landuse"="basin"]',
-      'way["water"]',
-    ]),
-    liveOsmDistanceKm(lat, lon, 4000, [
-      'way["building"]',
-      'node["place"~"city|town|village|hamlet|suburb"]',
-      'way["landuse"="residential"]',
-    ]),
-    landCoverLive(lat, lon),
   ])
 
-  onProgress?.('Merging live grid + OSM power assets…', 78)
+  const enrichment =
+    enrichmentSettled.status === 'fulfilled'
+      ? enrichmentSettled.value
+      : {
+          terrain: null,
+          water: null,
+          flood: null,
+          settlement: null,
+          landCover: null,
+          landCoverHint: 'unknown' as const,
+          waterKm: null,
+          buildingKm: null,
+          elevationM: null,
+          slopeDeg: null,
+        }
 
-  let waterKm = waterLive.live || waterLive.found ? waterLive.km : null
-  let buildingKm = settleLive.live || settleLive.found ? settleLive.km : null
+  const windMs = windSettled.status === 'fulfilled' ? windSettled.value : null
+  const roadNearest = roadSettled.status === 'fulfilled' ? roadSettled.value : null
+
+  onProgress?.('Merging live grid signals…', 78)
+
+  let waterKm = enrichment.waterKm
+  let buildingKm = enrichment.buildingKm
   let osmPowerKm: number | null = null
   const usedFallback: { water?: boolean; settlement?: boolean; grid?: boolean } = {}
 
-  if (waterKm == null) {
-    const fallback = await photonFallbackKm(lat, lon, 'lake river reservoir', 'natural:water')
-    if (fallback != null) {
-      waterKm = fallback
-      usedFallback.water = true
-    }
-  }
-  if (buildingKm == null) {
-    const fallback = await photonFallbackKm(lat, lon, 'village town', 'place:village')
-    if (fallback != null) {
-      buildingKm = fallback
-      usedFallback.settlement = true
-    }
-  }
+  if (enrichment.water?.signal.fallbackUsed) usedFallback.water = true
+  if (enrichment.settlement?.sources.some((s) => /photon/i.test(s))) usedFallback.settlement = true
+
+  const includePower = options?.includePowerInfrastructure === true
+
+  const centerElev = enrichment.elevationM
+  const slopeDeg = enrichment.slopeDeg
+  const land = enrichment.landCoverHint
 
   onProgress?.('Computing slope & screening signals…', 88)
 
-  const centerElev = elevations[0]
-  let slopeDeg: number | null = null
-  if (centerElev != null) {
-    let maxSlope = 0
-    for (let i = 1; i < elevations.length; i++) {
-      const e = elevations[i]
-      if (e == null) continue
-      const runM = haversineKm(lat, lon, grid[i].lat, grid[i].lon) * 1000
-      if (runM < 1) continue
-      const rise = Math.abs(e - centerElev)
-      const s = (Math.atan(rise / runM) * 180) / Math.PI
-      if (s > maxSlope) maxSlope = s
-    }
-    slopeDeg = maxSlope
-  }
+  onProgress?.(includePower ? 'Searching soil map + optional power assets…' : 'Searching soil map & project data…', 92)
 
-  onProgress?.('Searching existing power + open soil map…', 92)
-  const [nearbyPower, geotechNearest, placeLabel, soilScreening] = await Promise.all([
-    findNearbyPowerSupply(lat, lon, options?.searchRadiusKm ?? 8, {
-      waterKm,
-      buildingKm,
-      slopeDeg,
-      landCover: land,
-      corridor: options?.corridor,
-    }),
+  const [nearbyPower, geotechNearest, placeLabel, soilScreening] = await Promise.allSettled([
+    includePower
+      ? findNearbyPowerSupply(lat, lon, options?.searchRadiusKm ?? 8, {
+          waterKm,
+          buildingKm,
+          slopeDeg,
+          landCover: land,
+          corridor: options?.corridor,
+        })
+      : Promise.resolve(null),
     withTimeout(fetchGeotechNearest(lat, lon, 5), 6000, null),
     withTimeout(resolveCityStateLabel(lat, lon), 6500, null),
-    withTimeout(fetchSoilScreening(lat, lon), 12000, null),
-  ])
+    soilPromise,
+  ]).then((results) =>
+    results.map((r) => (r.status === 'fulfilled' ? r.value : null)) as [
+      Awaited<ReturnType<typeof findNearbyPowerSupply>> | null,
+      Awaited<ReturnType<typeof fetchGeotechNearest>> | null,
+      string | null,
+      Awaited<ReturnType<typeof fetchSoilScreening>> | null,
+    ]
+  )
 
-  // Tower / power distances only from the dedicated search (avoids duplicate API load)
-  const nearbyTowerKm = nearbyPower.nearestTower?.distanceKm ?? null
-  const nearbyLineKm = nearbyPower.nearestLine?.distanceKm ?? null
-  const nearbyPoleKm = nearbyPower.nearestPole?.distanceKm ?? null
+  const nearbyTowerKm = nearbyPower?.nearestTower?.distanceKm ?? null
+  const nearbyLineKm = nearbyPower?.nearestLine?.distanceKm ?? null
+  const nearbyPoleKm = nearbyPower?.nearestPole?.distanceKm ?? null
   osmPowerKm =
-    nearbyPower.nearest?.distanceKm ??
+    nearbyPower?.nearest?.distanceKm ??
     nearbyTowerKm ??
     nearbyLineKm ??
     nearbyPoleKm ??
     null
-  if (!nearbyPower.dataAvailable) {
+  if (includePower && nearbyPower && !nearbyPower.dataAvailable) {
     usedFallback.grid = true
   }
 
-  const towerKmCandidates = [nearbyTowerKm, osmPowerKm].filter(
-    (v): v is number => v != null
-  )
+  const towerKmCandidates = includePower
+    ? [nearbyTowerKm, osmPowerKm].filter((v): v is number => v != null)
+    : []
   const towerKm = towerKmCandidates.length ? Math.min(...towerKmCandidates) : null
 
-  const nearbySsKm = nearbyPower.nearestSubstation?.distanceKm ?? null
+  const nearbySsKm = nearbyPower?.nearestSubstation?.distanceKm ?? null
 
   const geotech =
     geotechNearest && geotechNearest.id
@@ -428,6 +428,9 @@ export async function collectSiteSignals(
           adopted_resistivity_ohm_m: geotechNearest.adopted_resistivity_ohm_m,
           groundwater_note: geotechNearest.groundwater_note,
           recommended_pile: geotechNearest.recommended_pile,
+          investigation_depth_m: geotechNearest.investigation_depth_m,
+          layer_count: geotechNearest.layer_count,
+          full: geotechNearest.full ?? null,
         }
       : null
 
@@ -441,7 +444,8 @@ export async function collectSiteSignals(
     lon,
     elevationM: centerElev,
     slopeDeg,
-    roadKm,
+    roadKm: roadNearest?.km ?? null,
+    roadNearest,
     waterKm,
     buildingKm,
     towerKm,
@@ -451,26 +455,33 @@ export async function collectSiteSignals(
     fetchedAt: new Date().toISOString(),
     liveOk: {
       dem: centerElev != null,
-      road: roadKm != null,
-      water: (waterLive.live && !usedFallback.water) || (waterKm != null && !usedFallback.water),
-      settlement:
-        (settleLive.live && !usedFallback.settlement) ||
-        (buildingKm != null && !usedFallback.settlement),
+      road: roadNearest != null,
+      water: waterKm != null && !usedFallback.water,
+      settlement: buildingKm != null && !usedFallback.settlement,
       grid:
-        nearbyPower.assets.length > 0 ||
-        nearbyTowerKm != null ||
-        (osmPowerKm != null && !usedFallback.grid),
+        includePower &&
+        (nearbyPower!.assets.length > 0 ||
+          nearbyTowerKm != null ||
+          (osmPowerKm != null && !usedFallback.grid)),
       wind: windMs != null,
       landcover: land !== 'unknown',
       geotech: geotech != null,
       soilScreening: soil != null,
+      flood: enrichment.flood != null,
     },
     usedFallback:
       usedFallback.water || usedFallback.settlement || usedFallback.grid ? usedFallback : undefined,
-    nearbyPower,
+    nearbyPower: nearbyPower ?? undefined,
     geotech,
     soilScreening: soil,
     placeLabel,
+    enrichment: {
+      terrain: enrichment.terrain,
+      water: enrichment.water,
+      flood: enrichment.flood,
+      settlement: enrichment.settlement,
+      landCover: enrichment.landCover,
+    },
   }
 }
 

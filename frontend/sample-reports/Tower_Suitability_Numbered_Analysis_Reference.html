@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>TAMS Tower Suitability — Numbered Analysis Reference</title>
+  <style>
+    @page { size: A4; margin: 12mm 10mm; }
+    * { box-sizing: border-box; }
+    body { font-family: "Segoe UI", system-ui, sans-serif; font-size: 9.5pt; line-height: 1.45; color: #1e293b; max-width: 210mm; margin: 0 auto; padding: 8mm; }
+    h1 { font-size: 18pt; color: #0f766e; margin: 0 0 4px; border-bottom: 3px solid #0f766e; padding-bottom: 6px; }
+    h2 { font-size: 12pt; color: #0f766e; margin: 16px 0 6px; page-break-after: avoid; }
+    h3 { font-size: 10pt; color: #334155; margin: 10px 0 4px; page-break-after: avoid; }
+    p.meta { font-size: 8.5pt; color: #64748b; margin: 0 0 12px; }
+    table { width: 100%; border-collapse: collapse; margin: 4px 0 10px; font-size: 8.5pt; }
+    th, td { border: 1px solid #cbd5e1; padding: 4px 6px; text-align: left; vertical-align: top; }
+    th { background: #ecfdf5; color: #0f766e; font-weight: 700; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    .wt { font-weight: 800; color: #b45309; }
+    .see { color: #0369a1; }
+    .calc { color: #0f766e; }
+    .note { font-size: 8pt; color: #64748b; font-style: italic; margin-top: 10px; padding: 8px; background: #fffbeb; border-left: 3px solid #f59e0b; }
+    ul { margin: 2px 0 6px; padding-left: 18px; }
+    li { margin: 2px 0; }
+    .page-break { page-break-before: always; }
+    .num { font-weight: 800; color: #0f766e; }
+  </style>
+</head>
+<body>
+
+<h1>TAMS Tower Suitability — Numbered Analysis Reference</h1>
+<p class="meta">What you see on screen · What we fetch · What we calculate · Sub-points 1 → 12 for each scoring factor</p>
+
+<h2>0. When you click Analyze — overall flow</h2>
+<table>
+  <tr><th>Step</th><th>What you see</th><th>What we calculate / merge</th></tr>
+  <tr><td>0.1</td><td>Progress bar: DEM, OSM, roads, weather, soil map</td><td>Parallel API fetch at pad / KML focus point</td></tr>
+  <tr><td>0.2</td><td>Map markers: pad, road snap, grid assets, shift ghosts</td><td>Haversine distances, OSRM snap, TAMS+OSM asset merge</td></tr>
+  <tr><td>0.3</td><td>Score card: X.X / 10 · verdict · confidence %</td><td>Weighted average of 12 factor scores</td></tr>
+  <tr><td>0.4</td><td>Factors panel: 12 bars with value under each</td><td>Each factor scored 0–10 from live signals</td></tr>
+  <tr><td>0.5</td><td>Score breakdown table: Value · Score · Weight · Contrib</td><td>Contrib = score × weight per row</td></tr>
+  <tr><td>0.6</td><td>GeoTech tab: Word report building / download</td><td>Separate — NOT in /10 score</td></tr>
+  <tr><td>0.7</td><td>Corridor panel: Suggest / Shift / Skip / Review per pad</td><td>Separate — CEA span rules, NOT in /10 score</td></tr>
+</table>
+
+<!-- FACTOR 1 -->
+<h2><span class="num">1.</span> Terrain slope <span class="wt">(Weight 22%)</span></h2>
+<h3>1.1 What you see</h3>
+<ul>
+  <li>Factor bar labelled <strong>Terrain slope</strong> with score 0–10</li>
+  <li>Value line: e.g. <code>8.4°</code> or <code>n/a</code></li>
+  <li>Note if steep: "Steep grade — pad grading / retention likely costly."</li>
+  <li>Source tag: <strong>Live · Open-Meteo DEM</strong></li>
+</ul>
+<h3>1.2 What we fetch</h3>
+<ul>
+  <li>Open-Meteo Elevation API → Copernicus DEM ~30 m</li>
+  <li>5 sample points: centre pad + North / South / East / West at 0.0012° (~133 m)</li>
+</ul>
+<h3>1.3 What we calculate</h3>
+<ul>
+  <li>For each offset point: run distance (m) from centre</li>
+  <li>Rise = |elevation offset − elevation centre|</li>
+  <li>Angle = atan(rise / run) × 180/π</li>
+  <li><strong>Output slope</strong> = maximum angle among 4 directions</li>
+</ul>
+<h3>1.4 Score calculation</h3>
+<table>
+  <tr><th>Slope (°)</th><th>Score</th></tr>
+  <tr><td>≤ 5°</td><td>10 (best)</td></tr>
+  <tr><td>≥ 18°</td><td>0 (worst)</td></tr>
+  <tr><td>Between</td><td>Linear: (18 − slope) / (18 − 5) × 10</td></tr>
+  <tr><td>Missing</td><td>5 (neutral)</td></tr>
+</table>
+<h3>1.5 Contribution to final score</h3>
+<p>Contrib = factor score × 0.22</p>
+
+<!-- FACTOR 2 -->
+<h2><span class="num">2.</span> Road access <span class="wt">(Weight 14%)</span></h2>
+<h3>2.1 What you see</h3>
+<ul>
+  <li>Factor bar: <strong>Road access</strong></li>
+  <li>Value: e.g. <code>1.24 km</code> or <code>live lookup failed</code></li>
+  <li>Map: orange marker at nearest road snap point</li>
+  <li>Source: <strong>Live · OSRM nearest road</strong></li>
+</ul>
+<h3>2.2 What we fetch</h3>
+<ul>
+  <li>OSRM Nearest API: router.project-osrm.org/nearest/v1/driving</li>
+  <li>Snaps pad to nearest drivable OSM road segment</li>
+</ul>
+<h3>2.3 What we calculate</h3>
+<ul>
+  <li>Road distance (km) = OSRM waypoint distance (m) ÷ 1000</li>
+  <li>Fallback: Haversine pad → snap lat/lon if OSRM distance missing</li>
+  <li>Stores snap coordinates for map overlay</li>
+</ul>
+<h3>2.4 Score calculation</h3>
+<table>
+  <tr><th>Road distance</th><th>Score</th></tr>
+  <tr><td>≤ 0.5 km</td><td>10</td></tr>
+  <tr><td>≥ 8 km</td><td>0</td></tr>
+  <tr><td>Between</td><td>Linear interpolation</td></tr>
+  <tr><td>Lookup failed</td><td>3 (uncertain access)</td></tr>
+</table>
+<h3>2.5 Contribution</h3>
+<p>Contrib = factor score × 0.14</p>
+
+<!-- FACTOR 3 -->
+<h2><span class="num">3.</span> Water / flood buffer <span class="wt">(Weight 14%)</span></h2>
+<h3>3.1 What you see</h3>
+<ul>
+  <li>Factor bar: <strong>Water / flood buffer</strong></li>
+  <li>Value: e.g. <code>2.15 km</code>, <code>&gt; 8 km</code>, or fallback warning in note</li>
+  <li>Source: <strong>Live · OSM Overpass water</strong> or <strong>Fallback · Photon geocode</strong></li>
+</ul>
+<h3>3.2 What we fetch</h3>
+<ul>
+  <li>Primary: OSM Overpass within 8 km — natural=water, waterway, reservoir, basin</li>
+  <li>Fallback (if Overpass fails): Photon search "lake river reservoir" — confidence −5%</li>
+</ul>
+<h3>3.3 What we calculate</h3>
+<ul>
+  <li>Nearest mapped water feature distance (km) via Haversine</li>
+  <li>If none found within search radius → report as &gt; 8 km</li>
+  <li>Cap used in scoring at 8 km max</li>
+</ul>
+<h3>3.4 Score calculation</h3>
+<table>
+  <tr><th>Water distance</th><th>Score</th><th>Meaning</th></tr>
+  <tr><td>≥ 0.8 km</td><td>10</td><td>Far from water = good</td></tr>
+  <tr><td>≤ 0.05 km (~50 m)</td><td>0</td><td>Flood / scour risk</td></tr>
+  <tr><td>&lt; 0.15 km</td><td>Low</td><td>Flagged in note</td></tr>
+  <tr><td>Missing</td><td>5</td><td>Neutral</td></tr>
+</table>
+<h3>3.5 Contribution</h3>
+<p>Contrib = factor score × 0.14 · Also reused in factor #12</p>
+
+<div class="page-break"></div>
+
+<!-- FACTOR 4 -->
+<h2><span class="num">4.</span> Settlement clearance <span class="wt">(Weight 10%)</span></h2>
+<h3>4.1 What you see</h3>
+<ul>
+  <li>Factor bar: <strong>Settlement clearance</strong></li>
+  <li>Value: e.g. <code>1.80 km</code>, <code>&gt; 4 km</code></li>
+  <li>Note if close: "Close to mapped buildings — ROW / social risk."</li>
+</ul>
+<h3>4.2 What we fetch</h3>
+<ul>
+  <li>OSM Overpass within 4 km: buildings, place nodes (city/town/village), residential landuse</li>
+  <li>Fallback: Photon "village town" if Overpass fails</li>
+</ul>
+<h3>4.3 What we calculate</h3>
+<ul>
+  <li>Nearest building or settlement distance (km)</li>
+  <li>Cap at 4 km for scoring curve</li>
+</ul>
+<h3>4.4 Score calculation</h3>
+<table>
+  <tr><th>Settlement distance</th><th>Score</th></tr>
+  <tr><td>≥ 0.25 km</td><td>10</td></tr>
+  <tr><td>≤ 0.02 km</td><td>0</td></tr>
+  <tr><td>&lt; 0.08 km</td><td>ROW / social risk flag</td></tr>
+  <tr><td>Missing</td><td>6</td></tr>
+</table>
+<h3>4.5 Contribution</h3>
+<p>Contrib = factor score × 0.10 · Also reused in factor #12</p>
+
+<!-- FACTOR 5 -->
+<h2><span class="num">5.</span> Power connectivity <span class="wt">(Weight 10%)</span></h2>
+<h3>5.1 What you see</h3>
+<ul>
+  <li>Factor bar: <strong>Power connectivity</strong></li>
+  <li>Value: e.g. <code>Tower ABC · 1.2 km</code> or <code>none within 8 km</code></li>
+  <li>Power panel: nearest tower / line / pole / substation list</li>
+  <li>Map: grid asset markers, connection lines (straight + road route)</li>
+</ul>
+<h3>5.2 What we fetch (merged TAMS + OSM)</h3>
+<ul>
+  <li>TAMS GIS: towers, substations, transmission lines</li>
+  <li>OSM Overpass: tower, portal, pole (≤15 km radius), line, cable, substation, plant</li>
+  <li>All assets deduplicated into one <strong>nearbyPower</strong> list</li>
+</ul>
+<h3>5.3 What we calculate</h3>
+<ul>
+  <li>Haversine distance pad → each asset; best distance along corridor samples</li>
+  <li>Pick nearest overall asset (tower preferred over line over SS over pole)</li>
+  <li>Interconnect ease: ≤0.25 km Easy · ≤2 km Easy · ≤12 km Moderate · &gt;12 km Hard</li>
+</ul>
+<h3>5.4 Score calculation</h3>
+<table>
+  <tr><th>Step</th><th>Rule</th></tr>
+  <tr><td>Base</td><td>Linear: 0.2 km → 10, 20 km → 0</td></tr>
+  <tr><td>Bonus</td><td>Pole ≤ 350 m: +2 · Tower ≤ 2 km: +1.2 · Substation: +0.8 · Easy interconnect: +0.5</td></tr>
+  <tr><td>Cap</td><td>Maximum score 10</td></tr>
+  <tr><td>No data</td><td>5 (neutral — not a rejection)</td></tr>
+</table>
+<h3>5.5 Contribution</h3>
+<p>Contrib = factor score × 0.10 · Shares merged power data with #6 and #7</p>
+
+<!-- FACTOR 6 -->
+<h2><span class="num">6.</span> Voltage suitability <span class="wt">(Weight 8%)</span></h2>
+<h3>6.1 What you see</h3>
+<ul>
+  <li>Factor bar: <strong>Voltage suitability</strong></li>
+  <li>Value: e.g. <code>220 kV</code>, <code>33/110 kV</code>, <code>unknown</code></li>
+  <li>Controls panel: selected line class kV (11–765)</li>
+</ul>
+<h3>6.2 What we fetch</h3>
+<ul>
+  <li>Voltage tags from same merged TAMS + OSM asset list (#5)</li>
+  <li>Only tagged voltages — never invented</li>
+  <li>Planning tiers checked: 11, 33, 66, 110, 132, 220, 400, 765 kV</li>
+</ul>
+<h3>6.3 What we calculate</h3>
+<ul>
+  <li>Available voltage set from all nearby assets</li>
+  <li>Suggested kV: corridor asset → nearest tower → nearest line → nearest SS</li>
+  <li>Match against useful planning tiers and high-voltage (≥33 kV) presence</li>
+</ul>
+<h3>6.4 Score calculation</h3>
+<table>
+  <tr><th>Condition</th><th>Score</th></tr>
+  <tr><td>Tagged + HV ≥33 kV nearby</td><td>~9</td></tr>
+  <tr><td>Tagged voltages present</td><td>~7</td></tr>
+  <tr><td>Matched but low tier only</td><td>~6</td></tr>
+  <tr><td>No tags / unavailable</td><td>5 (neutral)</td></tr>
+</table>
+<h3>6.5 Contribution</h3>
+<p>Contrib = factor score × 0.08</p>
+
+<!-- FACTOR 7 -->
+<h2><span class="num">7.</span> Connection distance <span class="wt">(Weight 8%)</span></h2>
+<h3>7.1 What you see</h3>
+<ul>
+  <li>Factor bar: <strong>Connection distance</strong></li>
+  <li>Value: e.g. <code>~480 m</code> or <code>~3.2 km</code></li>
+  <li>Asset detail card: straight-line m + road route m (when toggled)</li>
+</ul>
+<h3>7.2 What we fetch</h3>
+<ul>
+  <li>Nearest grid asset from merged power list (#5)</li>
+  <li>Optional OSRM driving route for map display (not used in score)</li>
+</ul>
+<h3>7.3 What we calculate</h3>
+<ul>
+  <li>Direct distance = Haversine to nearest asset (km)</li>
+  <li><strong>Practical spur</strong> = direct distance × 1.2 (screening factor for bends/ROW)</li>
+</ul>
+<h3>7.4 Score calculation</h3>
+<table>
+  <tr><th>Practical spur</th><th>Score</th></tr>
+  <tr><td>≤ 0.3 km</td><td>10</td></tr>
+  <tr><td>≥ 15 km</td><td>0</td></tr>
+  <tr><td>Between</td><td>Linear interpolation</td></tr>
+  <tr><td>Unavailable</td><td>5</td></tr>
+</table>
+<h3>7.5 Contribution</h3>
+<p>Contrib = factor score × 0.08</p>
+
+<div class="page-break"></div>
+
+<!-- FACTOR 8 -->
+<h2><span class="num">8.</span> Elevation <span class="wt">(Weight 8%)</span></h2>
+<h3>8.1 What you see</h3>
+<ul>
+  <li>Factor bar: <strong>Elevation</strong></li>
+  <li>Value: e.g. <code>342 m</code> AMSL</li>
+  <li>Same DEM fetch as factor #1</li>
+</ul>
+<h3>8.2 What we fetch</h3>
+<ul>
+  <li>Centre pad elevation from Open-Meteo 5-point grid (shared with #1)</li>
+</ul>
+<h3>8.3 What we calculate</h3>
+<ul>
+  <li>Elevation at pad centre (m above sea level)</li>
+  <li>Band classification for logistics / flood context</li>
+</ul>
+<h3>8.4 Score calculation</h3>
+<table>
+  <tr><th>Elevation (m)</th><th>Score</th></tr>
+  <tr><td>20 – 800 m</td><td>9 (favourable)</td></tr>
+  <tr><td>&lt; 5 m</td><td>3 (coastal / flood plain)</td></tr>
+  <tr><td>&gt; 1800 m</td><td>4 (remote logistics)</td></tr>
+  <tr><td>Other / missing</td><td>7 neutral</td></tr>
+</table>
+<h3>8.5 Contribution</h3>
+<p>Contrib = factor score × 0.08</p>
+
+<!-- FACTOR 9 -->
+<h2><span class="num">9.</span> Land cover hint <span class="wt">(Weight 8%)</span></h2>
+<h3>9.1 What you see</h3>
+<ul>
+  <li>Factor bar: <strong>Land cover hint</strong></li>
+  <li>Value: <code>Barren / open</code>, <code>Vegetated</code>, <code>Built-up</code>, <code>Water</code>, or <code>Unknown</code></li>
+</ul>
+<h3>9.2 What we fetch</h3>
+<ul>
+  <li>OSM Overpass 180 m: landuse, natural, water tags</li>
+  <li>Nominatim reverse geocode fallback if OSM tags sparse</li>
+</ul>
+<h3>9.3 What we calculate</h3>
+<ul>
+  <li>Classify into 5 categories from tag keyword matching</li>
+  <li>Not cadastral ownership — screening hint only</li>
+</ul>
+<h3>9.4 Score calculation</h3>
+<table>
+  <tr><th>Class</th><th>Score</th></tr>
+  <tr><td>Barren / open</td><td>9</td></tr>
+  <tr><td>Vegetated</td><td>5</td></tr>
+  <tr><td>Built-up</td><td>2</td></tr>
+  <tr><td>Water</td><td>0</td></tr>
+  <tr><td>Unknown</td><td>6</td></tr>
+</table>
+<h3>9.5 Contribution</h3>
+<p>Contrib = factor score × 0.08</p>
+
+<!-- FACTOR 10 -->
+<h2><span class="num">10.</span> Soil / SBC <span class="wt">(Weight 8%)</span></h2>
+<h3>10.1 What you see</h3>
+<ul>
+  <li>Factor bar: <strong>Soil / SBC (open GIS + field)</strong></li>
+  <li>Value: e.g. <code>Loam · ~45%</code> or <code>GT-001 · 2.1 km</code></li>
+  <li>GeoTech tab: full Word report, soil tables, SBC / pile calcs</li>
+  <li>Soil card: GIS summary only (downloads in GeoTech tab)</li>
+</ul>
+<h3>10.2 What we fetch (one path wins)</h3>
+<ul>
+  <li><strong>Path A (preferred):</strong> TAMS /geotech nearest field record within ~5 km</li>
+  <li><strong>Path B (fallback):</strong> ISRIC SoilGrids 2.0 — clay/sand/silt, texture, pH at depth bands</li>
+</ul>
+<h3>10.3 What we calculate</h3>
+<ul>
+  <li>Path A: score from adopted SBC (T/m²), CBR %, design depth on file</li>
+  <li>Path B: USDA texture class, indicative SBC range, screening confidence ~40–48%</li>
+  <li>GeoTech report (separate): thickness-weighted layers, IS 6403 SBC, IS 2911 pile — NOT in /10</li>
+</ul>
+<h3>10.4 Score calculation</h3>
+<table>
+  <tr><th>Source</th><th>Rule</th><th>Score</th></tr>
+  <tr><td>Field SBC ≥ 20 T/m²</td><td>Strong bearing</td><td>9</td></tr>
+  <tr><td>Field SBC ≥ 12 T/m²</td><td>Moderate</td><td>7</td></tr>
+  <tr><td>Field SBC lower / no SBC</td><td>On file but weak</td><td>6</td></tr>
+  <tr><td>SoilGrids only</td><td>max(5, round(confidence% ÷ 10))</td><td>5–5</td></tr>
+  <tr><td>Neither</td><td>Not fetched yet</td><td>5</td></tr>
+</table>
+<h3>10.5 Contribution</h3>
+<p>Contrib = factor score × 0.08</p>
+
+<!-- FACTOR 11 -->
+<h2><span class="num">11.</span> Wind exposure <span class="wt">(Weight 6%)</span></h2>
+<h3>11.1 What you see</h3>
+<ul>
+  <li>Factor bar: <strong>Wind exposure</strong></li>
+  <li>Value: e.g. <code>6.2 m/s</code></li>
+  <li>Note: structural design still needs IS wind zone</li>
+</ul>
+<h3>11.2 What we fetch</h3>
+<ul>
+  <li>Open-Meteo Archive: last 90 days daily max wind @ 10 m height</li>
+  <li>Fallback: 16-day forecast mean if archive incomplete</li>
+</ul>
+<h3>11.3 What we calculate</h3>
+<ul>
+  <li>Mean of daily max wind speeds (m/s) over available period</li>
+</ul>
+<h3>11.4 Score calculation</h3>
+<table>
+  <tr><th>Mean wind</th><th>Score</th></tr>
+  <tr><td>≤ 4 m/s</td><td>10</td></tr>
+  <tr><td>≥ 12 m/s</td><td>0</td></tr>
+  <tr><td>Between</td><td>Linear interpolation</td></tr>
+  <tr><td>Missing</td><td>6</td></tr>
+</table>
+<h3>11.5 Contribution</h3>
+<p>Contrib = factor score × 0.06</p>
+
+<!-- FACTOR 12 -->
+<h2><span class="num">12.</span> Corridor feasibility <span class="wt">(Weight 6%)</span></h2>
+<h3>12.1 What you see</h3>
+<ul>
+  <li>Factor bar: <strong>Corridor feasibility</strong></li>
+  <li>Value: obstruction list e.g. <code>close water crossing, steep terrain</code> or <code>No major obstruction</code></li>
+  <li>Does NOT fetch new data — reuses #1, #3, #4 signals</li>
+</ul>
+<h3>12.2 What we reuse</h3>
+<ul>
+  <li>Water distance from factor #3</li>
+  <li>Settlement distance from factor #4</li>
+  <li>Slope degrees from factor #1</li>
+</ul>
+<h3>12.3 What we calculate</h3>
+<ul>
+  <li>Start score = 8 (optimistic baseline)</li>
+  <li>Apply penalties for route obstacles on connection path</li>
+</ul>
+<h3>12.4 Score calculation</h3>
+<table>
+  <tr><th>Check</th><th>Threshold</th><th>Penalty</th></tr>
+  <tr><td>Water proximity</td><td>&lt; 150 m</td><td>−2</td></tr>
+  <tr><td>Settlement</td><td>&lt; 100 m</td><td>−2</td></tr>
+  <tr><td>Steep slope</td><td>&gt; 12°</td><td>−1.5</td></tr>
+  <tr><td>Very steep</td><td>&gt; 18°</td><td>−1</td></tr>
+  <tr><td>Final</td><td>—</td><td>Clamped 0–10</td></tr>
+</table>
+<h3>12.5 Contribution</h3>
+<p>Contrib = factor score × 0.06</p>
+
+<div class="page-break"></div>
+
+<h2>13. Final score merge (all 12 factors)</h2>
+<h3>13.1 What you see</h3>
+<ul>
+  <li>Header: <strong>X.X / 10</strong> site score</li>
+  <li>Verdict badge: Preferred · Conditional · Unsuitable</li>
+  <li>Confidence: e.g. <strong>72%</strong></li>
+</ul>
+<h3>13.2 What we calculate</h3>
+<table>
+  <tr><th>Output</th><th>Formula</th></tr>
+  <tr><td>Final score</td><td>Σ (factor_score × weight) ÷ Σ weights</td></tr>
+  <tr><td>Verdict</td><td>≥ 7.0 Preferred · 4.5–7.0 Conditional · &lt; 4.5 Unsuitable</td></tr>
+  <tr><td>Per-row contrib</td><td>Shown in breakdown table = score × weight</td></tr>
+</table>
+
+<h2>14. Confidence % (partial — not all 12 factors)</h2>
+<h3>14.1 What you see</h3>
+<ul>
+  <li>Confidence percentage on score card</li>
+  <li>Live data panel: "X of Y signals live"</li>
+</ul>
+<h3>14.2 What we calculate</h3>
+<ul>
+  <li>Count 7 resolved signals: elevation, slope, road, water, settlement, grid (tower/SS), wind</li>
+  <li>Base 55% + (resolved ÷ 7) × 25% → range ~55–80%</li>
+  <li>−5% each for Photon fallback: water, settlement, grid unavailable</li>
+  <li>NOT counted: voltage, connection distance, land cover, soil, corridor feasibility</li>
+</ul>
+
+<h2>15. Separate from /10 score (still shown after Analyze)</h2>
+<table>
+  <tr><th>#</th><th>Module</th><th>What you see</th><th>What we calculate</th></tr>
+  <tr><td>15.1</td><td>GeoTech Word report</td><td>Download button, soil tables, SBC/pile sheets</td><td>SoilGrids layers, IS 6403/2911 calcs — outside score</td></tr>
+  <tr><td>15.2</td><td>Corridor placement T1…Tn</td><td>Suggest / Shift / Skip / Review per pad</td><td>CEA span bands, min/ruling/max span, chainage</td></tr>
+  <tr><td>15.3</td><td>Power take-off</td><td>Best pad → nearest SS, interconnect links</td><td>Haversine + ease rating</td></tr>
+  <tr><td>15.4</td><td>Road route overlay</td><td>Orange driving polyline on map</td><td>OSRM route geometry — display only</td></tr>
+  <tr><td>15.5</td><td>Shift ghost markers</td><td>Suggested pad offset on map</td><td>Shift position along corridor spacing rules</td></tr>
+</table>
+
+<h2>16. Merge groups — quick lookup</h2>
+<table>
+  <tr><th>Group</th><th>Factors</th><th>Shared fetch</th></tr>
+  <tr><td>DEM</td><td>#1 + #8</td><td>Open-Meteo 5-point elevation</td></tr>
+  <tr><td>Power</td><td>#5 + #6 + #7</td><td>TAMS + OSM nearbyPower merge</td></tr>
+  <tr><td>Soil</td><td>#10</td><td>TAMS geotech OR SoilGrids</td></tr>
+  <tr><td>Corridor heuristic</td><td>#12 uses #1+#3+#4</td><td>Reused distances / slope</td></tr>
+  <tr><td>Final</td><td>All #1–#12</td><td>Weighted average</td></tr>
+</table>
+
+<p class="note">Open-data screening only. Not utility approval, ROW certification, or foundation design. Field test values appear only when entered in TAMS /geotech.</p>
+
+</body>
+</html>
