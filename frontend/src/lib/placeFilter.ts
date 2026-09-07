@@ -18,9 +18,9 @@ function matchesPlaceNode(asset: Asset, node: PlaceNode): boolean {
     if (state && state.toLowerCase() !== 'unknown') {
       return state.toLowerCase() === node.stateOrCountry.toLowerCase()
     }
-    // Untagged only — city/region bounds fallback
+    // Untagged — city/region bounds fallback, else trust backend state catalog
     if (node.bounds) return inBounds(asset, node.bounds)
-    return false
+    return true
   }
 
   if (node.region) {

@@ -3,6 +3,7 @@ import React from 'react'
 import CorridorPlacementPanel from '../CorridorPlacementPanel'
 import PowerNetworkAnalysisPanel from '../PowerNetworkAnalysisPanel'
 import type { CorridorPlacementAdvice, PlacementVerdict } from '../corridorPlacementAdvice'
+import type { NearbyPowerSupply } from '../nearbyPowerSupply'
 import type { FactorResult, SuitabilityResult, SuitabilitySuggestions } from '../scoring'
 import SiteScoreCard from './SiteScoreCard'
 
@@ -50,6 +51,8 @@ export default function OverviewPanel({
   onSelectPad,
   powerLoading,
   powerDiagnostics,
+  nearbyPower,
+  onOpenSoil,
 }: {
   result: SuitabilityResult
   suggestions: SuitabilitySuggestions
@@ -70,6 +73,8 @@ export default function OverviewPanel({
     osmAssetCount: number
     errors?: string[]
   } | null
+  nearbyPower?: NearbyPowerSupply | null
+  onOpenSoil?: () => void
 }) {
   const findings = result.factors.slice(0, 4).map((f) => {
     const conf = signalConfidence(f, result)
@@ -82,6 +87,7 @@ export default function OverviewPanel({
   })
 
   const soil = result.signals.soilScreening
+  const powerSupply = nearbyPower ?? result.signals.nearbyPower ?? null
 
   return (
     <div className="space-y-3 text-[#263238]">
@@ -112,15 +118,20 @@ export default function OverviewPanel({
         </p>
       </div>
       {soil && (
-        <div className="rounded-lg border border-[#0f766e]/25 bg-[#ecfdf5] px-2.5 py-2">
+        <button
+          type="button"
+          onClick={onOpenSoil}
+          className="w-full text-left rounded-lg border border-[#0f766e]/25 bg-[#ecfdf5] px-2.5 py-2 hover:bg-[#d1fae5]/60"
+        >
           <p className="text-[10px] font-black uppercase text-[#0f766e]">Open GIS soil</p>
           <p className="text-[12px] font-bold mt-0.5">
             {soil.textureClass} · SBC ~{soil.indicativeSbcTm2.low}–{soil.indicativeSbcTm2.high} T/m²
           </p>
           <p className="text-[10px] text-[#66727a]">
-            SoilGrids screening · ~{soil.confidencePct}% confidence · use Generate/Download soil report
+            SoilGrids · ~{soil.confidencePct}% confidence · {soil.layers?.length ?? 0} depth layers ·
+            open Soil tab for full table &amp; report
           </p>
-        </div>
+        </button>
       )}
       <button
         type="button"
@@ -129,8 +140,8 @@ export default function OverviewPanel({
       >
         Explore Factors
       </button>
-      {result.signals.nearbyPower && (
-        <PowerNetworkAnalysisPanel supply={result.signals.nearbyPower} result={result} />
+      {powerSupply && (
+        <PowerNetworkAnalysisPanel supply={powerSupply} result={result} />
       )}
       {corridorAdvice && (
         <CorridorPlacementPanel

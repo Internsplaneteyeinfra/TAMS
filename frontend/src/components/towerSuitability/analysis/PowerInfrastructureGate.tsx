@@ -24,7 +24,9 @@ export default function PowerInfrastructureGate({
     <section className="ts-glass rounded-lg p-2.5 border border-amber-200/80 space-y-2">
       <p className="text-[9px] font-black uppercase text-amber-950">Power infrastructure</p>
       <p className="text-[8px] text-[#66727a] leading-snug">
-        GIS-detected transmission assets are not loaded automatically. Click below to search within {searchRadiusKm} km.
+        {checked
+          ? `Loaded nearby OSM/TAMS assets within ${searchRadiusKm} km — markers and connect lines show on the map.`
+          : `Search OSM/TAMS towers, substations and plants within ${searchRadiusKm} km. Analyze already loads these when available; use this to refresh.`}
       </p>
 
       {!checked && (

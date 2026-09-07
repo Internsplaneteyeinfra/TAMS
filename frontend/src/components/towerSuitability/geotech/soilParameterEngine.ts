@@ -133,9 +133,11 @@ export function buildSoilLayerParameters(profile: SoilProfileInterval[]): SoilLa
     const clay = layer.clayPct.value
     const cfvo = layer.coarseFragPct.value
 
+    const finesSum = (sand ?? 0) + (silt ?? 0) + (clay ?? 0)
+    const hasAnyFraction = sand != null || silt != null || clay != null
     const normalized = normalizeGrainSize(sand, silt, clay, cfvo)
-    const hasGrain =
-      sand != null && silt != null && clay != null && normalized.sum >= 99 && normalized.sum <= 101
+    // Accept GIS fractions whenever any sand/silt/clay exists (normalize to 100%)
+    const hasGrain = hasAnyFraction && finesSum > 0 && normalized.sum >= 99 && normalized.sum <= 101
 
     const gravelP = hasGrain
       ? grainParam(
@@ -144,7 +146,7 @@ export function buildSoilLayerParameters(profile: SoilProfileInterval[]): SoilLa
           cfvo != null
             ? 'Gravel allocated from SoilGrids cfvo coarse-fragment proxy (engineering correlation)'
             : 'Gravel estimated from sand fraction (engineering correlation) then normalized to 100%',
-          cfvo != null ? 'ENGINEERING_CORRELATED' : 'ENGINEERING_CORRELATED',
+          'ENGINEERING_CORRELATED',
           cfvo != null ? 35 : 28,
           { sandPct: sand, siltPct: silt, clayPct: clay, coarseFragPct: cfvo }
         )

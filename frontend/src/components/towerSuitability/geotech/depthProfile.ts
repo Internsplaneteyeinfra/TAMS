@@ -25,11 +25,19 @@ const DATASET_RES = '~250 m pixel · WCS mean'
 const AGG_METHOD =
   'Thickness-weighted mean of SoilGrids source layers overlapping the report interval; coverage = overlapping thickness / interval thickness'
 
-/** Parse SoilGrids labels like "0-5cm", "100-200cm" into metres. */
+/** Parse SoilGrids labels like "0-5cm", "0-5 cm", "100-200cm" into metres. */
 export function parseSoilGridsDepthLabel(label: string): { fromM: number; toM: number } | null {
-  const m = /^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)cm$/i.exec(label.trim())
+  const cleaned = label
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/centimet(?:er|re)s?/g, 'cm')
+  const m = /^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)cm$/.exec(cleaned)
   if (!m) return null
-  return { fromM: Number(m[1]) / 100, toM: Number(m[2]) / 100 }
+  const fromM = Number(m[1]) / 100
+  const toM = Number(m[2]) / 100
+  if (!Number.isFinite(fromM) || !Number.isFinite(toM) || toM <= fromM) return null
+  return { fromM, toM }
 }
 
 function overlapThickness(
@@ -105,8 +113,10 @@ export function toSourceObservations(slices: RawSoilGridsSlice[]): SourceLayerOb
   for (const s of slices) {
     const parsed = parseSoilGridsDepthLabel(s.depthLabel)
     if (!parsed) continue
+    // Prefer canonical SoilGrids label without spaces so downstream matches stay stable
+    const canonical = `${Math.round(parsed.fromM * 100)}-${Math.round(parsed.toM * 100)}cm`
     out.push({
-      sourceDepth: s.depthLabel,
+      sourceDepth: canonical,
       depthFromM: parsed.fromM,
       depthToM: parsed.toM,
       sandPct: s.sandPct,

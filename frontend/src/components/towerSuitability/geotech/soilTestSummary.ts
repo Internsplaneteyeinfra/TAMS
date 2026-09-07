@@ -111,18 +111,50 @@ export function buildSoilTestSummary(
       const profileRow = geo.soilProfile.find((p) => p.reportDepth === L.reportDepth)
       const texture = profileRow?.usdaTexture.value ?? null
       const resolved = geo.resolvedParameterContext?.byLayer.find((r) => r.reportDepth === L.reportDepth)
+
+      // Prefer Phase C layer params; fall back to resolved GIS/engineering values so
+      // BH tables never show blank Sa/Si/Cl while MDD/SBC are filled from the same engine.
+      const pickPv = (
+        primary: ProvenanceValue<number | null>,
+        fromResolved: { value: number; unit: string; status: string; method: string; sources: string[]; confidence: number } | undefined,
+        fromProfile?: ProvenanceValue<number | null>
+      ): ProvenanceValue<number | null> => {
+        if (primary.value != null && Number.isFinite(primary.value)) return primary
+        if (fromResolved?.value != null && Number.isFinite(fromResolved.value)) {
+          return toProvenance(fromResolved) as ProvenanceValue<number | null>
+        }
+        if (fromProfile?.value != null && Number.isFinite(fromProfile.value)) return fromProfile
+        return primary
+      }
+
+      const sandPct = pickPv(L.sandPct, resolved?.sandPct, profileRow?.sandPct)
+      const siltPct = pickPv(L.siltPct, resolved?.siltPct, profileRow?.siltPct)
+      const clayPct = pickPv(L.clayPct, resolved?.clayPct, profileRow?.clayPct)
+      const gravelPct = pickPv(L.gravelPct, resolved?.gravelPct, profileRow?.gravelPct)
+      const liquidLimit = pickPv(L.liquidLimit, resolved?.liquidLimit)
+      const plasticLimit = pickPv(L.plasticLimit, resolved?.plasticLimit)
+      const plasticityIndex = pickPv(L.plasticityIndex, resolved?.plasticityIndex)
+      const soilClassification =
+        L.soilClassification.value != null
+          ? L.soilClassification
+          : resolved?.isClassification?.value && resolved.isClassification.value !== '—'
+            ? (toProvenance(resolved.isClassification) as ProvenanceValue<string | null>)
+            : profileRow?.isSoilClassification?.value
+              ? profileRow.isSoilClassification
+              : L.soilClassification
+
       const dry =
         resolved?.dryDensityGcc.value ??
         profileRow?.dryDensityGcc.value ??
         null
       const remark = transmissionLineMaterialRemark({
-        sand: L.sandPct.value,
-        silt: L.siltPct.value,
-        clay: L.clayPct.value,
+        sand: sandPct.value,
+        silt: siltPct.value,
+        clay: clayPct.value,
         dryDensityGcc: dry,
-        soilClass: L.soilClassification.value,
+        soilClass: soilClassification.value,
         depthToM: L.depthToM,
-        gravel: L.gravelPct.value,
+        gravel: gravelPct.value,
       })
       const gwtText = resolveGroundWaterTableDisplay(geo, bh.recommendedInvestigationDepthM)
 
@@ -137,14 +169,14 @@ export function buildSoilTestSummary(
         investigationDepthM: bh.recommendedInvestigationDepthM,
         layerDepthLabel: L.reportDepthLabel,
         layerThicknessM: L.layerThicknessM,
-        gravelPct: L.gravelPct,
-        sandPct: L.sandPct,
-        siltPct: L.siltPct,
-        clayPct: L.clayPct,
-        liquidLimit: L.liquidLimit,
-        plasticLimit: L.plasticLimit,
-        plasticityIndex: L.plasticityIndex,
-        soilClassification: L.soilClassification,
+        gravelPct,
+        sandPct,
+        siltPct,
+        clayPct,
+        liquidLimit,
+        plasticLimit,
+        plasticityIndex,
+        soilClassification,
         maximumDryDensityGcc: (resolved
           ? toProvenance(resolved.maximumDryDensityGcc)
           : noData('g/cc', 'MDD unavailable')) as ProvenanceValue<number | null>,
@@ -164,7 +196,7 @@ export function buildSoilTestSummary(
         specificGravity: (resolved ? toProvenance(resolved.specificGravity) : noData('', 'SG unavailable')) as ProvenanceValue<number | null>,
         sbcTm2: sbcForLayer(geo, L.depthToM, texture),
         cbrPct: cbrForLayer(geo, L.reportDepth, texture),
-        soilClass: L.soilClassification,
+        soilClass: soilClassification,
         remarks: remark,
         groundWaterTableM: {
           value: null,

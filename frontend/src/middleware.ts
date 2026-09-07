@@ -8,6 +8,9 @@ const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/logout', '/api/aut
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.includes(pathname)) return true
+  // API proxies must not redirect to HTML /login — Analyzer fetch expects JSON.
+  // Page routes stay auth-gated; backend itself has no JWT on GIS/assets.
+  if (pathname.startsWith('/api/')) return true
   if (pathname.startsWith('/_next')) return true
   if (pathname.startsWith('/favicon')) return true
   if (pathname.startsWith('/models')) return true

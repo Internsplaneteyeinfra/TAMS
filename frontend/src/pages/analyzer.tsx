@@ -23,6 +23,7 @@ import AssetDetailDrawer from '@/components/map/AssetDetailDrawer'
 import { DEFAULT_PLACE_ID, getIndiaStateFilters, getStateFilterForPlace } from '@/config/places'
 import {
   fetchApi,
+  fetchAllStateCorridors,
   fetchGisPlaceStats,
   fetchGisStats,
   fetchMonitoringRuns,
@@ -143,7 +144,7 @@ export default function Home() {
   const INDIA_SAMPLE_BATCH = 6
 
   const fetchAssetsPage = (pageSize: number, signal?: AbortSignal, state?: string) => {
-    const params = new URLSearchParams({ page_size: String(pageSize) })
+    const params = new URLSearchParams({ page_size: String(pageSize), include_towers: 'false' })
     if (state) params.set('state', state)
     return fetchApi<Asset[]>(`/assets?${params}`, { signal })
   }
@@ -184,7 +185,7 @@ export default function Home() {
     queryFn: ({ signal }) =>
       isIndiaOverview
         ? fetchIndiaOverviewSample(signal)
-        : fetchAssetsPage(4000, signal, stateFilter),
+        : fetchAssetsPage(5000, signal, stateFilter),
     enabled: isClient,
     placeholderData: undefined,
     staleTime: 5 * 60 * 1000,
@@ -205,9 +206,9 @@ export default function Home() {
     refetch: refetchAssetsFull,
   } = useQuery({
     queryKey: ['assets', assetQueryKey, 'full'],
-    queryFn: ({ signal }) => fetchAssetsPage(8000, signal, stateFilter),
-    // Full 100% catalog only in state operations mode
-    enabled: isClient && !isIndiaOverview && Boolean(assetsFast && assetsFast.length > 0),
+    queryFn: ({ signal }) => fetchAllStateCorridors(stateFilter!, signal, 5000),
+    // Full 100% corridor catalog only in state operations mode
+    enabled: isClient && !isIndiaOverview && Boolean(stateFilter) && Boolean(assetsFast && assetsFast.length > 0),
     placeholderData: undefined,
     staleTime: 5 * 60 * 1000,
     retry: 2,

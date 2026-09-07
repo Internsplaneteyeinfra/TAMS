@@ -42,9 +42,14 @@ import SuitabilityHub, { type SuitabilityEntryMode } from './SuitabilityHub'
 import {
   DEFAULT_SEARCH_RADIUS_KM,
   findNearbyPowerSupply,
+  type NearbyPowerAsset,
   type NearbyPowerSupply,
 } from './nearbyPowerSupply'
-import { analyzeCorridorPlacement, type PlacementVerdict } from './corridorPlacementAdvice'
+import {
+  analyzeCorridorPlacement,
+  type CorridorConnectHint,
+  type PlacementVerdict,
+} from './corridorPlacementAdvice'
 import {
   buildConnectionOverlay,
   connectionKeyFor,
@@ -297,6 +302,8 @@ export default function TowerSuitabilityWorkspace() {
         {
           corridor: corridor && corridor.length >= 2 ? corridor : undefined,
           searchRadiusKm,
+          // Fetch OSM/TAMS towers + SS with soil so map + overview show them immediately
+          includePowerInfrastructure: true,
         }
       )
       if (seq !== analyzeSeq.current) return
@@ -326,13 +333,29 @@ export default function TowerSuitabilityWorkspace() {
       setResult({ ...scored, geotechnicalIntelligence })
       setInvestigationKmlSnapshot([...kmlFeatures])
       setPlanningKmlFeatures([])
-      setPhaseIPowerChecked(false)
-      setPhaseIPowerRaw(null)
-      setPhaseIPowerSummary(null)
-      setPlanningPowerRaw(null)
       setPhaseITowerCandidates([])
       setSelectedPhaseICandidateId(null)
       setPhaseITowerAnalysis(null)
+      setPlanningPowerRaw(null)
+
+      // Seed map + Phase I power from analyze so OSM towers/SS are visible without a second click
+      const power = signals.nearbyPower
+      if (power?.assets?.length) {
+        const mid =
+          corridor && corridor.length >= 2
+            ? corridor[Math.floor(corridor.length / 2)]!
+            : { lat: nextLat, lon: nextLon }
+        setPhaseIPowerRaw(power)
+        setPhaseIPowerSummary(
+          summarizePowerInfrastructure(power, mid.lat, mid.lon, searchRadiusKm)
+        )
+        setPhaseIPowerChecked(true)
+      } else {
+        setPhaseIPowerChecked(false)
+        setPhaseIPowerRaw(null)
+        setPhaseIPowerSummary(null)
+      }
+
       setGeotechDocxBuilding(true)
       void prebuildGeotechDocx(geotechnicalIntelligence).then((entry) => {
         if (seq === analyzeSeq.current) {
@@ -341,7 +364,8 @@ export default function TowerSuitabilityWorkspace() {
         }
       })
       setWorkspaceMode('analysis')
-      setActivePanel('overview')
+      // Open Soil when SoilGrids returned; otherwise Overview (still has soil summary if any)
+      setActivePanel(signals.soilScreening ? 'soil' : 'overview')
       setPendingFocus(null)
     } catch (e) {
       if (seq !== analyzeSeq.current) return
@@ -646,12 +670,40 @@ export default function TowerSuitabilityWorkspace() {
   const activeNearbyPower = useMemo(() => {
     if (phaseIPowerChecked && phaseIPowerRaw) return phaseIPowerRaw
     if (planningPowerRaw) return planningPowerRaw
-    return null
-  }, [phaseIPowerChecked, phaseIPowerRaw, planningPowerRaw])
+    // Analysis may already carry OSM/TAMS power when includePower was on
+    return result?.signals.nearbyPower ?? null
+  }, [phaseIPowerChecked, phaseIPowerRaw, planningPowerRaw, result?.signals.nearbyPower])
 
-  const showNearbyGrid = useMemo(
-    () => (result?.geotechnicalIntelligence ? phaseIPowerChecked : displayVoltageKv != null),
-    [result?.geotechnicalIntelligence, phaseIPowerChecked, displayVoltageKv]
+  const showNearbyGrid = useMemo(() => {
+    if (phaseIPowerChecked) return true
+    if ((activeNearbyPower?.assets?.length ?? 0) > 0) return true
+    if (planningPowerLoading || phaseIPowerLoading) return true
+    if (result?.geotechnicalIntelligence) return false
+    return displayVoltageKv != null
+  }, [
+    phaseIPowerChecked,
+    activeNearbyPower?.assets?.length,
+    planningPowerLoading,
+    phaseIPowerLoading,
+    result?.geotechnicalIntelligence,
+    displayVoltageKv,
+  ])
+
+  const assetToConnectHint = useCallback(
+    (asset: NearbyPowerAsset | null | undefined, note: string): CorridorConnectHint | null => {
+      if (!asset || !Number.isFinite(asset.lat) || !Number.isFinite(asset.lon)) return null
+      return {
+        id: asset.id,
+        name: asset.name,
+        kind: asset.kind,
+        lat: asset.lat,
+        lon: asset.lon,
+        distanceKm: asset.distanceKm,
+        voltageKv: asset.voltageKv,
+        note,
+      }
+    },
+    []
   )
 
   const corridorAdvice = useMemo(() => {
@@ -659,7 +711,8 @@ export default function TowerSuitabilityWorkspace() {
     const pathFeat =
       kmlFeatures.find((f) => f.type === 'LineString' && f.latlngs.length >= 2) ||
       kmlFeatures.find((f) => f.type === 'Polygon' && f.latlngs.length >= 3)
-    const corridorPath = pathFeat?.latlngs ?? lineTowerPlan.towers.map((t) => [t.lat, t.lon] as [number, number])
+    const corridorPath =
+      pathFeat?.latlngs ?? lineTowerPlan.towers.map((t) => [t.lat, t.lon] as [number, number])
     const existing = activeNearbyPower?.assets ?? []
     return analyzeCorridorPlacement({
       plannedTowers: lineTowerPlan.towers,
@@ -681,8 +734,8 @@ export default function TowerSuitabilityWorkspace() {
   ])
 
   const mapNearbyAssets = useMemo(() => {
-    const phaseIMode = Boolean(result?.geotechnicalIntelligence && phaseIPowerChecked)
-    if (!phaseIMode && displayVoltageKv == null) return []
+    const hasAssets = (activeNearbyPower?.assets?.length ?? 0) > 0
+    if (!phaseIPowerChecked && !hasAssets && displayVoltageKv == null) return []
     const base = activeNearbyPower?.assets ?? []
     const byId = new Map(base.map((a) => [a.id, a]))
     const hints = [
@@ -693,6 +746,10 @@ export default function TowerSuitabilityWorkspace() {
       corridorAdvice?.powerConnect?.station,
       corridorAdvice?.powerConnect?.towerNearStation,
       corridorAdvice?.powerConnect?.towerNearPad,
+      activeNearbyPower?.nearestTower,
+      activeNearbyPower?.nearestPole,
+      activeNearbyPower?.nearestSubstation,
+      activeNearbyPower?.nearest,
     ]
     for (const hint of hints) {
       if (!hint) continue
@@ -704,7 +761,7 @@ export default function TowerSuitabilityWorkspace() {
         distanceKm: hint.distanceKm,
         voltageKv: hint.voltageKv,
         voltagesKv: hint.voltageKv != null ? [hint.voltageKv] : [],
-        source: 'osm',
+        source: 'osm' as const,
         lat: hint.lat,
         lon: hint.lon,
       })
@@ -712,17 +769,42 @@ export default function TowerSuitabilityWorkspace() {
     return [...byId.values()]
   }, [
     activeNearbyPower?.assets,
+    activeNearbyPower?.nearestTower,
+    activeNearbyPower?.nearestPole,
+    activeNearbyPower?.nearestSubstation,
+    activeNearbyPower?.nearest,
     corridorAdvice?.nearestTower,
     corridorAdvice?.nearestStation,
     corridorAdvice?.powerConnect,
-    manualVoltageKv,
-    lineTowerPlan?.voltageKv,
     displayVoltageKv,
     corridorAdvice?.nearestTowersTop5,
     corridorAdvice?.nearestStationsTop3,
     phaseIPowerChecked,
-    result?.geotechnicalIntelligence,
   ])
+
+  /** Map link lines: corridor advice first, else direct OSM nearest from power search. */
+  const mapNearestTower = useMemo(() => {
+    if (corridorAdvice?.nearestTower) return corridorAdvice.nearestTower
+    return (
+      assetToConnectHint(
+        activeNearbyPower?.nearestTower ?? activeNearbyPower?.nearestPole ?? null,
+        'Nearest mapped tower/pole to this site (OSM/TAMS).'
+      )
+    )
+  }, [
+    corridorAdvice?.nearestTower,
+    activeNearbyPower?.nearestTower,
+    activeNearbyPower?.nearestPole,
+    assetToConnectHint,
+  ])
+
+  const mapNearestStation = useMemo(() => {
+    if (corridorAdvice?.nearestStation) return corridorAdvice.nearestStation
+    return assetToConnectHint(
+      activeNearbyPower?.nearestSubstation ?? null,
+      'Nearest substation / plant to this site (OSM/TAMS).'
+    )
+  }, [corridorAdvice?.nearestStation, activeNearbyPower?.nearestSubstation, assetToConnectHint])
 
   const corridorPathForMap = useMemo(() => {
     const pathFeat =
@@ -1517,14 +1599,14 @@ export default function TowerSuitabilityWorkspace() {
                     )
                   : null
               }
-              highlightTowerId={corridorAdvice?.nearestTower?.id ?? null}
+              highlightTowerId={mapNearestTower?.id ?? null}
               highlightStationId={
-                corridorAdvice?.nearestStation?.id ??
+                mapNearestStation?.id ??
                 corridorAdvice?.powerConnect?.station?.id ??
                 null
               }
-              corridorNearestTower={corridorAdvice?.nearestTower ?? null}
-              corridorNearestStation={corridorAdvice?.nearestStation ?? null}
+              corridorNearestTower={mapNearestTower}
+              corridorNearestStation={mapNearestStation}
               corridorPowerLoading={phaseIPowerLoading || planningPowerLoading}
               powerConnect={corridorAdvice?.powerConnect ?? null}
               roadNearest={result?.signals.roadNearest ?? null}
@@ -1681,6 +1763,7 @@ export default function TowerSuitabilityWorkspace() {
                         <SoilReportCard
                           soil={result.signals.soilScreening}
                           siteLabel={soilReportLabel}
+                          soilReportOpts={soilReportOpts}
                           onOpenGeotech={() => setActivePanel('geotech')}
                         />
                       )}
@@ -1717,6 +1800,7 @@ export default function TowerSuitabilityWorkspace() {
                           manualVoltageKv={manualVoltageKv}
                           onManualVoltageKv={setManualVoltageKv}
                           onExploreFactors={() => setActivePanel('factors')}
+                          onOpenSoil={() => setActivePanel('soil')}
                           lat={lat}
                           lon={lon}
                           focusedPadIndex={focusedPadIndex}
@@ -1725,6 +1809,7 @@ export default function TowerSuitabilityWorkspace() {
                           onSelectPad={handleSelectPad}
                           powerLoading={phaseIPowerLoading}
                           powerDiagnostics={activeNearbyPower?.diagnostics ?? null}
+                          nearbyPower={activeNearbyPower}
                         />
                       )}
                       {activePanel === 'live' && (

@@ -278,7 +278,8 @@ export async function collectSiteSignals(
       : Promise.resolve(null),
     withTimeout(fetchGeotechNearest(lat, lon, 5), 6000, null),
     withTimeout(resolveCityStateLabel(lat, lon), 6500, null),
-    soilPromise,
+    // SoilGrids can stall — don't block the whole analyze forever
+    withTimeout(soilPromise, 34_000, null),
   ]).then((results) =>
     results.map((r) => (r.status === 'fulfilled' ? r.value : null)) as [
       Awaited<ReturnType<typeof findNearbyPowerSupply>> | null,

@@ -46,12 +46,29 @@ const HEALTH_RING: Record<string, string> = {
   critical: '#d62828',
 }
 
+function isLeafletMapAlive(map: L.Map | null | undefined): map is L.Map {
+  if (!map) return false
+  try {
+    return Boolean(map.getPane('mapPane') && map.getContainer()?.isConnected)
+  } catch {
+    return false
+  }
+}
+
+function safeMapStop(map: L.Map | null | undefined) {
+  if (!isLeafletMapAlive(map)) return
+  try {
+    map.stop()
+  } catch {
+    /* map mid-teardown */
+  }
+}
+
 function safeInvalidateMapSize(map: L.Map | null | undefined) {
-  if (!map) return
+  if (!isLeafletMapAlive(map)) return
   try {
     const container = map.getContainer()
-    if (!container.isConnected || container.offsetWidth === 0 || container.offsetHeight === 0) return
-    if (!map.getPane('mapPane')) return
+    if (container.offsetWidth === 0 || container.offsetHeight === 0) return
     map.invalidateSize({ animate: false })
   } catch {
     // Map panes not ready yet — skip until layout stabilizes
@@ -562,9 +579,12 @@ export default function GISMap({
   )
 
   const showTowers = placeShowsTowers(selectedPlaceId) && typeFilters.tower
+  // State nodes are already scoped by `/assets?state=` — don't drop KML rows on client re-filter
+  const isStateCatalogPlace = Boolean(getPlaceById(selectedPlaceId)?.stateOrCountry)
 
   const filteredAssets = useMemo(() => {
-    const base = filterAssetsByPlace(assets, selectedPlaceId).filter((a) => {
+    const corridorSource = isStateCatalogPlace ? assets : filterAssetsByPlace(assets, selectedPlaceId)
+    const base = corridorSource.filter((a) => {
       if (a.asset_type === 'tower') return false
       if (!typeFilters[a.asset_type]) return false
       // Substation voltage sub-class filter
@@ -576,17 +596,27 @@ export default function GISMap({
       return true
     })
     if (!showTowers) return base
-    const towers = viewportTowers.filter((t) => assetMatchesPlace(t, selectedPlaceId))
+    const towers = isStateCatalogPlace
+      ? viewportTowers
+      : viewportTowers.filter((t) => assetMatchesPlace(t, selectedPlaceId))
     return [...base, ...towers]
-  }, [assets, typeFilters, substationVoltageFilters, selectedPlaceId, viewportTowers, showTowers])
+  }, [
+    assets,
+    typeFilters,
+    substationVoltageFilters,
+    selectedPlaceId,
+    viewportTowers,
+    showTowers,
+    isStateCatalogPlace,
+  ])
   // Fit only on place / type filters — not when viewport towers refresh
   const corridorIds = useMemo(
     () =>
-      filterAssetsByPlace(assets, selectedPlaceId)
+      (isStateCatalogPlace ? assets : filterAssetsByPlace(assets, selectedPlaceId))
         .filter((a) => a.asset_type !== 'tower' && typeFilters[a.asset_type])
         .map((a) => a.id)
         .join(','),
-    [assets, selectedPlaceId, typeFilters]
+    [assets, selectedPlaceId, typeFilters, isStateCatalogPlace]
   )
   // Fit only when the region changes — not when filter/voltage toggles change corridors
   const fitKey = selectedPlaceId
@@ -606,8 +636,9 @@ export default function GISMap({
     const north = bounds.getNorth()
     // Skip world-size / country-zoom requests — they hang cold KML and cause 502s.
     // Explorer: require zoom >= 8; state ops keep zoom >= 7.
+    // Allow slightly wider state spans (e.g. Rajasthan) so towers appear after settle.
     const minTowerZoom = isExplorer ? 8 : 7
-    if (east - west > 12 || north - south > 10 || zoom < minTowerZoom) {
+    if (east - west > 16 || north - south > 14 || zoom < minTowerZoom) {
       setViewportTowers([])
       setTowersLoading(false)
       return
@@ -674,9 +705,10 @@ export default function GISMap({
   const fitToPlace = useCallback(
     (placeId: string, assetList: Asset[]) => {
       const map = mapRef.current
-      if (!map) return
+      if (!isLeafletMapAlive(map) || mapRef.current !== map) return
 
       const place = getPlaceById(placeId)
+      safeMapStop(map)
       if (place?.bounds) {
         const [[south0, west0], [north0, east0]] = place.bounds
         // Pad ~4% so north/south/east/west edges of the state stay in view
@@ -688,17 +720,25 @@ export default function GISMap({
         const east = east0 + padLon
         // States: keep zoomed out enough to see full boundary; cities can go closer
         const maxZoom = placeId === 'india' ? 6 : place.stateOrCountry ? 8 : 12
-        map.flyToBounds(
-          L.latLngBounds([south, west], [north, east]),
-          { padding: [56, 56], maxZoom, duration: 0.72, easeLinearity: 0.25 }
-        )
+        try {
+          map.flyToBounds(
+            L.latLngBounds([south, west], [north, east]),
+            { padding: [56, 56], maxZoom, duration: 0.72, easeLinearity: 0.25 }
+          )
+        } catch {
+          /* map torn down mid-fly */
+        }
         return
       }
 
       if (assetList.length === 0) return
       const bounds = collectBounds(assetList)
       if (!bounds) return
-      map.flyToBounds(bounds, { padding: [56, 56], maxZoom: 8, duration: 0.72, easeLinearity: 0.25 })
+      try {
+        map.flyToBounds(bounds, { padding: [56, 56], maxZoom: 8, duration: 0.72, easeLinearity: 0.25 })
+      } catch {
+        /* map torn down mid-fly */
+      }
     },
     []
   )
@@ -719,11 +759,16 @@ export default function GISMap({
   const flyToCoordinates = useCallback(
     (lat: number, lng: number, source: 'gps' | 'map_click' | 'manual') => {
       const map = mapRef.current
-      if (!map) return
+      if (!isLeafletMapAlive(map) || mapRef.current !== map) return
 
       // Click pins settle without stealing the view; GPS/manual still fly in
       if (source !== 'map_click') {
-        map.flyTo([lat, lng], Math.max(map.getZoom(), 14), { duration: 0.65, easeLinearity: 0.25 })
+        safeMapStop(map)
+        try {
+          map.flyTo([lat, lng], Math.max(map.getZoom(), 14), { duration: 0.65, easeLinearity: 0.25 })
+        } catch {
+          return
+        }
       }
 
       const isGps = source === 'gps'
@@ -812,9 +857,8 @@ export default function GISMap({
         flyToCoordinates(e.latlng.lat, e.latlng.lng, 'map_click')
       })
 
-      const isMapAlive = () => mapRef.current === map && Boolean(map.getPane('mapPane'))
       const safeInvalidate = () => {
-        if (isMapAlive()) safeInvalidateMapSize(map)
+        if (mapRef.current === map && isLeafletMapAlive(map)) safeInvalidateMapSize(map)
       }
 
       map.whenReady(() => {
@@ -830,12 +874,18 @@ export default function GISMap({
         if (statusThrottleRef.current) clearTimeout(statusThrottleRef.current)
         towerRequestIdRef.current += 1
         window.removeEventListener('resize', onResize)
+        // Stop zoom/pan animations before teardown — prevents `_leaflet_pos` crashes
+        safeMapStop(map)
+        mapRef.current = null
         clusterRef.current?.clearLayers()
         markerByIdRef.current.clear()
         overlaysRef.current.forEach((o) => o.remove())
         overlaysRef.current = []
-        map.remove()
-        mapRef.current = null
+        try {
+          map.remove()
+        } catch {
+          /* already removed */
+        }
         tileLayerRef.current = null
         clusterRef.current = null
         userLocationMarkerRef.current?.remove()
@@ -1303,7 +1353,9 @@ export default function GISMap({
       // Spin east toward India (longitude pan)
       timers.push(
         window.setTimeout(() => {
+          if (!isLeafletMapAlive(mapRef.current) || mapRef.current !== map) return
           try {
+            safeMapStop(map)
             map.flyTo([12, 20], 2.2, { duration: 0.85, easeLinearity: 0.3 })
           } catch {
             /* ignore */
@@ -1313,7 +1365,9 @@ export default function GISMap({
       // Spot India
       timers.push(
         window.setTimeout(() => {
+          if (!isLeafletMapAlive(mapRef.current) || mapRef.current !== map) return
           try {
+            safeMapStop(map)
             map.flyTo([22.5, 79], 4.4, { duration: 1.05, easeLinearity: 0.25 })
           } catch {
             /* ignore */

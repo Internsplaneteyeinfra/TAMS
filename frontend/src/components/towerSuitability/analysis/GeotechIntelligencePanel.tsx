@@ -333,12 +333,17 @@ export default function GeotechIntelligencePanel({
             <>
               <ParamCell label="Nearest road" p={geo.siteContext.roadKm} />
               <ParamCell label="Nearest water" p={geo.siteContext.waterKm} />
+              <ParamCell label="Nearest settlement" p={geo.siteContext.buildingKm} />
               <ParamCell label="Wind (mean)" p={geo.siteContext.windMs} />
             </>
           )}
+          <ParamCell label="Elevation" p={geo.location.elevationM} />
+          <ParamCell label="Slope" p={geo.location.slopeDeg} />
+          <ParamCell label="Land cover" p={geo.location.landCover} />
           <p className="text-[9px] text-amber-950 leading-snug mt-1">
             Live SoilGrids + texture screening — ESTIMATED for planning, not laboratory MEASURED values.
-            Re-download Word report after analyze to get §1.1 Available Data Inventory.
+            Open <strong>Soil Profile</strong> and <strong>Soil Summary</strong> tabs for every depth-wise
+            parameter (sand/silt/clay, densities, Atterberg, SBC, CBR, etc.).
           </p>
         </section>
       )}
@@ -426,29 +431,53 @@ export default function GeotechIntelligencePanel({
       )}
 
       <section className="space-y-1">
-        <p className="text-[10px] font-black uppercase">Soil profile (0–2 m)</p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-[9px] border-collapse">
-            <thead>
+        <p className="text-[10px] font-black uppercase">Soil profile (0–2 m) — all parameters</p>
+        <div className="overflow-x-auto max-h-72 overflow-y-auto">
+          <table className="w-full min-w-[900px] text-[9px] border-collapse">
+            <thead className="sticky top-0">
               <tr className="bg-[#ecfdf5] text-left">
                 <th className="p-1 border border-slate-200">Depth</th>
-                <th className="p-1 border border-slate-200">Sand</th>
-                <th className="p-1 border border-slate-200">Silt</th>
-                <th className="p-1 border border-slate-200">Clay</th>
+                <th className="p-1 border border-slate-200">Gravel %</th>
+                <th className="p-1 border border-slate-200">Sand %</th>
+                <th className="p-1 border border-slate-200">Silt %</th>
+                <th className="p-1 border border-slate-200">Clay %</th>
+                <th className="p-1 border border-slate-200">CF %</th>
+                <th className="p-1 border border-slate-200">ρb</th>
                 <th className="p-1 border border-slate-200">ρd</th>
+                <th className="p-1 border border-slate-200">pH</th>
+                <th className="p-1 border border-slate-200">SOC</th>
                 <th className="p-1 border border-slate-200">Texture</th>
+                <th className="p-1 border border-slate-200">IS class</th>
                 <th className="p-1 border border-slate-200">Status</th>
               </tr>
             </thead>
             <tbody>
               {geo.soilProfile.map((row) => (
-                <tr key={row.reportDepth}>
-                  <td className="p-1 border border-slate-200 font-bold">{row.reportDepthLabel}</td>
-                  <td className="p-1 border border-slate-200">{fmtNum(row.sandPct.value)}</td>
-                  <td className="p-1 border border-slate-200">{fmtNum(row.siltPct.value)}</td>
-                  <td className="p-1 border border-slate-200">{fmtNum(row.clayPct.value)}</td>
-                  <td className="p-1 border border-slate-200">{fmtNum(row.dryDensityGcc.value, 2)}</td>
+                <tr key={row.reportDepth} className="odd:bg-white even:bg-slate-50/70">
+                  <td className="p-1 border border-slate-200 font-bold whitespace-nowrap">
+                    {row.reportDepthLabel}
+                  </td>
+                  <td className="p-1 border border-slate-200 font-mono">{fmtNum(row.gravelPct.value)}</td>
+                  <td className="p-1 border border-slate-200 font-mono">{fmtNum(row.sandPct.value)}</td>
+                  <td className="p-1 border border-slate-200 font-mono">{fmtNum(row.siltPct.value)}</td>
+                  <td className="p-1 border border-slate-200 font-mono">{fmtNum(row.clayPct.value)}</td>
+                  <td className="p-1 border border-slate-200 font-mono">
+                    {fmtNum(row.coarseFragPct.value)}
+                  </td>
+                  <td className="p-1 border border-slate-200 font-mono">
+                    {fmtNum(row.bulkDensityGcc.value, 2)}
+                  </td>
+                  <td className="p-1 border border-slate-200 font-mono">
+                    {fmtNum(row.dryDensityGcc.value, 2)}
+                  </td>
+                  <td className="p-1 border border-slate-200 font-mono">{fmtNum(row.ph.value, 2)}</td>
+                  <td className="p-1 border border-slate-200 font-mono">
+                    {fmtNum(row.organicCarbonGkg.value)}
+                  </td>
                   <td className="p-1 border border-slate-200">{row.usdaTexture.value ?? '—'}</td>
+                  <td className="p-1 border border-slate-200 text-[8px]">
+                    {row.isSoilClassification.value ?? '—'}
+                  </td>
                   <td className="p-1 border border-slate-200">
                     <StatusBadge status={row.sandPct.status} />
                   </td>
@@ -457,26 +486,122 @@ export default function GeotechIntelligencePanel({
             </tbody>
           </table>
         </div>
+        {geo.soilProfile.some((r) => r.preliminaryMaterialDescription.value) && (
+          <div className="space-y-1 mt-1">
+            <p className="text-[9px] font-black uppercase text-[#66727a]">Material description</p>
+            {geo.soilProfile.map((row) =>
+              row.preliminaryMaterialDescription.value ? (
+                <p key={`desc-${row.reportDepth}`} className="text-[9px] leading-snug">
+                  <span className="font-bold">{row.reportDepthLabel}:</span>{' '}
+                  {row.preliminaryMaterialDescription.value}
+                </p>
+              ) : null
+            )}
+          </div>
+        )}
         <p className="text-[9px] text-[#66727a]">
           Source depths preserved per interval. Aggregation: thickness-weighted SoilGrids overlap.
-          Gravel % and IS class remain NO DATA / INSUFFICIENT without lab tests.
+          Gravel % and IS class remain NO DATA / INSUFFICIENT without lab tests unless modelled.
         </p>
       </section>
         </>
       )}
 
       {geoTab === 'summary' && geo.soilTestSummary && (
-        <section className="ts-glass rounded-lg p-2.5 space-y-1">
-          <p className="text-[10px] font-black uppercase">Soil test summary (Phase D)</p>
+        <section className="ts-glass rounded-lg p-2.5 space-y-2">
+          <p className="text-[10px] font-black uppercase">Soil test summary (Phase D) — all parameters</p>
           <p className="text-[10px] font-mono">
             {geo.soilTestSummary.totalRecords} record(s) · generated{' '}
             {new Date(geo.soilTestSummary.generatedAt).toLocaleString()}
           </p>
-          {geo.soilTestSummary.validationNotes.map((n) => (
-            <p key={n} className="text-[9px] text-[#66727a] leading-snug">
-              {n}
-            </p>
-          ))}
+          <div className="overflow-x-auto max-h-80 overflow-y-auto rounded border border-slate-200">
+            <table className="w-full min-w-[1400px] text-[8px] border-collapse">
+              <thead className="sticky top-0 bg-[#ecfdf5] z-[1]">
+                <tr className="text-left">
+                  <th className="p-1 border border-slate-200">#</th>
+                  <th className="p-1 border border-slate-200">BH</th>
+                  <th className="p-1 border border-slate-200">Layer</th>
+                  <th className="p-1 border border-slate-200">G %</th>
+                  <th className="p-1 border border-slate-200">Sa %</th>
+                  <th className="p-1 border border-slate-200">Si %</th>
+                  <th className="p-1 border border-slate-200">Cl %</th>
+                  <th className="p-1 border border-slate-200">LL</th>
+                  <th className="p-1 border border-slate-200">PL</th>
+                  <th className="p-1 border border-slate-200">PI</th>
+                  <th className="p-1 border border-slate-200">Class</th>
+                  <th className="p-1 border border-slate-200">MDD</th>
+                  <th className="p-1 border border-slate-200">OMC %</th>
+                  <th className="p-1 border border-slate-200">ρd</th>
+                  <th className="p-1 border border-slate-200">ρb</th>
+                  <th className="p-1 border border-slate-200">FSI %</th>
+                  <th className="p-1 border border-slate-200">UCS</th>
+                  <th className="p-1 border border-slate-200">SG</th>
+                  <th className="p-1 border border-slate-200">SBC</th>
+                  <th className="p-1 border border-slate-200">CBR %</th>
+                  <th className="p-1 border border-slate-200">GWT</th>
+                  <th className="p-1 border border-slate-200">Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {geo.soilTestSummary.records.map((r) => (
+                  <tr key={`${r.boreholeId}-${r.serialNumber}`} className="odd:bg-white even:bg-slate-50/80">
+                    <td className="p-1 border border-slate-200 font-mono">{r.serialNumber}</td>
+                    <td className="p-1 border border-slate-200 font-bold whitespace-nowrap">{r.boreholeId}</td>
+                    <td className="p-1 border border-slate-200 whitespace-nowrap">{r.layerDepthLabel}</td>
+                    <td className="p-1 border border-slate-200 font-mono">{fmtNum(r.gravelPct.value)}</td>
+                    <td className="p-1 border border-slate-200 font-mono">{fmtNum(r.sandPct.value)}</td>
+                    <td className="p-1 border border-slate-200 font-mono">{fmtNum(r.siltPct.value)}</td>
+                    <td className="p-1 border border-slate-200 font-mono">{fmtNum(r.clayPct.value)}</td>
+                    <td className="p-1 border border-slate-200 font-mono">{fmtNum(r.liquidLimit.value)}</td>
+                    <td className="p-1 border border-slate-200 font-mono">{fmtNum(r.plasticLimit.value)}</td>
+                    <td className="p-1 border border-slate-200 font-mono">{fmtNum(r.plasticityIndex.value)}</td>
+                    <td className="p-1 border border-slate-200">{r.soilClassification.value ?? '—'}</td>
+                    <td className="p-1 border border-slate-200 font-mono">
+                      {fmtNum(r.maximumDryDensityGcc.value, 2)}
+                    </td>
+                    <td className="p-1 border border-slate-200 font-mono">
+                      {fmtNum(r.optimumMoistureContentPct.value)}
+                    </td>
+                    <td className="p-1 border border-slate-200 font-mono">{fmtNum(r.dryDensityGcc.value, 2)}</td>
+                    <td className="p-1 border border-slate-200 font-mono">
+                      {fmtNum(r.bulkDensityGcc.value, 2)}
+                    </td>
+                    <td className="p-1 border border-slate-200 font-mono">
+                      {fmtNum(r.freeSwellingIndexPct.value)}
+                    </td>
+                    <td className="p-1 border border-slate-200 font-mono">{fmtNum(r.ucsKgCm2.value, 2)}</td>
+                    <td className="p-1 border border-slate-200 font-mono">
+                      {fmtNum(r.specificGravity.value, 2)}
+                    </td>
+                    <td className="p-1 border border-slate-200 font-mono">{fmtNum(r.sbcTm2.value, 2)}</td>
+                    <td className="p-1 border border-slate-200 font-mono">{fmtNum(r.cbrPct.value)}</td>
+                    <td className="p-1 border border-slate-200 text-[7px] max-w-[90px]">
+                      {r.groundWaterTableM.method || fmtNum(r.groundWaterTableM.value) || '—'}
+                    </td>
+                    <td className="p-1 border border-slate-200 text-[7px] max-w-[160px] leading-snug">
+                      {r.remarks || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="space-y-0.5">
+            {geo.soilTestSummary.validationNotes.map((n) => (
+              <p key={n} className="text-[9px] text-[#66727a] leading-snug">
+                {n}
+              </p>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {geoTab === 'summary' && !geo.soilTestSummary && (
+        <section className="ts-glass rounded-lg p-2.5">
+          <p className="text-[10px] font-black uppercase">Soil test summary</p>
+          <p className="text-[11px] text-[#66727a] mt-1">
+            Summary rows are not available yet. Re-run Analyze after soil profile is ready.
+          </p>
         </section>
       )}
 
@@ -485,32 +610,125 @@ export default function GeotechIntelligencePanel({
       {geoTab === 'pile' && <PileAnalysisPanel geo={geo} />}
 
       {geoTab === 'params' && (
-        <section className="ts-glass rounded-lg p-2.5 space-y-0.5">
+        <section className="ts-glass rounded-lg p-2.5 space-y-2">
           <p className="text-[10px] font-black uppercase mb-1">Resolved engineering parameters (PR-1)</p>
-          <p className="text-[9px] text-[#66727a] mb-1 leading-snug">
-            GIS / correlation / project data fusion. Click status badge for provenance in report appendix.
+          <p className="text-[9px] text-[#66727a] leading-snug">
+            GIS / correlation / project data fusion. Status badges show provenance (modelled vs measured).
           </p>
-          <ParamCell label="Unit weight γ" p={eng.gammaKnM3} />
-          <ParamCell label="Dry density" p={eng.dryDensityGcc} />
-          <ParamCell label="Predicted friction angle φ" p={eng.phiDeg} />
-          <ParamCell label="Predicted cohesion c" p={eng.cohesionKpa} />
-          {geo.resolvedParameterContext?.byLayer[0] && (
-            <ParamCell
-              label="GIS-predicted equivalent SPT N"
-              p={{
-                value: geo.resolvedParameterContext.site.equivalentSptN.value,
-                unit: '—',
-                source: geo.resolvedParameterContext.site.equivalentSptN.sourceChain[0] ?? 'PR-1',
-                method: geo.resolvedParameterContext.site.equivalentSptN.method,
-                confidence: geo.resolvedParameterContext.site.equivalentSptN.confidence,
-                status: geo.resolvedParameterContext.site.equivalentSptN.status as GeoDataStatus,
-              }}
-            />
-          )}
+          <div className="space-y-0.5">
+            <ParamCell label="Unit weight γ" p={eng.gammaKnM3} />
+            <ParamCell label="Dry density" p={eng.dryDensityGcc} />
+            <ParamCell label="Predicted friction angle φ" p={eng.phiDeg} />
+            <ParamCell label="Predicted cohesion c" p={eng.cohesionKpa} />
+            {geo.resolvedParameterContext?.site && (
+              <ParamCell
+                label="GIS-predicted equivalent SPT N"
+                p={{
+                  value: geo.resolvedParameterContext.site.equivalentSptN.value,
+                  unit: '—',
+                  source: geo.resolvedParameterContext.site.equivalentSptN.sourceChain[0] ?? 'PR-1',
+                  method: geo.resolvedParameterContext.site.equivalentSptN.method,
+                  confidence: geo.resolvedParameterContext.site.equivalentSptN.confidence,
+                  status: geo.resolvedParameterContext.site.equivalentSptN.status as GeoDataStatus,
+                }}
+              />
+            )}
+          </div>
+
+          {geo.resolvedParameterContext?.byLayer?.length ? (
+            <div className="space-y-1 pt-2 border-t border-slate-200">
+              <p className="text-[9px] font-black uppercase text-[#0f766e]">
+                Parameters by depth layer
+              </p>
+              <div className="overflow-x-auto max-h-64 overflow-y-auto rounded border border-slate-200">
+                <table className="w-full min-w-[980px] text-[8px] border-collapse">
+                  <thead className="sticky top-0 bg-[#ecfdf5]">
+                    <tr className="text-left">
+                      <th className="p-1 border border-slate-200">Depth</th>
+                      <th className="p-1 border border-slate-200">γ</th>
+                      <th className="p-1 border border-slate-200">ρd</th>
+                      <th className="p-1 border border-slate-200">ρb</th>
+                      <th className="p-1 border border-slate-200">φ°</th>
+                      <th className="p-1 border border-slate-200">c kPa</th>
+                      <th className="p-1 border border-slate-200">SPT N</th>
+                      <th className="p-1 border border-slate-200">MDD</th>
+                      <th className="p-1 border border-slate-200">OMC %</th>
+                      <th className="p-1 border border-slate-200">FSI %</th>
+                      <th className="p-1 border border-slate-200">UCS</th>
+                      <th className="p-1 border border-slate-200">SG</th>
+                      <th className="p-1 border border-slate-200">CBR %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {geo.resolvedParameterContext.byLayer.map((L) => (
+                      <tr key={L.reportDepth} className="odd:bg-white even:bg-slate-50/80">
+                        <td className="p-1 border border-slate-200 font-bold whitespace-nowrap">
+                          {L.reportDepthLabel}
+                        </td>
+                        <td className="p-1 border border-slate-200 font-mono">
+                          {fmtNum(L.unitWeightKnM3.value)}
+                        </td>
+                        <td className="p-1 border border-slate-200 font-mono">
+                          {fmtNum(L.dryDensityGcc.value, 2)}
+                        </td>
+                        <td className="p-1 border border-slate-200 font-mono">
+                          {fmtNum(L.bulkDensityGcc.value, 2)}
+                        </td>
+                        <td className="p-1 border border-slate-200 font-mono">
+                          {fmtNum(L.frictionAngleDeg.value)}
+                        </td>
+                        <td className="p-1 border border-slate-200 font-mono">
+                          {fmtNum(L.cohesionKpa.value)}
+                        </td>
+                        <td className="p-1 border border-slate-200 font-mono">
+                          {fmtNum(L.equivalentSptN.value)}
+                        </td>
+                        <td className="p-1 border border-slate-200 font-mono">
+                          {fmtNum(L.maximumDryDensityGcc.value, 2)}
+                        </td>
+                        <td className="p-1 border border-slate-200 font-mono">
+                          {fmtNum(L.optimumMoistureContentPct.value)}
+                        </td>
+                        <td className="p-1 border border-slate-200 font-mono">
+                          {fmtNum(L.freeSwellingIndexPct.value)}
+                        </td>
+                        <td className="p-1 border border-slate-200 font-mono">
+                          {fmtNum(L.ucsKgCm2.value, 2)}
+                        </td>
+                        <td className="p-1 border border-slate-200 font-mono">
+                          {fmtNum(L.specificGravity.value, 2)}
+                        </td>
+                        <td className="p-1 border border-slate-200 font-mono">
+                          {fmtNum(L.estimatedCbrPct.value)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
+          {eng.notes?.length ? (
+            <ul className="list-disc pl-4 space-y-0.5">
+              {eng.notes.map((n) => (
+                <li key={n.slice(0, 48)} className="text-[9px] text-[#66727a] leading-snug">
+                  {n}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
           {geo.parameterCompleteness && (
-            <p className="text-[9px] text-[#66727a] mt-2">
+            <p className="text-[9px] text-[#66727a] mt-1">
               Parameter completeness: {geo.parameterCompleteness.completionPct}% (
-              {geo.parameterCompleteness.completeParameters.length} resolved)
+              {geo.parameterCompleteness.completeParameters.length} resolved
+              {geo.parameterCompleteness.unresolvedParameters.length
+                ? ` · unresolved: ${geo.parameterCompleteness.unresolvedParameters
+                    .map((p) => p.label)
+                    .join(', ')}`
+                : ''}
+              )
             </p>
           )}
         </section>
@@ -551,7 +769,7 @@ export default function GeotechIntelligencePanel({
       <section className="space-y-1">
         <p className="text-[10px] font-black uppercase">Limitations</p>
         <ul className="list-disc pl-4 space-y-0.5">
-          {geo.limitations.slice(0, 6).map((L) => (
+          {geo.limitations.map((L) => (
             <li key={L.slice(0, 40)} className="text-[10px] text-[#66727a] leading-snug">
               {L}
             </li>

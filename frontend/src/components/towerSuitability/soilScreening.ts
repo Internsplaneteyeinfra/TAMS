@@ -91,7 +91,8 @@ function readMean(
 ): number | null {
   const layer = layers.find((l) => l.name === prop)
   if (!layer) return null
-  const d = layer.depths?.find((x) => (x.label || '') === depthLabel)
+  const want = depthLabel.replace(/\s+/g, '').toLowerCase()
+  const d = layer.depths?.find((x) => (x.label || '').replace(/\s+/g, '').toLowerCase() === want)
   const raw = d?.values?.mean
   if (raw == null || !Number.isFinite(raw)) return null
   const factor = layer.unit_measure?.d_factor || 1
@@ -133,6 +134,16 @@ export function parseSoilGridsResponse(
     coarseFragPct: readMean(layers, 'cfvo', depthLabel),
     organicCarbonGkg: readMean(layers, 'soc', depthLabel),
   }))
+
+  // SoilGrids sometimes returns labels with spaces ("0-5 cm"). Keep a parseable form for GEO.
+  for (const slice of slices) {
+    const compact = slice.depthLabel.replace(/\s+/g, '')
+    if (/^\d/.test(compact) && !slice.depthLabel.includes(' ')) {
+      // already compact
+    } else if (/^\d+(?:\.\d+)?-\d+(?:\.\d+)?cm$/i.test(compact)) {
+      slice.depthLabel = compact
+    }
+  }
 
   // Production texture: top three layers only (0–5, 5–15, 15–30 cm) — frozen behaviour
   const top = slices.slice(0, 3)
@@ -190,12 +201,19 @@ export async function fetchSoilScreening(
   lon: number,
   placeName?: string
 ): Promise<SoilScreening | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 32_000)
   try {
-    const res = await fetch(`/api/geo/soil?lat=${lat}&lon=${lon}`)
+    const res = await fetch(`/api/geo/soil?lat=${lat}&lon=${lon}`, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    })
     if (!res.ok) return null
     const json = await res.json()
     return parseSoilGridsResponse(json, lat, lon, placeName)
   } catch {
     return null
+  } finally {
+    clearTimeout(timer)
   }
 }

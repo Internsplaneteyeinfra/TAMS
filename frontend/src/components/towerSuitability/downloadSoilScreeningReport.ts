@@ -195,3 +195,17 @@ export function downloadSoilScreeningReport(opts: SoilReportOpts) {
   a.click()
   URL.revokeObjectURL(url)
 }
+
+/** Open soil screening HTML in a new browser tab. */
+export function previewSoilScreeningReport(opts: SoilReportOpts) {
+  const html = buildSoilScreeningReportHtml(opts)
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const w = window.open(url, '_blank', 'noopener,noreferrer')
+  if (!w) {
+    // Popup blocked — fall back to download
+    downloadSoilScreeningReport(opts)
+  }
+  // Revoke after the tab has a chance to load
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}

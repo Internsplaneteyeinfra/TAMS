@@ -506,6 +506,8 @@ export default function GISMap3D({
           infoBox: true,
           selectionIndicator: true,
           terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+          // Skip Cesium Ion World Imagery (needs a valid Ion token; we use free URL tiles)
+          baseLayer: false,
           requestRenderMode: false,
           targetFrameRate: 30,
         })

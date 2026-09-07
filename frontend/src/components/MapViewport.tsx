@@ -15,7 +15,7 @@ import { type MapBasemap } from '@/components/map/MapViewModeBar'
 import TimeRangeSlider, { type TimeRange } from '@/components/map/TimeRangeSlider'
 import WeatherLayerBar, { type WeatherOverlay } from '@/components/map/WeatherLayerBar'
 import type { MapToolbarLayers } from '@/components/map/FloatingMapToolbar'
-import { DEFAULT_PLACE_ID, flattenPlaces } from '@/config/places'
+import { DEFAULT_PLACE_ID, flattenPlaces, getPlaceById } from '@/config/places'
 import { buildCorridorDirectionBrief } from '@/lib/corridorDirection'
 import type { Alert, Asset, RegionAssetStats } from '@/lib/api'
 import { computeRegionStats, filterAlertsByPlace, filterAssetsByPlace } from '@/lib/placeFilter'
@@ -362,7 +362,11 @@ export default function MapViewport({
 
       {onSelectAsset && earthIntroDone && (
         <MapTopChrome
-          assets={filterAssetsByPlace(assets, selectedPlaceId)}
+          assets={
+            getPlaceById(selectedPlaceId)?.stateOrCountry
+              ? assets
+              : filterAssetsByPlace(assets, selectedPlaceId)
+          }
           selectedPlaceId={selectedPlaceId}
           onSelectPlace={onSelectPlace}
           placeAssetCounts={placeAssetCounts}
@@ -509,7 +513,11 @@ export default function MapViewport({
         />
       ) : (
         <GISMap3D
-          assets={filterAssetsByPlace(assets, selectedPlaceId)}
+          assets={
+            getPlaceById(selectedPlaceId)?.stateOrCountry
+              ? assets
+              : filterAssetsByPlace(assets, selectedPlaceId)
+          }
           selectedAssetId={selectedAssetId}
           alertAssetIds={alertAssetIds}
           onSelectAsset={handleSelectAsset}

@@ -1071,31 +1071,58 @@ export default function TowerSuitabilityMap({
       }
     })
 
-    if (!powerConnect && hasStart && showNearbyGrid) {
-      // Fallback: start pin → nearest asset
-      const nearest =
-        [...drawAssets].sort((a, b) => a.distanceKm - b.distanceKm)[0] ?? null
-      if (nearest && Number.isFinite(nearest.lat) && Number.isFinite(nearest.lon)) {
+    if (
+      !powerConnect &&
+      hasStart &&
+      showNearbyGrid &&
+      !corridorNearestTower &&
+      !corridorNearestStation
+    ) {
+      const drawSiteLink = (
+        target: NearbyPowerAsset | null,
+        color: string,
+        label: string
+      ) => {
+        if (!target || !Number.isFinite(target.lat) || !Number.isFinite(target.lon)) return
         L.polyline(
           [
             [lat!, lon!],
-            [nearest.lat, nearest.lon],
+            [target.lat, target.lon],
           ],
           {
-            color: '#22d3ee',
+            color,
             weight: 3,
             opacity: 0.85,
             dashArray: '8 6',
           }
         )
           .bindTooltip(
-            `Suggested connect direction · ${nearest.distanceKm < 1
-              ? `${Math.round(nearest.distanceKm * 1000)} m`
-              : `${nearest.distanceKm.toFixed(2)} km`
+            `${label} · ${
+              target.distanceKm < 1
+                ? `${Math.round(target.distanceKm * 1000)} m`
+                : `${target.distanceKm.toFixed(2)} km`
             } direct (Haversine)`,
             { sticky: true }
           )
           .addTo(layer)
+      }
+
+      const nearestTower =
+        drawAssets
+          .filter((a) => a.kind === 'tower' || a.kind === 'pole')
+          .sort((a, b) => a.distanceKm - b.distanceKm)[0] ?? null
+      const nearestStation =
+        drawAssets
+          .filter((a) => a.kind === 'substation' || a.kind === 'plant')
+          .sort((a, b) => a.distanceKm - b.distanceKm)[0] ?? null
+
+      if (nearestTower || nearestStation) {
+        drawSiteLink(nearestTower, '#3b82f6', 'Site → nearest tower')
+        drawSiteLink(nearestStation, '#a855f7', 'Site → nearest SS/plant')
+      } else {
+        const nearest =
+          [...drawAssets].sort((a, b) => a.distanceKm - b.distanceKm)[0] ?? null
+        drawSiteLink(nearest, '#22d3ee', 'Suggested connect direction')
       }
     }
   }, [
@@ -1112,6 +1139,8 @@ export default function TowerSuitabilityMap({
     showNearbyGrid,
     corridorPath,
     onTowerSelect,
+    corridorNearestTower,
+    corridorNearestStation,
   ])
 
   /** Nearest tower / SS + power take-off — always visible (not gated on kV pick). */
@@ -1131,17 +1160,28 @@ export default function TowerSuitabilityMap({
     const layer = gridHighlightLayerRef.current
     layer.clearLayers()
 
+    const hasStart = lat != null && lon != null && Number.isFinite(lat) && Number.isFinite(lon)
+
     const path =
       corridorPath.length >= 2
         ? corridorPath
-        : corridorScanPoints(plannedTowers, kmlFeatures).map((p) => ({ lat: p.lat, lon: p.lng }))
+        : corridorPath.length === 1
+          ? corridorPath
+          : corridorScanPoints(plannedTowers, kmlFeatures).map((p) => ({ lat: p.lat, lon: p.lng }))
 
     const drawNearest = (
       hint: CorridorConnectHint | null | undefined,
       kind: 'tower' | 'station'
     ) => {
-      if (!hint || path.length < 2) return
-      const snap = closestPointOnCorridor(hint.lat, hint.lon, path)
+      if (!hint) return
+      const pathPts =
+        path.length >= 1
+          ? path
+          : hasStart
+            ? [{ lat: lat!, lon: lon! }]
+            : []
+      if (!pathPts.length) return
+      const snap = closestPointOnCorridor(hint.lat, hint.lon, pathPts)
       const distLabel = metersLabel(hint.distanceKm)
       const kv =
         hint.voltageKv != null
@@ -1153,8 +1193,8 @@ export default function TowerSuitabilityMap({
       const css = kind === 'tower' ? 'ts-nearest-tower-label' : 'ts-nearest-ss-label'
       const lineLabel =
         kind === 'tower'
-          ? `Nearest tower · ${distLabel} from line${kv}`
-          : `Nearest SS · ${hint.name} · ${distLabel}${kv}`
+          ? `Nearest tower · ${distLabel} from site/line${kv}`
+          : `Nearest SS/plant · ${hint.name} · ${distLabel}${kv}`
 
       L.polyline(
         [
@@ -1173,10 +1213,20 @@ export default function TowerSuitabilityMap({
         fillColor: color,
         fillOpacity: 1,
       })
-        .bindTooltip('Closest point on your line', { direction: 'bottom', offset: [0, 6] })
+        .bindTooltip(
+          pathPts.length >= 2 ? 'Closest point on your line' : 'Site / analysis focus',
+          { direction: 'bottom', offset: [0, 6] }
+        )
         .addTo(layer)
 
-      const assetKind = kind === 'station' ? ('substation' as const) : ('tower' as const)
+      const assetKind =
+        kind === 'station'
+          ? hint.kind === 'plant'
+            ? ('plant' as const)
+            : ('substation' as const)
+          : hint.kind === 'pole'
+            ? ('pole' as const)
+            : ('tower' as const)
       L.circleMarker([hint.lat, hint.lon], {
         radius: kind === 'station' ? 17 : 15,
         color: '#ffffff',
@@ -1191,7 +1241,7 @@ export default function TowerSuitabilityMap({
         .bindPopup(
           `<strong>${kind === 'tower' ? 'Nearest transmission tower' : 'Nearest substation / power station'}</strong><br/>` +
             `${hint.name}<br/>` +
-            `Distance from corridor: <b>${distLabel}</b>${kv}<br/>` +
+            `Distance: <b>${distLabel}</b>${kv}<br/>` +
             `Lat: ${hint.lat.toFixed(6)} · Lon: ${hint.lon.toFixed(6)}<br/>` +
             `<em>Click for full details in side card</em>`
         )
@@ -1283,6 +1333,8 @@ export default function TowerSuitabilityMap({
     voltageKv,
     mapReady,
     onTowerSelect,
+    lat,
+    lon,
   ])
 
   useEffect(() => {

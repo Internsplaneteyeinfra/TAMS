@@ -31,7 +31,25 @@ function resolveBackendOrigin(hostHeader) {
   const explicit = String(process.env.BACKEND_URL || '')
     .trim()
     .replace(/\/$/, '')
-  if (explicit) return explicit
+  const feHost = String(hostHeader || '')
+    .split(':')[0]
+    .toLowerCase()
+  const feIsLocal =
+    !feHost ||
+    feHost === 'localhost' ||
+    feHost === '127.0.0.1' ||
+    feHost === '::1' ||
+    feHost === '[::1]'
+
+  // Cursor/VS Code Dev Tunnels often inject BACKEND_URL=https://….devtunnels.ms into the
+  // process env. That overrides .env and breaks the Next proxy (TLS / unreachable) → 502.
+  const explicitHost = explicit.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0]
+  const isDevTunnel = /(^|\.)devtunnels\.ms$/i.test(explicitHost)
+
+  if (explicit && !(feIsLocal && isDevTunnel)) {
+    return explicit
+  }
+
   return `http://127.0.0.1:${inferBackendPort(frontendPortFromHost(hostHeader))}`
 }
 

@@ -44,10 +44,83 @@ type FetchInit = Parameters<typeof fetch>[1]
 async function parseApiResponse<T>(res: Response, path: string): Promise<T> {
   if (!res.ok) {
     const detail = await res.text()
-    throw new Error(detail || `Failed to fetch ${path}`)
+    let message = detail || `Failed to fetch ${path}`
+    try {
+      const parsed = JSON.parse(detail) as { detail?: unknown; errors?: unknown[]; message?: string }
+      if (typeof parsed.detail === 'string') message = parsed.detail
+      else if (Array.isArray(parsed.detail)) message = JSON.stringify(parsed.detail)
+      else if (typeof parsed.message === 'string') message = parsed.message
+      else if (Array.isArray(parsed.errors) && parsed.errors.length) {
+        message = parsed.errors.map(String).join('; ')
+      }
+    } catch {
+      /* keep raw text */
+    }
+    throw new Error(message)
   }
   const json = await res.json()
   return json.data as T
+}
+
+export interface PaginationMeta {
+  page: number
+  page_size: number
+  total: number
+  total_pages: number
+}
+
+/** Fetch API payload and keep pagination meta (for multi-page catalogs). */
+export async function fetchApiWithMeta<T>(
+  path: string,
+  init?: FetchInit
+): Promise<{ data: T; pagination?: PaginationMeta }> {
+  const res = await fetch(`${getApiBase()}${path}`, init)
+  if (!res.ok) {
+    const detail = await res.text()
+    throw new Error(detail || `Failed to fetch ${path}`)
+  }
+  const json = await res.json()
+  return {
+    data: json.data as T,
+    pagination: json.meta?.pagination as PaginationMeta | undefined,
+  }
+}
+
+/**
+ * Load every corridor/substation for a state (towers stay on /gis/towers viewport).
+ * Gujarat alone is >10k rows — page through until complete.
+ */
+export async function fetchAllStateCorridors(
+  state: string,
+  signal?: AbortSignal,
+  pageSize = 5000
+): Promise<Asset[]> {
+  const merged: Asset[] = []
+  const seen = new Set<string>()
+  let page = 1
+  let totalPages = 1
+
+  while (page <= totalPages) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize),
+      state,
+      include_towers: 'false',
+    })
+    const { data, pagination } = await fetchApiWithMeta<Asset[]>(`/assets?${params}`, { signal })
+    for (const asset of data ?? []) {
+      if (seen.has(asset.id)) continue
+      seen.add(asset.id)
+      merged.push(asset)
+    }
+    totalPages = Math.max(1, pagination?.total_pages ?? 1)
+    if (!data?.length) break
+    page += 1
+    if (page > 40) break
+  }
+
+  return merged
 }
 
 export async function fetchApi<T>(path: string, init?: FetchInit): Promise<T> {

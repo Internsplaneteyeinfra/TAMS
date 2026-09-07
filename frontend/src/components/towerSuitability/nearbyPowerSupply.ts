@@ -132,7 +132,11 @@ function assetVoltageKv(asset: Asset & { distance_km?: number; metadata?: Record
   return parseVoltageFromText(asset.name, asset.description, String(meta.name ?? ''))
 }
 
-/** Fill missing kV from asset names and nearest tagged power line (OSM/TAMS). */
+/**
+ * Fill missing kV from names and nearby tagged power lines.
+ * OSM almost never tags voltage on towers — kV lives on power=line ways.
+ * Substations often omit voltage too; connected lines are the usual source.
+ */
 export function enrichPowerAssetVoltages(assets: NearbyPowerAsset[]): void {
   for (const a of assets) {
     if (a.voltageKv != null) continue
@@ -140,24 +144,44 @@ export function enrichPowerAssetVoltages(assets: NearbyPowerAsset[]): void {
     if (fromName != null) {
       a.voltageKv = fromName
       a.voltagesKv = [fromName]
+      // Name/class guess — not a hard OSM voltage=* tag
+      a.voltageInferred = true
     }
   }
 
   const lines = assets.filter((a) => a.kind === 'line' && a.voltageKv != null)
+  if (!lines.length) return
+
+  const maxDistKm = (kind: NearbyPowerKind) => {
+    if (kind === 'tower' || kind === 'pole') return 2.5
+    if (kind === 'substation' || kind === 'plant') return 1.8
+    return 0
+  }
+
   for (const a of assets) {
-    if (a.voltageKv != null || (a.kind !== 'tower' && a.kind !== 'pole')) continue
+    if (a.voltageKv != null && !a.voltageInferred) continue
+    const lim = maxDistKm(a.kind)
+    if (lim <= 0) continue
+
     let bestD = Number.POSITIVE_INFINITY
     let bestKv: number | null = null
+    let bestVolts: number[] = []
     for (const line of lines) {
       const d = haversineKm(a.lat, a.lon, line.lat, line.lon)
-      if (d < bestD && d <= 0.85) {
-        bestD = d
-        bestKv = line.voltageKv
-      }
+      if (d > lim || d >= bestD) continue
+      bestD = d
+      bestKv = line.voltageKv
+      bestVolts =
+        line.voltagesKv.length > 0
+          ? line.voltagesKv
+          : line.voltageKv != null
+            ? [line.voltageKv]
+            : []
     }
     if (bestKv != null) {
+      // Prefer tagged line kV over a weaker name guess
       a.voltageKv = bestKv
-      a.voltagesKv = [bestKv]
+      a.voltagesKv = bestVolts.length ? bestVolts : [bestKv]
       a.voltageInferred = true
     }
   }
@@ -370,16 +394,42 @@ function classifyOsmPower(tags: Record<string, string>): NearbyPowerKind | null 
   return null
 }
 
-function inferDistributionKv(kind: NearbyPowerKind, tags: Record<string, string>): {
+/** Collect every OSM voltage-* tag (voltage, voltage:primary/secondary/tertiary, …). */
+function collectOsmVoltageTagValues(tags: Record<string, string>): string[] {
+  const out: string[] = []
+  for (const [key, val] of Object.entries(tags)) {
+    if (!val) continue
+    if (key === 'voltage' || key.startsWith('voltage:')) out.push(val)
+  }
+  return out
+}
+
+function inferDistributionKv(
+  _kind: NearbyPowerKind,
+  tags: Record<string, string>
+): {
   kv: number | null
   inferred: boolean
   voltages: number[]
 } {
-  const tagged = parseAllOsmVoltageKv(
-    tags.voltage || tags['voltage:primary'] || tags['voltage:secondary']
-  )
+  const tagged = [
+    ...new Set(collectOsmVoltageTagValues(tags).flatMap((raw) => parseAllOsmVoltageKv(raw))),
+  ].sort((a, b) => b - a)
   if (tagged.length) return { kv: tagged[0], inferred: false, voltages: tagged }
-  // Never invent a voltage from structure type — leave unknown
+
+  // Names often embed class ("132/33 kV SS") when voltage=* is missing in India OSM
+  const fromName = parseVoltageFromText(
+    tags.name,
+    tags['name:en'],
+    tags.ref,
+    tags.substation,
+    tags.description
+  )
+  if (fromName != null) {
+    return { kv: fromName, inferred: true, voltages: [fromName] }
+  }
+
+  // Never invent from structure type alone (tower/pole ≠ a kV class)
   return { kv: null, inferred: false, voltages: [] }
 }
 
@@ -462,24 +512,27 @@ async function osmNearbyPowerAssets(
     radiusKm >= 25 ? 10 : 6
   )
   const timeoutSec = radiusKm >= 25 ? 25 : 18
-  const outLimit = radiusKm >= 50 ? 60 : radiusKm >= 25 ? 100 : 150
+  const towerLimit = radiusKm >= 50 ? 80 : radiusKm >= 25 ? 120 : 160
   // Poles explode Overpass at wide radius — keep them only for local pad screening.
   const poleClause =
     radiusKm <= 15
       ? `node["power"="pole"](around:${radiusM},${lat},${lon});`
       : ''
 
-  // Primary: circle around selected lat/lon (not only corridor)
-  const aroundFocus = `[out:json][timeout:${timeoutSec}];(
+  // Voltage-tagged lines FIRST (separate query). A single `out N` mix of towers+lines
+  // often truncates tagged lines in dense Indian cities → mass "kV unmapped".
+  const taggedLinesQuery = `[out:json][timeout:${timeoutSec}];(
+    way["power"="line"]["voltage"](around:${radiusM},${lat},${lon});
+    way["power"="minor_line"]["voltage"](around:${radiusM},${lat},${lon});
+    way["power"="cable"]["voltage"](around:${radiusM},${lat},${lon});
+  );out tags center;`
+
+  // Towers / portals / poles (kV usually absent on the node — filled from lines later)
+  const towersQuery = `[out:json][timeout:${timeoutSec}];(
     node["power"="tower"](around:${radiusM},${lat},${lon});
     node["power"="portal"](around:${radiusM},${lat},${lon});
     ${poleClause}
-    way["power"="line"](around:${radiusM},${lat},${lon});
-    way["power"="minor_line"](around:${radiusM},${lat},${lon});
-    way["power"="cable"](around:${radiusM},${lat},${lon});
-    node["power"="substation"](around:${radiusM},${lat},${lon});
-    way["power"="substation"](around:${radiusM},${lat},${lon});
-  );out tags center ${outLimit};`
+  );out tags center ${towerLimit};`
 
   const ssRadiusM = Math.round(Math.max(radiusKm, 15) * 1000)
   const ssQuery = `[out:json][timeout:${timeoutSec}];(
@@ -487,29 +540,35 @@ async function osmNearbyPowerAssets(
     way["power"="substation"](around:${ssRadiusM},${lat},${lon});
     node["power"="plant"](around:${ssRadiusM},${lat},${lon});
     way["power"="plant"](around:${ssRadiusM},${lat},${lon});
-  );out tags center 40;`
+  );out tags center;`
 
   const useCorridorBbox = corridor != null && corridor.length >= 2
   let bboxRes: { elements?: OverpassEl[] } | null = null
   if (useCorridorBbox) {
     const bb = corridorBBox(corridor!, radiusKm)
+    // Prefer voltage-tagged lines in corridor bbox; keep tower sample for markers
     const bboxQuery = `[out:json][timeout:${timeoutSec}];(
+      way["power"="line"]["voltage"](${bb.south},${bb.west},${bb.north},${bb.east});
+      way["power"="minor_line"]["voltage"](${bb.south},${bb.west},${bb.north},${bb.east});
+      way["power"="cable"]["voltage"](${bb.south},${bb.west},${bb.north},${bb.east});
       node["power"="tower"](${bb.south},${bb.west},${bb.north},${bb.east});
       node["power"="portal"](${bb.south},${bb.west},${bb.north},${bb.east});
-      way["power"="line"](${bb.south},${bb.west},${bb.north},${bb.east});
-      way["power"="minor_line"](${bb.south},${bb.west},${bb.north},${bb.east});
-      way["power"="cable"](${bb.south},${bb.west},${bb.north},${bb.east});
       node["power"="substation"](${bb.south},${bb.west},${bb.north},${bb.east});
       way["power"="substation"](${bb.south},${bb.west},${bb.north},${bb.east});
       node["power"="plant"](${bb.south},${bb.west},${bb.north},${bb.east});
       way["power"="plant"](${bb.south},${bb.west},${bb.north},${bb.east});
-    );out tags center ${outLimit};`
+    );out tags center ${towerLimit};`
     bboxRes = await overpassJson(bboxQuery)
   }
 
-  const [focusRes, ss] = await Promise.all([overpassJson(aroundFocus), overpassJson(ssQuery)])
+  const [taggedLinesRes, towersRes, ss] = await Promise.all([
+    overpassJson(taggedLinesQuery),
+    overpassJson(towersQuery),
+    overpassJson(ssQuery),
+  ])
 
-  const queryOk = focusRes != null || ss != null || bboxRes != null
+  const queryOk =
+    taggedLinesRes != null || towersRes != null || ss != null || bboxRes != null
   if (!queryOk) {
     console.warn('[nearbyPower] OSM Overpass unavailable for', { lat, lon, radiusM })
     return { assets: [], queryOk: false, error: 'OSM Overpass did not respond' }
@@ -517,7 +576,8 @@ async function osmNearbyPowerAssets(
 
   const mergedRaw = [
     ...elementsToAssets(bboxRes?.elements ?? [], focus),
-    ...elementsToAssets(focusRes?.elements ?? [], focus),
+    ...elementsToAssets(taggedLinesRes?.elements ?? [], focus),
+    ...elementsToAssets(towersRes?.elements ?? [], focus),
     ...elementsToAssets(ss?.elements ?? [], focus),
   ]
 
@@ -540,7 +600,9 @@ async function osmNearbyPowerAssets(
     count: merged.length,
     towers: merged.filter((a) => a.kind === 'tower').length,
     lines: merged.filter((a) => a.kind === 'line').length,
+    linesWithKv: merged.filter((a) => a.kind === 'line' && a.voltageKv != null).length,
     ss: merged.filter((a) => a.kind === 'substation').length,
+    ssWithKv: merged.filter((a) => a.kind === 'substation' && a.voltageKv != null).length,
     radiusKm: radiusM / 1000,
   })
 

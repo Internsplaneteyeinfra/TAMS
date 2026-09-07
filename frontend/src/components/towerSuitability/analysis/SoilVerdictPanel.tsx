@@ -113,7 +113,7 @@ export default function SoilVerdictPanel({ geo }: { geo: GeotechnicalIntelligenc
           {v.whatWeKnow.correlated.length > 0 && (
             <div className="mt-1">
               <p className="text-[8px] font-bold text-purple-800">Correlated</p>
-              {v.whatWeKnow.correlated.slice(0, 4).map((x) => (
+              {v.whatWeKnow.correlated.map((x) => (
                 <p key={x} className="text-[8px] font-mono">
                   {x}
                 </p>
@@ -123,7 +123,7 @@ export default function SoilVerdictPanel({ geo }: { geo: GeotechnicalIntelligenc
           {v.whatWeKnow.modelled.length > 0 && (
             <div className="mt-1">
               <p className="text-[8px] font-bold text-sky-800">Modelled</p>
-              {v.whatWeKnow.modelled.slice(0, 4).map((x) => (
+              {v.whatWeKnow.modelled.map((x) => (
                 <p key={x} className="text-[8px] font-mono">
                   {x}
                 </p>
@@ -134,7 +134,7 @@ export default function SoilVerdictPanel({ geo }: { geo: GeotechnicalIntelligenc
         <div className="ts-glass rounded-lg p-2 border border-rose-200/60">
           <p className="text-[9px] font-black uppercase text-rose-900">What we do not know</p>
           <ul className="mt-1 space-y-0.5">
-            {v.whatWeDoNotKnow.slice(0, 8).map((x) => (
+            {v.whatWeDoNotKnow.map((x) => (
               <li key={x} className="text-[8px] text-rose-900">
                 • {x}
               </li>

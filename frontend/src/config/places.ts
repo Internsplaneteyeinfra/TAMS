@@ -411,37 +411,6 @@ export function getStateFilterForPlace(placeId: string): string | undefined {
 /** Whether the selected place should load KML tower markers (viewport bbox still gated). */
 export function placeShowsTowers(placeId: string): boolean {
   if (placeId === 'india') return true
-  const path = getPlacePath(placeId)
-  const towerStates = new Set([
-    'gujarat',
-    'rajasthan',
-    'delhi',
-    'haryana',
-    'punjab',
-    'himachal-pradesh',
-    'uttarakhand',
-    'karnataka',
-    'kerala',
-    'madhya-pradesh',
-    'maharashtra',
-    'tamil-nadu',
-    'assam',
-    'andhra-pradesh',
-    'bihar',
-    'goa',
-    'jharkhand',
-    'odisha',
-    'sikkim',
-    'arunachal-pradesh',
-    'chhattisgarh',
-    'manipur',
-    'meghalaya',
-    'mizoram',
-    'nagaland',
-    'telangana',
-    'tripura',
-    'uttar-pradesh',
-    'west-bengal',
-  ])
-  return path.some((p) => towerStates.has(p.id))
+  // Any Indian state / city — towers come from /gis/towers by viewport
+  return Boolean(getStateFilterForPlace(placeId))
 }
