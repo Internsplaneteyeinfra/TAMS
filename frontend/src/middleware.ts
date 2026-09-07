@@ -4,7 +4,14 @@ import type { NextRequest } from 'next/server'
 import { AUTH_COOKIE_NAME } from '@/lib/auth/cookie'
 import { verifyAccessToken } from '@/lib/auth/jwt'
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/logout', '/api/auth/me']
+const PUBLIC_PATHS = [
+  '/login',
+  '/api/auth/login',
+  '/api/auth/logout',
+  '/api/auth/me',
+  '/api/v1/auth/login',
+  '/api/v1/status',
+]
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.includes(pathname)) return true

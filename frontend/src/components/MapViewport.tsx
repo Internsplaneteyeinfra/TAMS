@@ -32,12 +32,12 @@ const ALL_VOLTAGE_FILTERS: Record<string, boolean> = {
   other: true,
 }
 
-/** India explorer: EHV backbone only (hide 132 / 66 / other until state pick or toggle). */
+/** India explorer: show transmission corridors (132+). Dense LV (66/other) stays off until toggled. */
 const EXPLORER_VOLTAGE_FILTERS: Record<string, boolean> = {
   '765': true,
   '400': true,
   '220': true,
-  '132': false,
+  '132': true,
   '66': false,
   other: false,
 }

@@ -14,6 +14,7 @@ import {
   Upload,
 } from 'lucide-react'
 
+import CurrentUserChip from '@/components/auth/CurrentUserChip'
 import LogoutButton from '@/components/auth/LogoutButton'
 import { fetchGisTowers } from '@/lib/api'
 import {
@@ -757,6 +758,23 @@ export default function TowerSuitabilityWorkspace() {
     })
   }, [])
 
+  /** Same OSRM nearest-road snap used for planned pads / site scoring. */
+  const loadExistingRoadAccess = useCallback((overlay: TowerConnectionOverlay) => {
+    void fetchNearestRoad(overlay.from.lat, overlay.from.lon).then((hit) => {
+      setConnectionOverlay((prev) =>
+        prev?.key === overlay.key
+          ? {
+              ...prev,
+              roadAccessKm: hit?.km ?? null,
+              roadAccessLat: hit?.lat ?? null,
+              roadAccessLon: hit?.lon ?? null,
+              roadAccessLoading: false,
+            }
+          : prev
+      )
+    })
+  }, [])
+
   const applyTowerSelection = useCallback(
     (detail: SelectedTowerDetail | null) => {
       if (!detail) {
@@ -794,13 +812,39 @@ export default function TowerSuitabilityWorkspace() {
         setFocusedPadIndex(null)
       }
       if (overlay) {
-        setConnectionOverlay(overlay)
-        loadRoadRoute(overlay)
+        const withAccess: TowerConnectionOverlay =
+          detail.kind === 'existing'
+            ? { ...overlay, roadAccessLoading: true, roadAccessKm: null }
+            : overlay
+        setConnectionOverlay(withAccess)
+        loadRoadRoute(withAccess)
+        if (detail.kind === 'existing') loadExistingRoadAccess(withAccess)
+      } else if (detail.kind === 'existing') {
+        // Still show road-access stub even when corridor overlay cannot be built
+        const stub: TowerConnectionOverlay = {
+          key: connectionKeyFor(detail),
+          from: { lat: detail.asset.lat, lon: detail.asset.lon, label: detail.asset.name },
+          to: { lat: detail.asset.lat, lon: detail.asset.lon, label: detail.asset.name },
+          straightM: 0,
+          showRoad: false,
+          roadAccessLoading: true,
+          roadAccessKm: null,
+        }
+        setConnectionOverlay(stub)
+        loadExistingRoadAccess(stub)
       } else {
         setConnectionOverlay(null)
       }
     },
-    [connectionOverlay, adviceByIndex, lineTowerPlan?.towers, loadRoadRoute, corridorPathForMap, mapNearbyAssets]
+    [
+      connectionOverlay,
+      adviceByIndex,
+      lineTowerPlan?.towers,
+      loadRoadRoute,
+      loadExistingRoadAccess,
+      corridorPathForMap,
+      mapNearbyAssets,
+    ]
   )
 
   const handleMapBackgroundClick = useCallback(() => {
@@ -1412,6 +1456,7 @@ export default function TowerSuitabilityWorkspace() {
                 <Undo2 className="w-3.5 h-3.5" />
                 Undo
               </button>
+              <CurrentUserChip variant="light" />
               <LogoutButton variant="light" />
               <input
                 ref={fileRef}
@@ -1498,10 +1543,16 @@ export default function TowerSuitabilityWorkspace() {
               onTowerSelect={
                 phaseITowerCandidates.length > 0
                   ? (detail) => {
-                      if (detail?.kind === 'planned') {
-                        const c = phaseITowerCandidates.find((x) => x.index === detail.index)
-                        if (c) void handleSelectPhaseICandidate(c)
+                      if (!detail) {
+                        applyTowerSelection(null)
+                        return
                       }
+                      if (detail.kind === 'existing') {
+                        applyTowerSelection(detail)
+                        return
+                      }
+                      const c = phaseITowerCandidates.find((x) => x.index === detail.index)
+                      if (c) void handleSelectPhaseICandidate(c)
                     }
                   : applyTowerSelection
               }

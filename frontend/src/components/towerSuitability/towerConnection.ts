@@ -4,6 +4,33 @@ import type { PlannedTowerAdvice } from './corridorPlacementAdvice'
 import type { SelectedTowerDetail } from './TowerAssetDetailCard'
 import { bearingLabel, corridorPerpendicularM, nearestPowerStation } from './towerMapMetrics'
 
+/** Same thresholds as scoring.ts road factor (OSRM nearest). */
+export function roadAccessSuitability(roadKm: number | null | undefined): {
+  label: string
+  note: string
+  score: number
+} {
+  if (roadKm == null || !Number.isFinite(roadKm)) {
+    return {
+      label: 'Uncertain',
+      note: 'Live road lookup failed — treat access as uncertain.',
+      score: 3,
+    }
+  }
+  // Mirror scoring thresholdScore(road, 0.5, 8, false)
+  let score: number
+  if (roadKm <= 0.5) score = 10
+  else if (roadKm >= 8) score = 0
+  else score = ((8 - roadKm) / (8 - 0.5)) * 10
+  const label =
+    roadKm <= 0.5 ? 'Good' : roadKm <= 3 ? 'Acceptable' : roadKm <= 8 ? 'Distant' : 'Poor'
+  const note =
+    roadKm > 3
+      ? 'Distant from mapped roads — construction access risk.'
+      : 'Reasonable access for tower erection logistics.'
+  return { label, note, score: Math.round(score * 10) / 10 }
+}
+
 export type TowerConnectionOverlay = {
   key: string
   from: { lat: number; lon: number; label: string }
@@ -25,6 +52,11 @@ export type TowerConnectionOverlay = {
   roadCoords?: Array<[number, number]>
   roadLoading?: boolean
   rationale?: string
+  /** OSRM nearest-road snap (same as pad / site road-access factor). */
+  roadAccessKm?: number | null
+  roadAccessLat?: number | null
+  roadAccessLon?: number | null
+  roadAccessLoading?: boolean
 }
 
 function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {

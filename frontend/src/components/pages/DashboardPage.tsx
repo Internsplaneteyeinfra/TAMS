@@ -17,6 +17,7 @@ import {
   Wrench,
 } from 'lucide-react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
+import CurrentUserChip from '@/components/auth/CurrentUserChip'
 import LogoutButton from '@/components/auth/LogoutButton'
 import LandingThemeToggle from '@/components/landing/LandingThemeToggle'
 import { MODULE_NAV_ITEMS } from '@/config/moduleNav'
@@ -198,6 +199,7 @@ function DashboardPageInner() {
               Modules
             </Link>
             <LandingThemeToggle />
+            <CurrentUserChip variant={light ? 'light' : 'dark'} />
             <LogoutButton variant={light ? 'light' : 'dark'} />
           </div>
         </header>

@@ -11,8 +11,7 @@ import { powerKindLabel } from './nearbyPowerSupply'
 import type { PlannedTowerAdvice } from './corridorPlacementAdvice'
 
 import type { TowerConnectionOverlay } from './towerConnection'
-
-import { formatMeters } from './towerConnection'
+import { formatMeters, roadAccessSuitability } from './towerConnection'
 
 
 
@@ -317,6 +316,39 @@ export default function TowerAssetDetailCard({
               straight-line
 
             </p>
+
+            {(() => {
+              const access = roadAccessSuitability(
+                connection?.roadAccessLoading ? undefined : connection?.roadAccessKm
+              )
+              return (
+                <div className="rounded-lg border border-[#f97316]/35 bg-[#fff7ed] px-2 py-1.5 space-y-1">
+                  <p className="text-[9px] font-black uppercase text-[#c2410c] flex items-center gap-1">
+                    <Route className="w-3 h-3" />
+                    Road access (same as site scoring)
+                  </p>
+                  {connection?.roadAccessLoading ? (
+                    <p className="text-[#66727a]">Loading OSRM nearest road…</p>
+                  ) : (
+                    <>
+                      <p className="tabular-nums">
+                        Distance to nearest road:{' '}
+                        <strong>
+                          {connection?.roadAccessKm != null
+                            ? formatMeters(connection.roadAccessKm * 1000)
+                            : '—'}
+                        </strong>
+                      </p>
+                      <p>
+                        Suitability: <strong>{access.label}</strong>
+                        {connection?.roadAccessKm != null ? ` · score ${access.score}/10` : ''}
+                      </p>
+                      <p className="text-[10px] text-[#66727a] leading-snug">{access.note}</p>
+                    </>
+                  )}
+                </div>
+              )
+            })()}
 
             <p>
 

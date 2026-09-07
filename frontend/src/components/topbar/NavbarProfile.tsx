@@ -3,10 +3,20 @@ import { createPortal } from 'react-dom'
 import { ChevronDown, Settings, User } from 'lucide-react'
 
 import LogoutButton from '@/components/auth/LogoutButton'
+import { initialsFromUsername } from '@/lib/auth/client'
+import { useCurrentUser } from '@/hooks/useCurrentUser'
 
 type MenuView = 'root' | 'profile' | 'settings'
 
+function roleLabel(role: string | undefined): string {
+  const r = (role || 'operator').toLowerCase()
+  if (r === 'admin') return 'TAMS Operator'
+  return `TAMS ${r.charAt(0).toUpperCase()}${r.slice(1)}`
+}
+
 export default function NavbarProfile() {
+  const { user, username } = useCurrentUser()
+  const initials = initialsFromUsername(username)
   const [isOpen, setIsOpen] = useState(false)
   const [view, setView] = useState<MenuView>('root')
   const [coords, setCoords] = useState({ top: 0, right: 0 })
@@ -68,8 +78,10 @@ export default function NavbarProfile() {
             style={{ top: coords.top, right: coords.right }}
           >
               <div className="px-3 py-2 border-b border-slate-800">
-                <p className="text-[11px] font-bold text-white">Admin</p>
-                <p className="text-[9px] text-slate-500">TAMS Operator</p>
+                <p className="text-[11px] font-bold text-white truncate" title={username}>
+                  {username}
+                </p>
+                <p className="text-[9px] text-slate-500">{roleLabel(user?.role)}</p>
               </div>
 
               {view === 'root' && (
@@ -103,8 +115,8 @@ export default function NavbarProfile() {
               {view === 'profile' && (
                 <div className="p-3 space-y-2">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Profile</p>
-                  <p className="text-[11px] text-slate-200">Signed in as Admin</p>
-                  <p className="text-[10px] text-slate-400">Role: TAMS Operator</p>
+                  <p className="text-[11px] text-slate-200">Signed in as {username}</p>
+                  <p className="text-[10px] text-slate-400">Role: {roleLabel(user?.role)}</p>
                   <button
                     type="button"
                     className="text-[10px] font-semibold text-cyan-400 hover:text-cyan-300"
@@ -142,14 +154,16 @@ export default function NavbarProfile() {
         type="button"
         onClick={toggleMenu}
         className="flex items-center gap-1.5 h-8 pl-1 pr-2 rounded-lg border border-white/10 bg-slate-950/60 hover:border-slate-600 transition-colors"
-        aria-label="User profile menu"
+        aria-label={`${username} profile menu`}
         aria-expanded={isOpen}
-        title="Profile"
+        title={username}
       >
         <span className="w-6 h-6 rounded-md bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-[10px] font-black text-white">
-          AD
+          {initials}
         </span>
-        <span className="hidden sm:block text-[10px] font-bold text-slate-300">Admin</span>
+        <span className="hidden sm:block text-[10px] font-bold text-slate-300 max-w-[7.5rem] truncate">
+          {username}
+        </span>
         <ChevronDown className={`w-3 h-3 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       {menu}
