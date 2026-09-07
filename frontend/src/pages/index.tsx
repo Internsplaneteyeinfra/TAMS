@@ -8,6 +8,7 @@ import Head from 'next/head'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 import { Activity, MapPinned, RadioTower } from 'lucide-react'
+import CurrentUserChip from '@/components/auth/CurrentUserChip'
 import LogoutButton from '@/components/auth/LogoutButton'
 import type { LandingModuleId, NetworkMode } from '@/components/TransmissionNetwork'
 import { LandingThemeProvider, useLandingTheme } from '@/theme/LandingThemeContext'
@@ -227,6 +228,7 @@ function LandingPageInner() {
           </div>
           <div className="ml-auto flex items-center gap-2">
             <LandingThemeToggle />
+            <CurrentUserChip variant={appearance === 'light' ? 'light' : 'dark'} />
             <LogoutButton variant={appearance === 'light' ? 'light' : 'dark'} />
           </div>
         </header>

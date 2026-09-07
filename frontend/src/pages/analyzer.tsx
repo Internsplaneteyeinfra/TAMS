@@ -194,7 +194,12 @@ export default function Home() {
     refetchInterval: (query) => {
       if (query.state.error) return false
       const data = query.state.data
-      if (!data || data.length === 0) return 5000
+      // Recover briefly if backend was down; stop so spinner does not loop forever
+      if (!data || data.length === 0) {
+        const attempts = query.state.dataUpdateCount ?? 0
+        if (attempts >= 4) return false
+        return 8000
+      }
       return false
     },
   })
@@ -434,8 +439,11 @@ export default function Home() {
 
   const assetDockOpen = Boolean(selectedAsset) && !isExplorerMode
   const showAssetsBootOverlay = assetsLoading && assets.length === 0
+  // Do not tie spinner to background refetch — that caused forever "Loading region data…"
   const regionLoading =
-    assetsFetching || regionKmlStatsFetching || Boolean(mapStatus.regionLoading)
+    (assetsLoading && assets.length === 0) ||
+    (regionKmlStatsFetching && !regionKmlStats) ||
+    Boolean(mapStatus.regionLoading)
   /** Ops and Asset detail are mutually exclusive — no overlap */
   const showOpsPanel = isOperationsPanelOpen && !assetDockOpen
   const showRightRail = showOpsPanel || assetDockOpen

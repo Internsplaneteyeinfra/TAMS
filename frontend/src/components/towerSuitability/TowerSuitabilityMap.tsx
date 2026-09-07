@@ -1010,9 +1010,10 @@ export default function TowerSuitabilityMap({
         marker.bindTooltip(
           `${isHiStation ? '★ ' : ''}${asset.name} · ${distM} m · ${towerKvDisplay(asset)}`,
           {
-            permanent: true,
+            permanent: false,
             direction: 'top',
             offset: [0, -8],
+            sticky: true,
             className: 'ts-nearest-ss-label',
           }
         )
@@ -1029,8 +1030,8 @@ export default function TowerSuitabilityMap({
           {
             direction: towerKvLabel != null ? 'bottom' : 'top',
             offset: towerKvLabel != null ? [0, 8] : [0, -6],
-            permanent: asset.kind === 'tower' || asset.kind === 'pole' || isHighlight,
-            sticky: towerKvLabel == null && !isHighlight,
+            permanent: false,
+            sticky: true,
             className:
               towerKvLabel != null
                 ? asset.voltageKv != null && !asset.voltageInferred
@@ -1520,22 +1521,31 @@ export default function TowerSuitabilityMap({
       roadLoading,
       corridorSnap,
       corridorDistM,
+      roadAccessKm,
+      roadAccessLat,
+      roadAccessLon,
+      roadAccessLoading,
     } = connectionOverlay
-    const straightLabel = `Power line · ${formatMeters(straightM)}`
 
-    L.polyline(
-      [
-        [from.lat, from.lon],
-        [to.lat, to.lon],
-      ],
-      { color: '#64748b', weight: 4, opacity: 0.95, dashArray: '14 8' }
-    )
-      .bindTooltip(straightLabel, {
-        permanent: true,
-        direction: 'center',
-        className: 'ts-connection-straight-label',
-      })
-      .addTo(layer)
+    const hasDistinctTo =
+      Math.abs(from.lat - to.lat) > 1e-8 || Math.abs(from.lon - to.lon) > 1e-8
+
+    if (hasDistinctTo && straightM > 0) {
+      const straightLabel = `Power line · ${formatMeters(straightM)}`
+      L.polyline(
+        [
+          [from.lat, from.lon],
+          [to.lat, to.lon],
+        ],
+        { color: '#64748b', weight: 4, opacity: 0.95, dashArray: '14 8' }
+      )
+        .bindTooltip(straightLabel, {
+          permanent: true,
+          direction: 'center',
+          className: 'ts-connection-straight-label',
+        })
+        .addTo(layer)
+    }
 
     if (corridorSnap) {
       L.circleMarker([corridorSnap.lat, corridorSnap.lon], {
@@ -1554,7 +1564,44 @@ export default function TowerSuitabilityMap({
         .addTo(layer)
     }
 
-    if (showRoad) {
+    // Nearest-road stub (same orange style as pad road access) — only after existing click
+    if (
+      roadAccessLat != null &&
+      roadAccessLon != null &&
+      Number.isFinite(roadAccessLat) &&
+      Number.isFinite(roadAccessLon)
+    ) {
+      const accessM = roadAccessKm != null ? roadAccessKm * 1000 : null
+      L.polyline(
+        [
+          [from.lat, from.lon],
+          [roadAccessLat, roadAccessLon],
+        ],
+        { color: '#f97316', weight: 4, opacity: 0.9, dashArray: '6 6' }
+      )
+        .bindTooltip(
+          accessM != null ? `Road access · ${formatMeters(accessM)}` : 'Road access',
+          { permanent: true, direction: 'center', className: 'ts-road-route-label' }
+        )
+        .addTo(layer)
+      L.circleMarker([roadAccessLat, roadAccessLon], {
+        radius: 6,
+        color: '#ffffff',
+        weight: 2,
+        fillColor: '#f97316',
+        fillOpacity: 1,
+      }).addTo(layer)
+    } else if (roadAccessLoading) {
+      L.circleMarker([from.lat, from.lon], {
+        radius: 0,
+        opacity: 0,
+        fillOpacity: 0,
+      })
+        .bindTooltip('Loading road access…', { permanent: true, className: 'ts-road-route-label' })
+        .addTo(layer)
+    }
+
+    if (showRoad && hasDistinctTo) {
       if (roadCoords?.length) {
         const roadM = roadKm != null ? roadKm * 1000 : null
         L.polyline(roadCoords, { color: '#f97316', weight: 6, opacity: 0.95 })
@@ -1576,15 +1623,17 @@ export default function TowerSuitabilityMap({
       }
     }
 
-    L.circleMarker([to.lat, to.lon], {
-      radius: 10,
-      color: '#ffffff',
-      weight: 3,
-      fillColor: '#2563eb',
-      fillOpacity: 1,
-    })
-      .bindTooltip(to.label, { direction: 'top', offset: [0, -8], className: 'ts-nearest-tower-label' })
-      .addTo(layer)
+    if (hasDistinctTo) {
+      L.circleMarker([to.lat, to.lon], {
+        radius: 10,
+        color: '#ffffff',
+        weight: 3,
+        fillColor: '#2563eb',
+        fillOpacity: 1,
+      })
+        .bindTooltip(to.label, { direction: 'top', offset: [0, -8], className: 'ts-nearest-tower-label' })
+        .addTo(layer)
+    }
   }, [connectionOverlay, mapReady])
 
   useEffect(() => {

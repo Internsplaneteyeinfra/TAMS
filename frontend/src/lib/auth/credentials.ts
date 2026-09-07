@@ -1,10 +1,37 @@
 import crypto from 'crypto'
 
-/** Fixed local operator credentials (override via env in production). */
+/** Shared password for all allowed local operators (override via env). */
+export function getAuthPassword(): string {
+  return process.env.TAMS_AUTH_PASSWORD || 'Planeteye@2026'
+}
+
+/**
+ * Allowed usernames (exact match, case-sensitive).
+ * Override with comma-separated TAMS_AUTH_USERNAMES env, e.g.
+ * TAMS_AUTH_USERNAMES=Admin,VishalBhor,ShwetaPawar
+ */
+export function getAllowedUsernames(): string[] {
+  const fromEnv = process.env.TAMS_AUTH_USERNAMES
+  if (fromEnv && fromEnv.trim()) {
+    return fromEnv
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+  // Legacy single-username env still supported
+  const legacy = process.env.TAMS_AUTH_USERNAME?.trim()
+  if (legacy) {
+    const defaults = ['Admin', 'VishalBhor', 'ShwetaPawar']
+    return Array.from(new Set([legacy, ...defaults]))
+  }
+  return ['Admin', 'VishalBhor', 'ShwetaPawar']
+}
+
+/** @deprecated Prefer getAllowedUsernames + getAuthPassword */
 export function getFixedCredentials() {
   return {
-    username: process.env.TAMS_AUTH_USERNAME || 'Admin',
-    password: process.env.TAMS_AUTH_PASSWORD || 'Planeteye@2026',
+    username: getAllowedUsernames()[0] || 'Admin',
+    password: getAuthPassword(),
   }
 }
 
@@ -12,7 +39,6 @@ export function safeEqualString(a: string, b: string): boolean {
   const aBuf = Buffer.from(a)
   const bBuf = Buffer.from(b)
   if (aBuf.length !== bBuf.length) {
-    // Still run a comparison to reduce timing variance on length mismatch.
     crypto.timingSafeEqual(aBuf, aBuf)
     return false
   }
@@ -20,8 +46,9 @@ export function safeEqualString(a: string, b: string): boolean {
 }
 
 export function validateCredentials(username: string, password: string): boolean {
-  const fixed = getFixedCredentials()
-  const userOk = safeEqualString(username.trim(), fixed.username)
-  const passOk = safeEqualString(password, fixed.password)
+  const user = username.trim()
+  const allowed = getAllowedUsernames()
+  const userOk = allowed.some((u) => safeEqualString(user, u))
+  const passOk = safeEqualString(password, getAuthPassword())
   return userOk && passOk
 }

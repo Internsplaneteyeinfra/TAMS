@@ -25,6 +25,43 @@ function rateLimited(key: string): boolean {
   return row.count > 12
 }
 
+function backendOrigin(): string {
+  return (process.env.BACKEND_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')
+}
+
+/** Prefer PostgreSQL users via backend; fall back to local allow-list if DB is down. */
+async function loginAgainstBackend(
+  username: string,
+  password: string
+): Promise<{ ok: true; username: string; role: string } | { ok: false; status?: number; error?: string }> {
+  try {
+    const res = await fetch(`${backendOrigin()}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ username, password }),
+      signal: AbortSignal.timeout(12_000),
+    })
+    if (res.status === 401) {
+      return { ok: false, status: 401, error: 'Invalid username or password' }
+    }
+    if (res.status === 503) {
+      return { ok: false, status: 503, error: 'Database unavailable' }
+    }
+    if (!res.ok) {
+      return { ok: false, status: res.status, error: 'Backend login failed' }
+    }
+    const json = (await res.json()) as {
+      data?: { user?: { username?: string; role?: string; display_name?: string } }
+    }
+    const user = json?.data?.user
+    const name = user?.username || user?.display_name || username
+    const role = (user?.role || 'ADMIN').toLowerCase()
+    return { ok: true, username: name, role: role === 'admin' ? 'admin' : role }
+  } catch {
+    return { ok: false, status: 503, error: 'Backend unreachable' }
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST')
@@ -44,14 +81,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: 'Username and password are required' })
   }
 
+  const backend = await loginAgainstBackend(username.trim(), password)
+  if (backend.ok) {
+    const token = await createAccessToken(backend.username, backend.role)
+    res.setHeader('Set-Cookie', buildAuthCookie(token))
+    return res.status(200).json({
+      ok: true,
+      source: 'database',
+      user: { username: backend.username, role: backend.role },
+    })
+  }
+
+  // DB rejected credentials — do not fall back to allow-list (avoids bypass)
+  if (backend.status === 401) {
+    return res.status(401).json({ error: backend.error || 'Invalid username or password' })
+  }
+
+  // DB/backend unavailable — emergency local allow-list so app still opens
   if (!validateCredentials(username, password)) {
-    return res.status(401).json({ error: 'Invalid username or password' })
+    return res.status(401).json({
+      error: backend.error
+        ? `${backend.error}. Local fallback also rejected credentials.`
+        : 'Invalid username or password',
+    })
   }
 
   const token = await createAccessToken(username.trim(), 'admin')
   res.setHeader('Set-Cookie', buildAuthCookie(token))
   return res.status(200).json({
     ok: true,
+    source: 'fallback',
     user: { username: username.trim(), role: 'admin' },
   })
 }
