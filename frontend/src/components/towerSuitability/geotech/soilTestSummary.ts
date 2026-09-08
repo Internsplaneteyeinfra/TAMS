@@ -3,7 +3,7 @@
  */
 
 import { noData } from './provenance'
-import { toProvenance } from './parameterResolution/parameterTypes'
+import { toProvenance, type ResolvedParameter } from './parameterResolution/parameterTypes'
 import { indicativeFromUsda, resolveGroundWaterTableDisplay } from './report/reportSoilTestTables'
 import { transmissionLineMaterialRemark } from './report/transmissionLineRemarks'
 import type {
@@ -116,7 +116,7 @@ export function buildSoilTestSummary(
       // BH tables never show blank Sa/Si/Cl while MDD/SBC are filled from the same engine.
       const pickPv = (
         primary: ProvenanceValue<number | null>,
-        fromResolved: { value: number; unit: string; status: string; method: string; sources: string[]; confidence: number } | undefined,
+        fromResolved: ResolvedParameter | undefined,
         fromProfile?: ProvenanceValue<number | null>
       ): ProvenanceValue<number | null> => {
         if (primary.value != null && Number.isFinite(primary.value)) return primary
