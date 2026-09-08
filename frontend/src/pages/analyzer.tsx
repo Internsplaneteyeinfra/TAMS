@@ -177,7 +177,6 @@ export default function Home() {
   const {
     data: assetsFast,
     isLoading: assetsFastLoading,
-    isFetching: assetsFastFetching,
     isError: assetsFastError,
     refetch: refetchAssetsFast,
   } = useQuery({
@@ -206,7 +205,6 @@ export default function Home() {
 
   const {
     data: assetsFull,
-    isFetching: assetsFullFetching,
     isError: assetsFullError,
     refetch: refetchAssetsFull,
   } = useQuery({
@@ -222,7 +220,6 @@ export default function Home() {
 
   const assets = isIndiaOverview ? assetsFast ?? [] : assetsFull ?? assetsFast ?? []
   const assetsLoading = assetsFastLoading && assets.length === 0
-  const assetsFetching = assetsFastFetching || (!isIndiaOverview && assetsFullFetching)
   const assetsError = assets.length === 0 && (assetsFastError || (!isIndiaOverview && assetsFullError))
   const refetchAssets = () => {
     void refetchAssetsFast()
