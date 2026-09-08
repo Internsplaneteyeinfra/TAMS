@@ -73,24 +73,27 @@ export default function LoginPage() {
     if (busy) return
     setError(null)
     setBusy(true)
-    const result = await loginRequest(username.trim(), password)
-    if (!result.ok) {
-      setError(result.error || 'Invalid credentials. Check username and password.')
-      setBusy(false)
-      setShake(true)
-      window.setTimeout(() => setShake(false), 520)
-      return
-    }
     try {
-      window.localStorage.setItem(USER_KEY, username.trim())
-    } catch {
-      /* ignore */
+      const result = await loginRequest(username.trim(), password)
+      if (!result.ok) {
+        setError(result.error || 'Invalid credentials. Check username and password.')
+        setShake(true)
+        window.setTimeout(() => setShake(false), 520)
+        return
+      }
+      try {
+        window.localStorage.setItem(USER_KEY, username.trim())
+      } catch {
+        /* ignore */
+      }
+      const next =
+        typeof router.query.next === 'string' && router.query.next.startsWith('/')
+          ? router.query.next
+          : '/'
+      window.location.href = next
+    } finally {
+      setBusy(false)
     }
-    const next =
-      typeof router.query.next === 'string' && router.query.next.startsWith('/')
-        ? router.query.next
-        : '/'
-    window.location.href = next
   }
 
   const reveal = (delayMs: number) =>
