@@ -18,18 +18,15 @@ function isPrivateHost(host: string): boolean {
 }
 
 function resolveApiBase(): string {
-  if (CONFIGURED_BASE && !CONFIGURED_BASE.startsWith('/')) {
-    return CONFIGURED_BASE.replace(/\/$/, '')
+  // In the browser, ALWAYS route through Next.js same-origin API proxy (/api/v1).
+  // Next.js (pages/api/v1/[...path].ts) forwards the requests server-to-server to BACKEND_URL.
+  // This completely eliminates browser CORS errors and prevents hitting backend URLs directly.
+  if (typeof window !== 'undefined') {
+    return '/api/v1'
   }
 
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname
-    if (isPrivateHost(host) && LOCAL_API_OVERRIDE) {
-      return LOCAL_API_OVERRIDE.replace(/\/$/, '')
-    }
-    if (!isPrivateHost(host) && HOSTED_API_OVERRIDE) {
-      return HOSTED_API_OVERRIDE.replace(/\/$/, '')
-    }
+  if (CONFIGURED_BASE && !CONFIGURED_BASE.startsWith('/')) {
+    return CONFIGURED_BASE.replace(/\/$/, '')
   }
 
   return CONFIGURED_BASE || '/api/v1'
