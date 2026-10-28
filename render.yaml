@@ -40,7 +40,10 @@ services:
         value: https://mt1.google.com/vt/lyrs=s
       - key: BACKEND_URL
         value: https://tams-backend.up.railway.app
+      # NEXT_PUBLIC_HOSTED_API_BASE_URL intentionally left EMPTY.
+      # All browser API calls go through the Next.js /api/v1 proxy
+      # (server-to-server) to avoid CORS and 502 issues with Railway.
       - key: NEXT_PUBLIC_HOSTED_API_BASE_URL
-        value: https://tams-backend.up.railway.app/api/v1
+        value: ""
       - key: NEXT_PUBLIC_APP_URL
-        value: https://tams-txmr.onrender.com
+        value: https://tams-u8r1.onrender.com
